@@ -1,0 +1,27 @@
+{
+  "name": "@school/worker",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@school/database": "workspace:*",
+    "@school/types": "workspace:*",
+    "@school/utils": "workspace:*",
+    "bullmq": "^5.56.0",
+    "ioredis": "^5.6.1"
+  },
+  "devDependencies": {
+    "@school/config": "workspace:*",
+    "@types/node": "^22.15.30",
+    "rimraf": "^6.0.1",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  }
+}
