@@ -18,6 +18,7 @@ import { ExaminationsModule } from './modules/examinations/examinations.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { TimetableModule } from './modules/timetable/timetable.module';
 import { SubstitutionModule } from './modules/substitution/substitution.module';
+import { PayrollModule } from './modules/payroll/payroll.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { SubstitutionModule } from './modules/substitution/substitution.module';
     FinanceModule,
     TimetableModule,
     SubstitutionModule,
+    PayrollModule,
   ],
 })
 export class AppModule {}
