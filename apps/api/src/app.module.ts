@@ -14,6 +14,7 @@ import { AcademicsModule } from './modules/academics/academics.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { CommsModule } from './modules/comms/comms.module';
 import { AdmissionsModule } from './modules/admissions/admissions.module';
+import { ExaminationsModule } from './modules/examinations/examinations.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { AdmissionsModule } from './modules/admissions/admissions.module';
     AttendanceModule,
     CommsModule,
     AdmissionsModule,
+    ExaminationsModule,
   ],
 })
 export class AppModule {}
