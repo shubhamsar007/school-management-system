@@ -1,6 +1,5 @@
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["multiSchema"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -864,4 +863,714 @@ model SubstitutionCandidateScore {
 
   @@map("substitution_candidate_scores")
   @@schema("attendance")
+}
+
+// ─────────────────────────────────────────────
+// SCHEMA: storage
+// ─────────────────────────────────────────────
+
+model File {
+  id              String   @id @default(uuid())
+  organizationId  String?  @map("organization_id")
+  storageProvider String   @map("storage_provider") @db.VarChar(20)
+  storageKey      String   @map("storage_key") @db.VarChar(500)
+  originalName    String   @map("original_name") @db.VarChar(255)
+  mimeType        String   @map("mime_type") @db.VarChar(100)
+  sizeBytes       BigInt   @map("size_bytes")
+  checksum        String?  @db.VarChar(64)
+  uploadedBy      String?  @map("uploaded_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  documents              Document[]
+  admissionDocuments     AdmissionDocument[]
+  homeworkSubmissionFiles HomeworkSubmissionFile[]
+
+  @@map("files")
+  @@schema("storage")
+}
+
+model Document {
+  id                 String    @id @default(uuid())
+  organizationId     String    @map("organization_id")
+  fileId             String    @map("file_id")
+  documentType       String    @map("document_type") @db.VarChar(100)
+  entityType         String    @map("entity_type") @db.VarChar(100)
+  entityId           String    @map("entity_id")
+  verificationStatus String    @default("PENDING") @map("verification_status") @db.VarChar(20)
+  verifiedBy         String?   @map("verified_by")
+  verifiedAt         DateTime? @map("verified_at")
+  expiryDate         DateTime? @map("expiry_date") @db.Date
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  file File @relation(fields: [fileId], references: [id])
+
+  @@map("documents")
+  @@schema("storage")
+}
+
+// ─────────────────────────────────────────────
+// SCHEMA: admissions
+// ─────────────────────────────────────────────
+
+model AdmissionEnquiry {
+  id                String   @id @default(uuid())
+  organizationId    String   @map("organization_id")
+  campusId          String?  @map("campus_id")
+  academicYearId    String?  @map("academic_year_id")
+  studentName       String   @map("student_name") @db.VarChar(200)
+  parentName        String?  @map("parent_name") @db.VarChar(200)
+  phone             String   @db.VarChar(30)
+  email             String?  @db.VarChar(255)
+  classInterestedId String?  @map("class_interested_id")
+  source            String   @db.VarChar(30)
+  status            String   @default("NEW") @db.VarChar(30)
+  assignedTo        String?  @map("assigned_to")
+  notes             String?
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  applications AdmissionApplication[]
+
+  @@map("admission_enquiries")
+  @@schema("admissions")
+}
+
+model AdmissionApplication {
+  id                String    @id @default(uuid())
+  organizationId    String    @map("organization_id")
+  enquiryId         String?   @map("enquiry_id")
+  applicationNumber String    @map("application_number") @db.VarChar(50)
+  academicYearId    String    @map("academic_year_id")
+  classId           String    @map("class_id")
+  studentPersonId   String?   @map("student_person_id")
+  status            String    @default("DRAFT") @db.VarChar(30)
+  submittedAt       DateTime? @map("submitted_at")
+  approvedAt        DateTime? @map("approved_at")
+  rejectedAt        DateTime? @map("rejected_at")
+  rejectionReason   String?   @map("rejection_reason")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  enquiry   AdmissionEnquiry? @relation(fields: [enquiryId], references: [id])
+  documents AdmissionDocument[]
+
+  @@unique([organizationId, applicationNumber])
+  @@map("admission_applications")
+  @@schema("admissions")
+}
+
+model AdmissionDocument {
+  id                 String    @id @default(uuid())
+  applicationId      String    @map("application_id")
+  documentType       String    @map("document_type") @db.VarChar(50)
+  fileId             String    @map("file_id")
+  verificationStatus String    @default("PENDING") @map("verification_status") @db.VarChar(20)
+  verifiedBy         String?   @map("verified_by")
+  verifiedAt         DateTime? @map("verified_at")
+  remarks            String?
+
+  application AdmissionApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  file        File                 @relation(fields: [fileId], references: [id])
+
+  @@map("admission_documents")
+  @@schema("admissions")
+}
+
+// ─────────────────────────────────────────────
+// SCHEMA: finance
+// ─────────────────────────────────────────────
+
+model FeeHead {
+  id             String  @id @default(uuid())
+  organizationId String  @map("organization_id")
+  name           String  @db.VarChar(100)
+  code           String  @db.VarChar(50)
+  category       String  @db.VarChar(30)
+  isRefundable   Boolean @default(false) @map("is_refundable")
+  status         String  @default("ACTIVE") @db.VarChar(20)
+
+  feeStructureItems FeeStructureItem[]
+  feeInvoiceItems   FeeInvoiceItem[]
+
+  @@unique([organizationId, code])
+  @@map("fee_heads")
+  @@schema("finance")
+}
+
+model FeeStructure {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  academicYearId String   @map("academic_year_id")
+  classId        String   @map("class_id")
+  name           String   @db.VarChar(200)
+  status         String   @default("DRAFT") @db.VarChar(20)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  items              FeeStructureItem[]
+  studentAssignments StudentFeeAssignment[]
+
+  @@map("fee_structures")
+  @@schema("finance")
+}
+
+model FeeStructureItem {
+  id              String  @id @default(uuid())
+  feeStructureId  String  @map("fee_structure_id")
+  feeHeadId       String  @map("fee_head_id")
+  amount          Decimal @db.Decimal(12, 2)
+  frequency       String  @db.VarChar(20)
+  dueDay          Int?    @map("due_day")
+
+  feeStructure FeeStructure @relation(fields: [feeStructureId], references: [id], onDelete: Cascade)
+  feeHead      FeeHead      @relation(fields: [feeHeadId], references: [id])
+
+  @@map("fee_structure_items")
+  @@schema("finance")
+}
+
+model StudentFeeAssignment {
+  id               String    @id @default(uuid())
+  studentId        String    @map("student_id")
+  enrollmentId     String    @map("enrollment_id")
+  feeStructureId   String    @map("fee_structure_id")
+  discountAmount   Decimal   @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  scholarshipAmount Decimal  @default(0) @map("scholarship_amount") @db.Decimal(12, 2)
+  effectiveFrom    DateTime  @map("effective_from") @db.Date
+  effectiveTo      DateTime? @map("effective_to") @db.Date
+  status           String    @default("ACTIVE") @db.VarChar(20)
+
+  feeStructure FeeStructure @relation(fields: [feeStructureId], references: [id])
+
+  @@map("student_fee_assignments")
+  @@schema("finance")
+}
+
+model FeeInvoice {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  studentId      String   @map("student_id")
+  enrollmentId   String   @map("enrollment_id")
+  invoiceNumber  String   @map("invoice_number") @db.VarChar(50)
+  invoiceDate    DateTime @map("invoice_date") @db.Date
+  dueDate        DateTime @map("due_date") @db.Date
+  subtotal       Decimal  @db.Decimal(12, 2)
+  discount       Decimal  @default(0) @db.Decimal(12, 2)
+  fine           Decimal  @default(0) @db.Decimal(12, 2)
+  total          Decimal  @db.Decimal(12, 2)
+  status         String   @default("DRAFT") @db.VarChar(20)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  items       FeeInvoiceItem[]
+  allocations PaymentAllocation[]
+
+  @@unique([organizationId, invoiceNumber])
+  @@map("fee_invoices")
+  @@schema("finance")
+}
+
+model FeeInvoiceItem {
+  id          String  @id @default(uuid())
+  invoiceId   String  @map("invoice_id")
+  feeHeadId   String  @map("fee_head_id")
+  description String? @db.VarChar(255)
+  amount      Decimal @db.Decimal(12, 2)
+  discount    Decimal @default(0) @db.Decimal(12, 2)
+  netAmount   Decimal @map("net_amount") @db.Decimal(12, 2)
+
+  invoice FeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  feeHead FeeHead    @relation(fields: [feeHeadId], references: [id])
+
+  @@map("fee_invoice_items")
+  @@schema("finance")
+}
+
+model FeePayment {
+  id                   String   @id @default(uuid())
+  organizationId       String   @map("organization_id")
+  studentId            String   @map("student_id")
+  receiptNumber        String   @map("receipt_number") @db.VarChar(50)
+  amount               Decimal  @db.Decimal(12, 2)
+  paymentMethod        String   @map("payment_method") @db.VarChar(20)
+  transactionReference String?  @map("transaction_reference") @db.VarChar(255)
+  paymentDate          DateTime @map("payment_date") @db.Date
+  receivedBy           String   @map("received_by")
+  gatewayResponse      Json?    @map("gateway_response")
+  status               String   @default("PENDING") @db.VarChar(20)
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  allocations PaymentAllocation[]
+  refunds     FeeRefund[]
+
+  @@unique([organizationId, receiptNumber])
+  @@map("fee_payments")
+  @@schema("finance")
+}
+
+model PaymentAllocation {
+  id        String  @id @default(uuid())
+  paymentId String  @map("payment_id")
+  invoiceId String  @map("invoice_id")
+  amount    Decimal @db.Decimal(12, 2)
+
+  payment FeePayment @relation(fields: [paymentId], references: [id])
+  invoice FeeInvoice @relation(fields: [invoiceId], references: [id])
+
+  @@map("payment_allocations")
+  @@schema("finance")
+}
+
+model FeeRefund {
+  id                   String    @id @default(uuid())
+  paymentId            String    @map("payment_id")
+  refundNumber         String    @map("refund_number") @db.VarChar(50)
+  amount               Decimal   @db.Decimal(12, 2)
+  reason               String
+  refundMethod         String    @map("refund_method") @db.VarChar(20)
+  transactionReference String?   @map("transaction_reference") @db.VarChar(255)
+  status               String    @default("PENDING") @db.VarChar(20)
+  approvedBy           String?   @map("approved_by")
+  processedAt          DateTime? @map("processed_at")
+
+  payment FeePayment @relation(fields: [paymentId], references: [id])
+
+  @@map("fee_refunds")
+  @@schema("finance")
+}
+
+// ─────────────────────────────────────────────
+// SCHEMA: hr (payroll extension)
+// ─────────────────────────────────────────────
+
+model SalaryComponent {
+  id               String  @id @default(uuid())
+  organizationId   String  @map("organization_id")
+  name             String  @db.VarChar(100)
+  code             String  @db.VarChar(50)
+  componentType    String  @map("component_type") @db.VarChar(20)
+  calculationType  String  @map("calculation_type") @db.VarChar(30)
+  isTaxable        Boolean @default(true) @map("is_taxable")
+  status           String  @default("ACTIVE") @db.VarChar(20)
+
+  employeeSalaryComponents EmployeeSalaryComponent[]
+  payrollItems             PayrollItem[]
+
+  @@map("salary_components")
+  @@schema("hr")
+}
+
+model SalaryStructure {
+  id            String    @id @default(uuid())
+  employeeId    String    @map("employee_id")
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+  basicSalary   Decimal   @map("basic_salary") @db.Decimal(12, 2)
+  grossSalary   Decimal   @map("gross_salary") @db.Decimal(12, 2)
+  status        String    @default("ACTIVE") @db.VarChar(20)
+
+  components EmployeeSalaryComponent[]
+
+  @@map("salary_structures")
+  @@schema("hr")
+}
+
+model EmployeeSalaryComponent {
+  id                String   @id @default(uuid())
+  salaryStructureId String   @map("salary_structure_id")
+  salaryComponentId String   @map("salary_component_id")
+  amount            Decimal? @db.Decimal(12, 2)
+  percentage        Decimal? @db.Decimal(5, 2)
+
+  salaryStructure SalaryStructure @relation(fields: [salaryStructureId], references: [id], onDelete: Cascade)
+  salaryComponent SalaryComponent @relation(fields: [salaryComponentId], references: [id])
+
+  @@map("employee_salary_components")
+  @@schema("hr")
+}
+
+model PayrollRun {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  periodStart    DateTime  @map("period_start") @db.Date
+  periodEnd      DateTime  @map("period_end") @db.Date
+  status         String    @default("DRAFT") @db.VarChar(20)
+  processedBy    String?   @map("processed_by")
+  processedAt    DateTime? @map("processed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  records PayrollRecord[]
+
+  @@unique([organizationId, periodStart, periodEnd])
+  @@map("payroll_runs")
+  @@schema("hr")
+}
+
+model PayrollRecord {
+  id               String  @id @default(uuid())
+  payrollRunId     String  @map("payroll_run_id")
+  employeeId       String  @map("employee_id")
+  workingDays      Int?    @map("working_days")
+  presentDays      Int?    @map("present_days")
+  basic            Decimal @db.Decimal(12, 2)
+  gross            Decimal @db.Decimal(12, 2)
+  totalDeductions  Decimal @map("total_deductions") @db.Decimal(12, 2)
+  netSalary        Decimal @map("net_salary") @db.Decimal(12, 2)
+  status           String  @default("PENDING") @db.VarChar(20)
+
+  payrollRun PayrollRun    @relation(fields: [payrollRunId], references: [id])
+  items      PayrollItem[]
+
+  @@map("payroll_records")
+  @@schema("hr")
+}
+
+model PayrollItem {
+  id               String  @id @default(uuid())
+  payrollRecordId  String  @map("payroll_record_id")
+  salaryComponentId String @map("salary_component_id")
+  amount           Decimal @db.Decimal(12, 2)
+
+  payrollRecord   PayrollRecord   @relation(fields: [payrollRecordId], references: [id], onDelete: Cascade)
+  salaryComponent SalaryComponent @relation(fields: [salaryComponentId], references: [id])
+
+  @@map("payroll_items")
+  @@schema("hr")
+}
+
+// ─────────────────────────────────────────────
+// SCHEMA: examinations
+// ─────────────────────────────────────────────
+
+model ExamType {
+  id             String @id @default(uuid())
+  organizationId String @map("organization_id")
+  name           String @db.VarChar(100)
+  code           String @db.VarChar(50)
+
+  exams Exam[]
+
+  @@unique([organizationId, code])
+  @@map("exam_types")
+  @@schema("examinations")
+}
+
+model GradingSystem {
+  id             String  @id @default(uuid())
+  organizationId String  @map("organization_id")
+  name           String  @db.VarChar(100)
+  isDefault      Boolean @default(false) @map("is_default")
+
+  gradeRules GradeRule[]
+  exams      Exam[]
+
+  @@map("grading_systems")
+  @@schema("examinations")
+}
+
+model GradeRule {
+  id              String  @id @default(uuid())
+  gradingSystemId String  @map("grading_system_id")
+  grade           String  @db.VarChar(5)
+  minPercentage   Decimal @map("min_percentage") @db.Decimal(5, 2)
+  maxPercentage   Decimal @map("max_percentage") @db.Decimal(5, 2)
+  gradePoint      Decimal? @map("grade_point") @db.Decimal(4, 2)
+  remark          String? @db.VarChar(50)
+
+  gradingSystem GradingSystem @relation(fields: [gradingSystemId], references: [id], onDelete: Cascade)
+
+  @@map("grade_rules")
+  @@schema("examinations")
+}
+
+model Exam {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  academicYearId String   @map("academic_year_id")
+  name           String   @db.VarChar(200)
+  examTypeId     String   @map("exam_type_id")
+  gradingSystemId String? @map("grading_system_id")
+  startDate      DateTime @map("start_date") @db.Date
+  endDate        DateTime @map("end_date") @db.Date
+  status         String   @default("SCHEDULED") @db.VarChar(30)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  examType      ExamType       @relation(fields: [examTypeId], references: [id])
+  gradingSystem GradingSystem? @relation(fields: [gradingSystemId], references: [id])
+  examSubjects  ExamSubject[]
+  examResults   ExamResult[]
+
+  @@map("exams")
+  @@schema("examinations")
+}
+
+model ExamSubject {
+  id            String    @id @default(uuid())
+  examId        String    @map("exam_id")
+  classId       String    @map("class_id")
+  subjectId     String    @map("subject_id")
+  examDate      DateTime? @map("exam_date") @db.Date
+  startTime     DateTime? @map("start_time") @db.Time
+  endTime       DateTime? @map("end_time") @db.Time
+  maxMarks      Decimal   @map("max_marks") @db.Decimal(6, 2)
+  passingMarks  Decimal   @map("passing_marks") @db.Decimal(6, 2)
+  weightage     Decimal   @default(100) @db.Decimal(5, 2)
+
+  exam      Exam       @relation(fields: [examId], references: [id], onDelete: Cascade)
+  examMarks ExamMark[]
+
+  @@map("exam_subjects")
+  @@schema("examinations")
+}
+
+model ExamMark {
+  id            String  @id @default(uuid())
+  examSubjectId String  @map("exam_subject_id")
+  studentId     String  @map("student_id")
+  marks         Decimal? @db.Decimal(6, 2)
+  grade         String? @db.VarChar(5)
+  isAbsent      Boolean @default(false) @map("is_absent")
+  remarks       String?
+  enteredBy     String? @map("entered_by")
+  verifiedBy    String? @map("verified_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  examSubject ExamSubject @relation(fields: [examSubjectId], references: [id], onDelete: Cascade)
+
+  @@unique([examSubjectId, studentId])
+  @@map("exam_marks")
+  @@schema("examinations")
+}
+
+model ExamResult {
+  id            String  @id @default(uuid())
+  examId        String  @map("exam_id")
+  studentId     String  @map("student_id")
+  totalMarks    Decimal? @map("total_marks") @db.Decimal(8, 2)
+  maxTotalMarks Decimal? @map("max_total_marks") @db.Decimal(8, 2)
+  percentage    Decimal? @db.Decimal(5, 2)
+  grade         String? @db.VarChar(5)
+  gradePoint    Decimal? @map("grade_point") @db.Decimal(4, 2)
+  resultStatus  String  @map("result_status") @db.VarChar(20)
+
+  exam Exam @relation(fields: [examId], references: [id])
+
+  @@unique([examId, studentId])
+  @@map("exam_results")
+  @@schema("examinations")
+}
+
+model Homework {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  teacherId      String   @map("teacher_id")
+  classId        String   @map("class_id")
+  sectionId      String   @map("section_id")
+  subjectId      String   @map("subject_id")
+  title          String   @db.VarChar(255)
+  description    String?
+  assignedDate   DateTime @map("assigned_date") @db.Date
+  dueDate        DateTime @map("due_date") @db.Date
+  maxMarks       Decimal? @map("max_marks") @db.Decimal(6, 2)
+  status         String   @default("DRAFT") @db.VarChar(20)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  submissions HomeworkSubmission[]
+
+  @@map("homework")
+  @@schema("examinations")
+}
+
+model HomeworkSubmission {
+  id          String    @id @default(uuid())
+  homeworkId  String    @map("homework_id")
+  studentId   String    @map("student_id")
+  submittedAt DateTime? @map("submitted_at")
+  marks       Decimal?  @db.Decimal(6, 2)
+  remarks     String?
+  status      String    @default("PENDING") @db.VarChar(20)
+
+  homework Homework                @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  files    HomeworkSubmissionFile[]
+
+  @@unique([homeworkId, studentId])
+  @@map("homework_submissions")
+  @@schema("examinations")
+}
+
+model HomeworkSubmissionFile {
+  id           String @id @default(uuid())
+  submissionId String @map("submission_id")
+  fileId       String @map("file_id")
+  sortOrder    Int    @default(0) @map("sort_order")
+
+  submission HomeworkSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  file       File               @relation(fields: [fileId], references: [id])
+
+  @@map("homework_submission_files")
+  @@schema("examinations")
+}
+
+// ─────────────────────────────────────────────
+// SCHEMA: health
+// ─────────────────────────────────────────────
+
+model StudentHealthRecord {
+  id                     String    @id @default(uuid())
+  organizationId         String    @map("organization_id")
+  studentId              String    @map("student_id")
+  bloodGroup             String?   @map("blood_group") @db.VarChar(5)
+  heightCm               Decimal?  @map("height_cm") @db.Decimal(5, 2)
+  weightKg               Decimal?  @map("weight_kg") @db.Decimal(5, 2)
+  visionLeft             String?   @map("vision_left") @db.VarChar(20)
+  visionRight            String?   @map("vision_right") @db.VarChar(20)
+  knownAllergies         String[]  @map("known_allergies")
+  medicalConditions      String[]  @map("medical_conditions")
+  medications            String[]
+  specialNeeds           String?   @map("special_needs")
+  emergencyContactName   String?   @map("emergency_contact_name") @db.VarChar(200)
+  emergencyContactPhone  String?   @map("emergency_contact_phone") @db.VarChar(30)
+  doctorName             String?   @map("doctor_name") @db.VarChar(200)
+  doctorPhone            String?   @map("doctor_phone") @db.VarChar(30)
+  insuranceProvider      String?   @map("insurance_provider") @db.VarChar(200)
+  insurancePolicyNumber  String?   @map("insurance_policy_number") @db.VarChar(100)
+  recordedAt             DateTime? @map("recorded_at") @db.Date
+  recordedBy             String?   @map("recorded_by")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  @@map("student_health_records")
+  @@schema("health")
+}
+
+// ─────────────────────────────────────────────
+// SCHEMA: comms
+// ─────────────────────────────────────────────
+
+model Announcement {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  campusId       String?   @map("campus_id")
+  title          String    @db.VarChar(255)
+  content        String
+  audienceType   String    @map("audience_type") @db.VarChar(30)
+  targetClassId  String?   @map("target_class_id")
+  publishAt      DateTime? @map("publish_at")
+  expiresAt      DateTime? @map("expires_at")
+  createdBy      String    @map("created_by")
+  status         String    @default("DRAFT") @db.VarChar(20)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@map("announcements")
+  @@schema("comms")
+}
+
+model NotificationTemplate {
+  id             String  @id @default(uuid())
+  organizationId String? @map("organization_id")
+  name           String  @db.VarChar(100)
+  eventType      String  @map("event_type") @db.VarChar(100)
+  channel        String  @db.VarChar(20)
+  subject        String? @db.VarChar(255)
+  body           String
+  status         String  @default("ACTIVE") @db.VarChar(20)
+
+  @@map("notification_templates")
+  @@schema("comms")
+}
+
+model Notification {
+  id               String    @id @default(uuid())
+  organizationId   String    @map("organization_id")
+  recipientUserId  String    @map("recipient_user_id")
+  eventType        String    @map("event_type") @db.VarChar(100)
+  title            String    @db.VarChar(255)
+  message          String
+  channel          String    @db.VarChar(20)
+  status           String    @default("PENDING") @db.VarChar(20)
+  sentAt           DateTime? @map("sent_at")
+  readAt           DateTime? @map("read_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  deliveries NotificationDelivery[]
+
+  @@map("notifications")
+  @@schema("comms")
+}
+
+model NotificationDelivery {
+  id                String    @id @default(uuid())
+  notificationId    String    @map("notification_id")
+  provider          String    @db.VarChar(50)
+  providerMessageId String?   @map("provider_message_id") @db.VarChar(255)
+  status            String    @default("QUEUED") @db.VarChar(20)
+  errorMessage      String?   @map("error_message")
+  sentAt            DateTime? @map("sent_at")
+  deliveredAt       DateTime? @map("delivered_at")
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@map("notification_deliveries")
+  @@schema("comms")
+}
+
+model PtmSchedule {
+  id                  String   @id @default(uuid())
+  organizationId      String   @map("organization_id")
+  campusId            String   @map("campus_id")
+  academicYearId      String   @map("academic_year_id")
+  name                String   @db.VarChar(200)
+  date                DateTime @db.Date
+  slotDurationMinutes Int      @default(15) @map("slot_duration_minutes")
+  status              String   @default("DRAFT") @db.VarChar(20)
+  createdBy           String   @map("created_by")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  teacherSlots PtmTeacherSlot[]
+  bookings     PtmBooking[]
+
+  @@map("ptm_schedules")
+  @@schema("comms")
+}
+
+model PtmTeacherSlot {
+  id            String  @id @default(uuid())
+  ptmScheduleId String  @map("ptm_schedule_id")
+  teacherId     String  @map("teacher_id")
+  startTime     DateTime @map("start_time") @db.Time
+  endTime       DateTime @map("end_time") @db.Time
+  isAvailable   Boolean @default(true) @map("is_available")
+
+  ptmSchedule PtmSchedule @relation(fields: [ptmScheduleId], references: [id], onDelete: Cascade)
+
+  @@map("ptm_teacher_slots")
+  @@schema("comms")
+}
+
+model PtmBooking {
+  id            String   @id @default(uuid())
+  ptmScheduleId String   @map("ptm_schedule_id")
+  teacherId     String   @map("teacher_id")
+  studentId     String   @map("student_id")
+  guardianId    String   @map("guardian_id")
+  slotStart     DateTime @map("slot_start")
+  slotEnd       DateTime @map("slot_end")
+  status        String   @default("BOOKED") @db.VarChar(20)
+  meetingNotes  String?  @map("meeting_notes")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  ptmSchedule PtmSchedule @relation(fields: [ptmScheduleId], references: [id])
+
+  @@unique([ptmScheduleId, teacherId, slotStart])
+  @@map("ptm_bookings")
+  @@schema("comms")
 }
