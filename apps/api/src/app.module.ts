@@ -10,6 +10,7 @@ import { OrganizationModule } from './modules/organization/organization.module';
 import { IamModule } from './modules/iam/iam.module';
 import { StudentModule } from './modules/student/student.module';
 import { TeacherModule } from './modules/teacher/teacher.module';
+import { AcademicsModule } from './modules/academics/academics.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { TeacherModule } from './modules/teacher/teacher.module';
     IamModule,
     StudentModule,
     TeacherModule,
+    AcademicsModule,
   ],
 })
 export class AppModule {}
