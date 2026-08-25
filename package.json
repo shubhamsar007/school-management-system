@@ -14,9 +14,13 @@
     "db:migrate": "turbo run db:migrate",
     "db:seed": "turbo run db:seed"
   },
+  "dependencies": {
+    "@prisma/client": "^6.19.3"
+  },
   "devDependencies": {
     "turbo": "^2.5.4",
     "prettier": "^3.5.3",
+    "prisma": "^6.19.3",
     "rimraf": "^6.0.1",
     "typescript": "^5.8.3"
   },

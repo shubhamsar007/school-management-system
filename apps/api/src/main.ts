@@ -2,23 +2,29 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const cookieParser = require('cookie-parser');
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Security
   app.use(helmet());
+  app.use(cookieParser());
+
   app.enableCors({
     origin: process.env.WEB_URL ?? 'http://localhost:3000',
     credentials: true,
   });
 
-  // API versioning
   app.enableVersioning({ type: VersioningType.URI });
   app.setGlobalPrefix('api');
 
-  // Global validation pipe
+  app.useGlobalFilters(new AllExceptionsFilter());
+  app.useGlobalInterceptors(new ResponseInterceptor());
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -28,7 +34,6 @@ async function bootstrap() {
     }),
   );
 
-  // Swagger
   if (process.env.NODE_ENV !== 'production') {
     const config = new DocumentBuilder()
       .setTitle('School Management System API')

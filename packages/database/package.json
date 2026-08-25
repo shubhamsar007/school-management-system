@@ -8,7 +8,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "db:generate": "prisma generate --schema=../../prisma/schema.prisma",
+    "db:generate": "PRISMA_GENERATE_SKIP_AUTOINSTALL=true prisma generate --schema=../../prisma/schema.prisma",
     "db:migrate": "prisma migrate dev --schema=../../prisma/schema.prisma",
     "db:migrate:deploy": "prisma migrate deploy --schema=../../prisma/schema.prisma",
     "db:seed": "tsx ../../prisma/seed/index.ts",
@@ -21,7 +21,7 @@
   },
   "devDependencies": {
     "@school/config": "workspace:*",
-    "prisma": "^6.11.1",
+    "prisma": "^6.19.3",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3"
   }
