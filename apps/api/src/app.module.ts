@@ -13,6 +13,7 @@ import { TeacherModule } from './modules/teacher/teacher.module';
 import { AcademicsModule } from './modules/academics/academics.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { CommsModule } from './modules/comms/comms.module';
+import { AdmissionsModule } from './modules/admissions/admissions.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { CommsModule } from './modules/comms/comms.module';
     AcademicsModule,
     AttendanceModule,
     CommsModule,
+    AdmissionsModule,
   ],
 })
 export class AppModule {}
