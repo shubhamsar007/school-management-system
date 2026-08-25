@@ -6,6 +6,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import appConfig from './config/app.config';
 import { DatabaseModule } from './modules/database/database.module';
 import { IdentityModule } from './modules/identity/identity.module';
+import { OrganizationModule } from './modules/organization/organization.module';
+import { IamModule } from './modules/iam/iam.module';
 
 @Module({
   imports: [
@@ -23,6 +25,8 @@ import { IdentityModule } from './modules/identity/identity.module';
     ScheduleModule.forRoot(),
     DatabaseModule,
     IdentityModule,
+    OrganizationModule,
+    IamModule,
   ],
 })
 export class AppModule {}
