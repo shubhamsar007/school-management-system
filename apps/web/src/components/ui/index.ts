@@ -14,3 +14,9 @@ export { Dropdown } from './dropdown';
 export type { DropdownOption } from './dropdown';
 
 export { Pagination } from './pagination';
+
+export { FileUpload } from './file-upload';
+export type { FileUploadProps, UploadedFile, AcceptedFileType } from './file-upload';
+
+export { ExportButton } from './file-export';
+export type { ExportButtonProps, ExportColumn, ExportFormat } from './file-export';
