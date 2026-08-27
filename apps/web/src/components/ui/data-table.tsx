@@ -9,7 +9,7 @@ import { EmptyState } from './empty-state';
 export interface ColumnDef<T> {
   id: string;
   header: string;
-  accessor: keyof T | ((row: T) => React.ReactNode);
+  accessor?: keyof T | ((row: T) => React.ReactNode);
   sortable?: boolean;
   align?: 'left' | 'center' | 'right';
   width?: string;
