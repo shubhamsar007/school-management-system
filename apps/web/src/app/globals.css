@@ -4,24 +4,28 @@
 
 @layer base {
   :root {
-    --background: 220 14% 97%;      /* #f6f7f8 */
-    --foreground: 214 24% 9%;       /* #14181c */
-    --primary: 215 58% 41%;         /* #2b5fa8 */
-    --primary-foreground: 0 0% 100%;
-    --secondary: 210 20% 96%;
-    --secondary-foreground: 214 24% 9%;
-    --muted: 210 20% 96%;
-    --muted-foreground: 215 10% 47%;
-    --accent: 215 20% 96%;
-    --accent-foreground: 214 24% 9%;
-    --destructive: 3 74% 42%;       /* #b3261e */
+    /* Warm oat canvas */
+    --background: 40 22% 86%;         /* #ebe7da */
+    --foreground: 152 8% 18%;         /* #2c322f */
+    --primary: 151 15% 44%;           /* #5d7f6b */
+    --primary-foreground: 40 60% 97%; /* #fdfcf8 */
+    --secondary: 40 30% 97%;          /* #fffdf8 */
+    --secondary-foreground: 152 8% 18%;
+    --muted: 40 20% 94%;              /* #f4f1e9 */
+    --muted-foreground: 150 5% 55%;   /* #8d938d */
+    --accent: 40 20% 94%;
+    --accent-foreground: 152 8% 18%;
+    --destructive: 3 74% 42%;
     --destructive-foreground: 0 0% 100%;
-    --border: 215 16% 91%;          /* #e6e8eb */
-    --input: 215 16% 91%;
-    --ring: 215 58% 41%;
-    --radius: 0.375rem;             /* 6px */
-    --card: 0 0% 100%;
-    --card-foreground: 214 24% 9%;
+    --border: 38 20% 85%;             /* #e6e1d5 */
+    --input: 38 20% 85%;
+    --ring: 151 15% 44%;
+    --radius: 0.5rem;
+    --card: 40 60% 98%;               /* #fffdf8 */
+    --card-foreground: 152 8% 18%;
+    /* Font variables */
+    --font-karla: 'Karla', 'Helvetica Neue', Arial, sans-serif;
+    --font-fraunces: 'Fraunces', Georgia, 'Times New Roman', serif;
   }
 }
 
@@ -30,8 +34,26 @@
     @apply border-border;
   }
   body {
-    background-color: #f6f7f8;
-    color: #14181c;
-    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    background-color: #ebe7da;
+    color: #2c322f;
+    font-family: var(--font-karla);
+    -webkit-font-smoothing: antialiased;
   }
+  a {
+    color: #5d7f6b;
+    text-decoration: none;
+  }
+  a:hover {
+    color: #4a6a56;
+  }
+  /* Hide scrollbars */
+  * { scrollbar-width: thin; scrollbar-color: #d5d1c4 transparent; }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #d5d1c4; border-radius: 4px; }
+}
+
+/* Fraunces serif helper class */
+.font-display {
+  font-family: var(--font-fraunces);
 }

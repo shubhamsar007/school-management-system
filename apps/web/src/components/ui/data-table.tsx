@@ -98,19 +98,15 @@ function DataTable<T extends object>({
   const toggleRow = (idx: number) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(idx)) {
-        next.delete(idx);
-      } else {
-        next.add(idx);
-      }
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
       onSelectionChange?.(sortedData.filter((_, i) => next.has(i)));
       return next;
     });
   };
 
-  // Build grid-template-columns
   const gridCols = [
-    ...(selectable ? ['40px'] : []),
+    ...(selectable ? ['44px'] : []),
     ...columns.map((c) => c.width ?? '1fr'),
   ].join(' ');
 
@@ -125,56 +121,56 @@ function DataTable<T extends object>({
   };
 
   return (
-    <div className={cn('overflow-x-auto rounded-xl border border-[#e6e8eb] bg-white', className)} style={{ boxShadow: '0 1px 2px rgba(20,24,28,0.04)' }}>
+    <div className={cn('overflow-x-auto', className)}>
       {/* Header */}
       <div
-        className="grid border-b border-[#e6e8eb]"
-        style={{ gridTemplateColumns: gridCols, background: '#fafbfc', minWidth: 'max-content' }}
+        className="grid"
+        style={{
+          gridTemplateColumns: gridCols,
+          background: '#fbf9f3',
+          borderBottom: '1px solid #efece2',
+          minWidth: 'max-content',
+        }}
       >
         {selectable && (
-          <div className="flex items-center justify-center px-3" style={{ height: '44px' }}>
-            <input
-              type="checkbox"
-              checked={allSelected}
-              ref={(el) => { if (el) el.indeterminate = someSelected; }}
-              onChange={toggleAll}
-              className="cursor-pointer accent-[#2b5fa8]"
-              aria-label="Select all"
+          <div className="flex items-center justify-center px-3" style={{ height: 40 }}>
+            <div
+              onClick={toggleAll}
+              className="cursor-pointer"
+              style={{
+                width: 15,
+                height: 15,
+                border: `1.5px solid ${someSelected || allSelected ? '#5d7f6b' : '#c5c0b6'}`,
+                background: allSelected ? '#5d7f6b' : someSelected ? '#d8e9de' : 'transparent',
+                borderRadius: 5,
+              }}
             />
           </div>
         )}
         {columns.map((col) => (
           <div
             key={col.id}
-            className={cn(
-              'flex items-center gap-1 px-3',
-              alignClass(col.align),
-              col.sortable && 'cursor-pointer select-none hover:text-[#14181c]',
-            )}
-            style={{ height: '44px' }}
+            className={cn('flex items-center gap-1 px-3', alignClass(col.align), col.sortable && 'cursor-pointer select-none')}
+            style={{ height: 40 }}
             onClick={col.sortable ? () => handleSort(col.id) : undefined}
           >
             <span
               style={{
-                fontSize: '11px',
+                fontSize: '10px',
                 fontWeight: 700,
-                letterSpacing: '0.05em',
+                letterSpacing: '0.09em',
                 textTransform: 'uppercase',
-                color: '#8a929b',
+                color: sortCol === col.id ? '#5d7f6b' : '#a9aca4',
               }}
             >
               {col.header}
             </span>
             {col.sortable && (
-              <span className="text-[#a2aab3]" style={{ lineHeight: 1 }}>
+              <span style={{ color: '#a9aca4', lineHeight: 1 }}>
                 {sortCol === col.id ? (
-                  sortDir === 'asc' ? (
-                    <ArrowUp size={12} />
-                  ) : (
-                    <ArrowDown size={12} />
-                  )
+                  sortDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />
                 ) : (
-                  <ArrowUpDown size={12} />
+                  <ArrowUpDown size={10} />
                 )}
               </span>
             )}
@@ -190,20 +186,32 @@ function DataTable<T extends object>({
           {sortedData.map((row, rowIdx) => (
             <div
               key={rowIdx}
-              className={cn(
-                'grid border-b border-[#eef0f2] last:border-0 transition-colors',
-                selected.has(rowIdx) ? 'bg-[#f3f7fc]' : 'hover:bg-[#fafbfc]',
-              )}
-              style={{ gridTemplateColumns: gridCols, minHeight: '52px' }}
+              className={cn('grid transition-colors')}
+              style={{
+                gridTemplateColumns: gridCols,
+                minHeight: 52,
+                borderBottom: '1px solid #f4f1e8',
+                background: selected.has(rowIdx) ? '#dbe8dc' : 'transparent',
+              }}
+              onMouseEnter={(e) => {
+                if (!selected.has(rowIdx)) (e.currentTarget as HTMLElement).style.background = '#fbf9f3';
+              }}
+              onMouseLeave={(e) => {
+                if (!selected.has(rowIdx)) (e.currentTarget as HTMLElement).style.background = 'transparent';
+              }}
             >
               {selectable && (
                 <div className="flex items-center justify-center px-3">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(rowIdx)}
-                    onChange={() => toggleRow(rowIdx)}
-                    className="cursor-pointer accent-[#2b5fa8]"
-                    aria-label={`Select row ${rowIdx + 1}`}
+                  <div
+                    onClick={() => toggleRow(rowIdx)}
+                    className="cursor-pointer"
+                    style={{
+                      width: 15,
+                      height: 15,
+                      border: `1.5px solid ${selected.has(rowIdx) ? '#5d7f6b' : '#c5c0b6'}`,
+                      background: selected.has(rowIdx) ? '#5d7f6b' : 'transparent',
+                      borderRadius: 5,
+                    }}
                   />
                 </div>
               )}
@@ -211,7 +219,7 @@ function DataTable<T extends object>({
                 <div
                   key={col.id}
                   className={cn('flex items-center px-3', alignClass(col.align))}
-                  style={{ minHeight: '52px', fontSize: '13px', color: '#14181c' }}
+                  style={{ minHeight: 52, fontSize: '12.5px', color: '#2c322f' }}
                 >
                   {getCellValue(row, col)}
                 </div>

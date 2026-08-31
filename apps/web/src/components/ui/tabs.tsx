@@ -19,8 +19,16 @@ interface TabsProps {
 function Tabs({ tabs, activeTab, onChange, className }: TabsProps) {
   return (
     <div
-      className={cn('flex items-center border-b border-[#e6e8eb]', className)}
+      className={cn('flex items-center overflow-x-auto', className)}
       role="tablist"
+      style={{
+        background: '#f5f2e8',
+        border: '1px solid #ded9cc',
+        borderRadius: 12,
+        padding: '0 6px',
+        height: 38,
+        gap: 2,
+      }}
     >
       {tabs.map((tab) => {
         const isActive = tab.id === activeTab;
@@ -30,40 +38,37 @@ function Tabs({ tabs, activeTab, onChange, className }: TabsProps) {
             role="tab"
             aria-selected={isActive}
             onClick={() => onChange(tab.id)}
-            className={cn(
-              'relative flex items-center gap-1.5 px-3 py-2.5 text-[13px] transition-colors whitespace-nowrap outline-none',
-              isActive
-                ? 'font-semibold text-[#2b5fa8]'
-                : 'font-normal text-[#6b7480] hover:text-[#14181c]',
-            )}
-            style={{ marginBottom: '-1px' }}
+            className="relative flex items-center gap-1.5 whitespace-nowrap outline-none transition-colors"
+            style={{
+              height: 30,
+              padding: '0 11px',
+              borderRadius: 8,
+              fontSize: '12.5px',
+              fontWeight: isActive ? 600 : 400,
+              color: isActive ? '#2c322f' : '#6d746e',
+              background: isActive ? '#fffdf8' : 'transparent',
+              border: isActive ? '1px solid #e6e1d5' : '1px solid transparent',
+              boxShadow: isActive ? '0 1px 2px rgba(44,50,47,0.06)' : 'none',
+              cursor: 'pointer',
+            }}
           >
             {tab.label}
             {tab.count !== undefined && (
               <span
-                className="inline-flex items-center justify-center rounded-full"
+                className="inline-flex items-center justify-center"
                 style={{
-                  fontSize: '11px',
-                  color: '#6b7480',
-                  background: '#f2f4f6',
-                  padding: '0 6px',
-                  minWidth: '18px',
-                  height: '18px',
-                  lineHeight: '18px',
+                  minWidth: 17,
+                  height: 16,
+                  padding: '0 5px',
+                  borderRadius: 8,
+                  background: isActive ? '#dbe8dc' : '#ede9df',
+                  color: isActive ? '#33604a' : '#8d938d',
+                  fontSize: '10px',
+                  fontWeight: 700,
                 }}
               >
                 {tab.count}
               </span>
-            )}
-            {isActive && (
-              <span
-                className="absolute bottom-0 left-0 right-0"
-                style={{
-                  height: '2px',
-                  background: '#2b5fa8',
-                  borderRadius: '2px 2px 0 0',
-                }}
-              />
             )}
           </button>
         );

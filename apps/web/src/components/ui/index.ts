@@ -7,6 +7,7 @@ export type { BadgeProps } from './badge';
 export { Avatar } from './avatar';
 
 export { KpiCard } from './kpi-card';
+export type { KpiVariant } from './kpi-card';
 
 export { SearchBar } from './search-bar';
 

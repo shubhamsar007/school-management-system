@@ -12,11 +12,8 @@ function buildBreadcrumbs(pathname: string): { label: string; href?: string }[] 
       .replace(/-/g, ' ')
       .replace(/\b\w/g, (c) => c.toUpperCase());
     const isLast = idx === segments.length - 1;
-    if (isLast) {
-      return { label };
-    }
-    const href = '/' + segments.slice(0, idx + 1).join('/');
-    return { label, href };
+    if (isLast) return { label };
+    return { label, href: '/' + segments.slice(0, idx + 1).join('/') };
   });
 }
 
@@ -30,23 +27,41 @@ function AppShell({ children }: AppShellProps) {
   const breadcrumbs = buildBreadcrumbs(pathname);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f6f7f8]">
+    <div
+      className="flex overflow-hidden"
+      style={{ height: '100vh', background: '#ebe7da' }}
+    >
       <Sidebar
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
         currentPath={pathname}
       />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Topbar
-          collapsed={collapsed}
-          onToggle={() => setCollapsed((c) => !c)}
-          breadcrumbs={breadcrumbs}
-        />
-        <main className="flex-1 overflow-y-auto" style={{ padding: '28px 32px 48px' }}>
-          <div style={{ maxWidth: 1360, margin: '0 auto' }}>
-            {children}
-          </div>
-        </main>
+      <div
+        className="flex flex-col overflow-hidden flex-1 min-w-0"
+        style={{ padding: '14px 14px 0 0' }}
+      >
+        {/* Inner content wrapper — rounded top to look like a panel */}
+        <div
+          className="flex flex-col overflow-hidden flex-1"
+          style={{ borderRadius: '16px 16px 0 0', overflow: 'hidden' }}
+        >
+          <Topbar
+            collapsed={collapsed}
+            onToggle={() => setCollapsed((c) => !c)}
+            breadcrumbs={breadcrumbs}
+          />
+          <main
+            className="flex-1 overflow-y-auto"
+            style={{
+              background: '#ebe7da',
+              padding: '20px 20px 48px',
+            }}
+          >
+            <div style={{ maxWidth: 1400, margin: '0 auto' }}>
+              {children}
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   );

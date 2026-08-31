@@ -12,15 +12,18 @@ function PageHeader({ title, subtitle, actions, className }: PageHeaderProps) {
   return (
     <div
       className={cn('flex items-end justify-between', className)}
-      style={{ marginBottom: 24 }}
+      style={{ marginBottom: 20 }}
     >
       <div>
         <h1
           style={{
+            fontFamily: 'var(--font-fraunces)',
             fontSize: '22px',
-            fontWeight: 700,
-            color: '#14181c',
+            fontWeight: 600,
+            letterSpacing: '-0.015em',
+            color: '#2c322f',
             lineHeight: 1.2,
+            margin: 0,
           }}
         >
           {title}
@@ -28,9 +31,9 @@ function PageHeader({ title, subtitle, actions, className }: PageHeaderProps) {
         {subtitle && (
           <p
             style={{
-              fontSize: '13px',
-              color: '#8a929b',
-              marginTop: 4,
+              fontSize: '11.5px',
+              color: '#8d938d',
+              marginTop: 3,
             }}
           >
             {subtitle}
