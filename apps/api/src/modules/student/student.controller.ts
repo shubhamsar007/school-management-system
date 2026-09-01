@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -18,6 +19,7 @@ import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { CreateGuardianDto } from './dto/create-guardian.dto';
+import { ListStudentsDto } from './dto/list-students.dto';
 
 @ApiTags('students')
 @ApiBearerAuth()
@@ -37,10 +39,19 @@ export class StudentController {
     return this.studentService.createStudent(user.organizationId, dto);
   }
 
-  @ApiOperation({ summary: 'List all students in the organisation' })
+  @ApiOperation({ summary: 'List students with filtering, search, and pagination' })
   @Get()
-  findStudents(@CurrentUser() user: CurrentUserPayload) {
-    return this.studentService.findStudents(user.organizationId);
+  findStudents(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query() query: ListStudentsDto,
+  ) {
+    return this.studentService.findStudents(user.organizationId, query);
+  }
+
+  @ApiOperation({ summary: 'Get student KPI stats (total, active, boys, girls, new admissions)' })
+  @Get('stats')
+  getStudentStats(@CurrentUser() user: CurrentUserPayload) {
+    return this.studentService.getStudentStats(user.organizationId);
   }
 
   @ApiOperation({ summary: 'Get a student by ID' })

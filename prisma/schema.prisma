@@ -3,9 +3,10 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  schemas  = ["core", "iam", "hr", "academics", "students", "attendance", "admissions", "finance", "examinations", "ops", "comms", "storage", "health"]
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL")
+  schemas   = ["core", "iam", "hr", "academics", "students", "attendance", "admissions", "finance", "examinations", "ops", "comms", "filestore", "health"]
 }
 
 // ─────────────────────────────────────────────
@@ -166,6 +167,8 @@ model Person {
   alternatePhone   String?   @map("alternate_phone") @db.VarChar(30)
   bloodGroup       String?   @map("blood_group") @db.VarChar(5)
   nationality      String?   @default("Indian") @db.VarChar(50)
+  preferredName    String?   @map("preferred_name") @db.VarChar(50)
+  motherTongue     String?   @map("mother_tongue") @db.VarChar(50)
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
   deletedAt        DateTime? @map("deleted_at")
@@ -174,8 +177,28 @@ model Person {
   student   Student?
   employee  Employee?
   guardian  Guardian?
+  addresses PersonAddress[]
 
   @@map("persons")
+  @@schema("iam")
+}
+
+model PersonAddress {
+  id         String   @id @default(uuid())
+  personId   String   @map("person_id")
+  type       String   @db.VarChar(20)
+  line1      String?  @db.VarChar(200)
+  line2      String?  @db.VarChar(200)
+  city       String?  @db.VarChar(100)
+  state      String?  @db.VarChar(100)
+  country    String?  @default("India") @db.VarChar(100)
+  postalCode String?  @map("postal_code") @db.VarChar(20)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  person Person @relation(fields: [personId], references: [id])
+
+  @@map("person_addresses")
   @@schema("iam")
 }
 
@@ -595,6 +618,11 @@ model Student {
   leavingReason    String?   @map("leaving_reason")
   currentCampusId  String?   @map("current_campus_id")
   houseId          String?   @map("house_id")
+  religion         String?   @db.VarChar(50)
+  category         String?   @db.VarChar(50)
+  caste            String?   @db.VarChar(100)
+  studentType      String?   @map("student_type") @db.VarChar(30)
+  admissionSource  String?   @map("admission_source") @db.VarChar(30)
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
   deletedAt        DateTime? @map("deleted_at")
@@ -619,6 +647,7 @@ model Guardian {
   employer    String?   @db.VarChar(200)
   annualIncome Decimal? @map("annual_income") @db.Decimal(12, 2)
   education   String?   @db.VarChar(100)
+  designation String?   @db.VarChar(100)
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
@@ -639,6 +668,7 @@ model StudentGuardian {
   isEmergencyContact      Boolean @default(false) @map("is_emergency_contact")
   canPickup               Boolean @default(false) @map("can_pickup")
   canReceiveNotifications Boolean @default(true) @map("can_receive_notifications")
+  canAccessPortal  Boolean   @default(false) @map("can_access_portal")
   createdAt               DateTime @default(now()) @map("created_at")
   updatedAt               DateTime @updatedAt @map("updated_at")
 
@@ -886,7 +916,7 @@ model File {
   homeworkSubmissionFiles HomeworkSubmissionFile[]
 
   @@map("files")
-  @@schema("storage")
+  @@schema("filestore")
 }
 
 model Document {
@@ -906,7 +936,7 @@ model Document {
   file File @relation(fields: [fileId], references: [id])
 
   @@map("documents")
-  @@schema("storage")
+  @@schema("filestore")
 }
 
 // ─────────────────────────────────────────────

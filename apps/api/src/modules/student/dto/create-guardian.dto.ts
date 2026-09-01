@@ -99,6 +99,12 @@ export class CreateGuardianDto {
   @MaxLength(100)
   education?: string;
 
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  designation?: string;
+
   // ── StudentGuardian link fields ──────────────────────────────
 
   @ApiProperty({ enum: GuardianRelationshipEnum })
@@ -124,4 +130,9 @@ export class CreateGuardianDto {
   @IsBoolean()
   @IsOptional()
   canReceiveNotifications?: boolean;
+
+  @ApiPropertyOptional({ default: false })
+  @IsBoolean()
+  @IsOptional()
+  canAccessPortal?: boolean;
 }

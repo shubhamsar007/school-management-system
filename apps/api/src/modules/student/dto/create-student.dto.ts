@@ -8,7 +8,47 @@ import {
   IsEnum,
   IsUUID,
   MaxLength,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class AddressDto {
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  @MaxLength(200)
+  line1?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  @MaxLength(200)
+  line2?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  city?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  state?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  country?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  postalCode?: string;
+}
 
 export enum GenderEnum {
   MALE = 'MALE',
@@ -86,6 +126,48 @@ export class CreateStudentDto {
   @MaxLength(50)
   nationality?: string;
 
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  preferredName?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  motherTongue?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  religion?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  category?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  caste?: string;
+
+  @ApiPropertyOptional({ enum: ['NEW_ADMISSION', 'TRANSFER', 'RETURNING', 'EXISTING'] })
+  @IsString()
+  @IsOptional()
+  @MaxLength(30)
+  studentType?: string;
+
+  @ApiPropertyOptional({ enum: ['PORTAL', 'WALK_IN', 'REFERRAL', 'TRANSFER', 'OTHER'] })
+  @IsString()
+  @IsOptional()
+  @MaxLength(30)
+  admissionSource?: string;
+
   // ── Student fields ───────────────────────────────────────────
 
   @ApiProperty({ description: 'Unique admission number within the organisation' })
@@ -118,4 +200,16 @@ export class CreateStudentDto {
   @IsUUID()
   @IsOptional()
   houseId?: string;
+
+  @ApiPropertyOptional({ type: AddressDto })
+  @ValidateNested()
+  @Type(() => AddressDto)
+  @IsOptional()
+  permanentAddress?: AddressDto;
+
+  @ApiPropertyOptional({ type: AddressDto })
+  @ValidateNested()
+  @Type(() => AddressDto)
+  @IsOptional()
+  currentAddress?: AddressDto;
 }

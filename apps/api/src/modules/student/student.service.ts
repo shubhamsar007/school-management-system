@@ -9,6 +9,7 @@ import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { CreateGuardianDto } from './dto/create-guardian.dto';
+import { ListStudentsDto } from './dto/list-students.dto';
 
 @Injectable()
 export class StudentService {
@@ -58,6 +59,8 @@ export class StudentService {
           alternatePhone: dto.alternatePhone ?? null,
           bloodGroup: dto.bloodGroup ?? null,
           nationality: dto.nationality ?? 'Indian',
+          preferredName: dto.preferredName ?? null,
+          motherTongue: dto.motherTongue ?? null,
         },
       });
 
@@ -71,6 +74,11 @@ export class StudentService {
           joiningDate: dto.joiningDate ? new Date(dto.joiningDate) : null,
           currentCampusId: dto.currentCampusId ?? null,
           houseId: dto.houseId ?? null,
+          religion: dto.religion ?? null,
+          category: dto.category ?? null,
+          caste: dto.caste ?? null,
+          studentType: dto.studentType ?? null,
+          admissionSource: dto.admissionSource ?? null,
         },
         include: {
           person: true,
@@ -78,29 +86,136 @@ export class StudentService {
         },
       });
 
+      // Create addresses if provided
+      if (dto.permanentAddress) {
+        await tx.personAddress.create({
+          data: {
+            personId: person.id,
+            type: 'PERMANENT',
+            line1: dto.permanentAddress.line1 ?? null,
+            line2: dto.permanentAddress.line2 ?? null,
+            city: dto.permanentAddress.city ?? null,
+            state: dto.permanentAddress.state ?? null,
+            country: dto.permanentAddress.country ?? null,
+            postalCode: dto.permanentAddress.postalCode ?? null,
+          },
+        });
+      }
+      if (dto.currentAddress) {
+        await tx.personAddress.create({
+          data: {
+            personId: person.id,
+            type: 'CURRENT',
+            line1: dto.currentAddress.line1 ?? null,
+            line2: dto.currentAddress.line2 ?? null,
+            city: dto.currentAddress.city ?? null,
+            state: dto.currentAddress.state ?? null,
+            country: dto.currentAddress.country ?? null,
+            postalCode: dto.currentAddress.postalCode ?? null,
+          },
+        });
+      }
+
       return this.formatStudent(student);
     });
   }
 
-  async findStudents(organizationId: string) {
-    const students = await this.prisma.student.findMany({
-      where: { organizationId, deletedAt: null },
-      include: {
-        person: true,
-        enrollments: {
-          where: { status: 'ACTIVE' },
-          include: {
-            academicYear: true,
-            class: true,
-            section: true,
+  async findStudents(organizationId: string, dto: ListStudentsDto) {
+    const { search, academicYearId, classId, sectionId, status, gender, page = 1, limit = 20 } = dto;
+    const skip = (page - 1) * limit;
+
+    const where: any = {
+      organizationId,
+      deletedAt: null,
+      ...(status ? { studentStatus: status } : {}),
+      ...(gender ? { person: { gender } } : {}),
+      ...(search
+        ? {
+            OR: [
+              { admissionNumber: { contains: search, mode: 'insensitive' } },
+              { person: { firstName: { contains: search, mode: 'insensitive' } } },
+              { person: { lastName: { contains: search, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+      ...((academicYearId || classId || sectionId)
+        ? {
+            enrollments: {
+              some: {
+                status: 'ACTIVE',
+                ...(academicYearId ? { academicYearId } : {}),
+                ...(classId ? { classId } : {}),
+                ...(sectionId ? { sectionId } : {}),
+              },
+            },
+          }
+        : {}),
+    };
+
+    const [students, total] = await Promise.all([
+      this.prisma.student.findMany({
+        where,
+        include: {
+          person: true,
+          enrollments: {
+            where: { status: 'ACTIVE' },
+            include: {
+              academicYear: true,
+              class: true,
+              section: true,
+            },
+            orderBy: { enrollmentDate: 'desc' },
+            take: 1,
           },
-          orderBy: { enrollmentDate: 'desc' },
-          take: 1,
         },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.student.count({ where }),
+    ]);
+
+    return {
+      data: students.map(this.formatStudent),
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
       },
-      orderBy: { createdAt: 'desc' },
-    });
-    return students.map(this.formatStudent);
+    };
+  }
+
+  async getStudentStats(organizationId: string) {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const [total, active, inactive, boys, girls, newAdmissions] = await Promise.all([
+      this.prisma.student.count({
+        where: { organizationId, deletedAt: null },
+      }),
+      this.prisma.student.count({
+        where: { organizationId, deletedAt: null, studentStatus: 'ACTIVE' },
+      }),
+      this.prisma.student.count({
+        where: { organizationId, deletedAt: null, studentStatus: 'INACTIVE' },
+      }),
+      this.prisma.student.count({
+        where: { organizationId, deletedAt: null, person: { gender: 'MALE' } },
+      }),
+      this.prisma.student.count({
+        where: { organizationId, deletedAt: null, person: { gender: 'FEMALE' } },
+      }),
+      this.prisma.student.count({
+        where: {
+          organizationId,
+          deletedAt: null,
+          admissionDate: { gte: thirtyDaysAgo },
+        },
+      }),
+    ]);
+
+    return { total, active, inactive, boys, girls, newAdmissions };
   }
 
   async findStudent(organizationId: string, studentId: string) {
@@ -331,6 +446,7 @@ export class StudentService {
           employer: dto.employer ?? null,
           annualIncome: dto.annualIncome ?? null,
           education: dto.education ?? null,
+          designation: dto.designation ?? null,
         },
       });
 
@@ -343,6 +459,7 @@ export class StudentService {
           isEmergencyContact: dto.isEmergencyContact ?? false,
           canPickup: dto.canPickup ?? false,
           canReceiveNotifications: dto.canReceiveNotifications ?? true,
+          canAccessPortal: dto.canAccessPortal ?? false,
         },
         include: {
           guardian: {

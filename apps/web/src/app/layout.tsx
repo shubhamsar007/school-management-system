@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Karla, Fraunces } from 'next/font/google';
 import { Toaster } from 'sonner';
+import { Providers } from '@/lib/providers';
 import './globals.css';
 
 const karla = Karla({
@@ -28,8 +29,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${karla.variable} ${fraunces.variable}`} style={{ fontFamily: 'var(--font-karla)' }}>
-        {children}
-        <Toaster richColors position="top-right" />
+        <Providers>
+          {children}
+          <Toaster richColors position="top-right" />
+        </Providers>
       </body>
     </html>
   );
