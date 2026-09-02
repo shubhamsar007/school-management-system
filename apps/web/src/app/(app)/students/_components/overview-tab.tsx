@@ -159,12 +159,12 @@ function RecentAdmissions() {
               <Link
                 key={s.id}
                 href={`/students/${s.id}`}
-                className="flex items-center gap-3 hover:bg-[#fafbfc] transition-colors outline-none"
+                className="flex items-center gap-3 hover:bg-[#fafbfc] transition-colors outline-none group"
                 style={{ padding: '11px 20px', borderBottom: '1px solid #f5f6f7', display: 'flex' }}
               >
                 <Avatar name={s.name} size="sm" />
                 <div className="flex-1 min-w-0">
-                  <p style={{ fontSize: '13px', fontWeight: 600, color: '#14181c' }} className="truncate">
+                  <p className="truncate group-hover:underline" style={{ fontSize: '13px', fontWeight: 600, color: '#14181c' }}>
                     {s.name}
                   </p>
                   <p style={{ fontSize: '11.5px', color: '#8a929b' }}>

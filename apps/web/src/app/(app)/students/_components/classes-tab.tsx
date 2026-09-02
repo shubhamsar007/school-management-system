@@ -165,10 +165,10 @@ function SectionStudents({
             </p>
 
             {/* Student */}
-            <Link href={`/students/${s.id}`} className="flex items-center gap-2.5 px-1 hover:opacity-80 transition-opacity">
+            <Link href={`/students/${s.id}`} className="flex items-center gap-2.5 px-1 outline-none group">
               <Avatar name={s.name} size="sm" />
               <div>
-                <p style={{ fontSize: '13.5px', fontWeight: 600, color: '#14181c' }}>{s.name}</p>
+                <p className="group-hover:underline" style={{ fontSize: '13.5px', fontWeight: 600, color: '#14181c' }}>{s.name}</p>
                 <p style={{ fontSize: '11.5px', color: '#8a929b' }}>{s.admissionNumber}</p>
               </div>
             </Link>

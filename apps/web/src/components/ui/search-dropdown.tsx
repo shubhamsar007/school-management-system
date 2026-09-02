@@ -96,7 +96,7 @@ export function SearchDropdown({ query, onClose }: SearchDropdownProps) {
             >
               <Avatar name={student.name} size="sm" />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: '13.5px', fontWeight: 600, color: '#14181c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <p className="hover:underline" style={{ fontSize: '13.5px', fontWeight: 600, color: '#14181c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {student.name}
                 </p>
                 <p style={{ fontSize: '11.5px', color: '#8a929b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
