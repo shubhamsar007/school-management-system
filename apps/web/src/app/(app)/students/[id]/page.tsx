@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
+import { BackButton } from '@/components/ui/back-button';
 import { OverviewTab }    from './_components/overview-tab';
 import { PersonalTab }    from './_components/personal-tab';
 import { ParentsTab }     from './_components/parents-tab';
@@ -124,9 +125,7 @@ export default function StudentProfilePage() {
         <p style={{ fontSize: '13px', color: '#8a929b', marginTop: 4 }}>
           The student you are looking for does not exist or was removed.
         </p>
-        <Link href="/students">
-          <Button variant="secondary" className="mt-4">← Back to Students</Button>
-        </Link>
+        <BackButton label="Back to Students" className="mt-4" />
       </div>
     );
   }
@@ -140,14 +139,7 @@ export default function StudentProfilePage() {
   return (
     <>
       {/* Back link */}
-      <Link
-        href="/students"
-        className="inline-flex items-center gap-1.5 mb-4 hover:underline outline-none"
-        style={{ fontSize: '13px', color: '#6b7480' }}
-      >
-        <ChevronLeft size={14} />
-        Students
-      </Link>
+      <BackButton label="Students" className="mb-4" />
 
       {/* Profile header card */}
       {isLoading ? (
