@@ -4,6 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { CommandPalette } from '@/components/ui/command-palette';
 
 interface Breadcrumb {
   label: string;
@@ -18,6 +19,20 @@ interface TopbarProps {
 }
 
 function Topbar({ onToggle, breadcrumbs, className }: TopbarProps) {
+  const [searchOpen, setSearchOpen] = React.useState(false);
+
+  // Global Ctrl+K / ⌘K shortcut
+  React.useEffect(() => {
+    function handle(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen((o) => !o);
+      }
+    }
+    document.addEventListener('keydown', handle);
+    return () => document.removeEventListener('keydown', handle);
+  }, []);
+
   return (
     <header
       className={cn('flex items-center flex-shrink-0', className)}
@@ -87,8 +102,9 @@ function Topbar({ onToggle, breadcrumbs, className }: TopbarProps) {
         ))}
       </nav>
 
-      {/* Search / command palette */}
+      {/* Search / command palette trigger */}
       <button
+        onClick={() => setSearchOpen(true)}
         className="flex items-center gap-2 flex-shrink-0 transition-colors"
         style={{
           height: 28,
@@ -102,6 +118,7 @@ function Topbar({ onToggle, breadcrumbs, className }: TopbarProps) {
         }}
         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#c8c3b3'; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#ded9cc'; }}
+        aria-label="Open search"
       >
         <div
           style={{
@@ -128,6 +145,8 @@ function Topbar({ onToggle, breadcrumbs, className }: TopbarProps) {
           ⌘K
         </span>
       </button>
+
+      <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
 
       {/* Term selector */}
       <button

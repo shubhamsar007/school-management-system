@@ -24,6 +24,17 @@ export interface StudentEnrollment {
   academicYear: { id: string; name: string };
 }
 
+export interface PersonAddress {
+  id: string;
+  type: string;
+  line1?: string;
+  line2?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  postalCode?: string;
+}
+
 export interface Student {
   id: string;
   admissionNumber: string;
@@ -31,12 +42,21 @@ export interface Student {
   studentStatus: string;
   admissionDate: string;
   joiningDate?: string;
+  leavingDate?: string;
+  leavingReason?: string;
+  religion?: string;
+  category?: string;
+  caste?: string;
+  studentType?: string;
+  admissionSource?: string;
   name: string;
   person: {
     id: string;
     firstName: string;
     middleName?: string;
     lastName: string;
+    preferredName?: string;
+    motherTongue?: string;
     email?: string;
     phone?: string;
     alternatePhone?: string;
@@ -44,6 +64,7 @@ export interface Student {
     dateOfBirth?: string;
     bloodGroup?: string;
     nationality?: string;
+    addresses?: PersonAddress[];
   };
   enrollments: StudentEnrollment[];
 }
@@ -200,16 +221,24 @@ export function useCreateStudent() {
 }
 
 export function useCreateEnrollment() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ studentId, data }: { studentId: string; data: CreateEnrollmentPayload }) =>
       apiClient.post(`/students/${studentId}/enrollments`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['students'] });
+    },
   });
 }
 
 export function useCreateGuardian() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ studentId, data }: { studentId: string; data: CreateGuardianPayload }) =>
       apiClient.post(`/students/${studentId}/guardians`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['students'] });
+    },
   });
 }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { ChevronRight, ChevronLeft, Users, LayoutGrid } from 'lucide-react';
 import { useClasses, useSections, type AcademicClass, type Section } from '@/lib/hooks/use-academics';
 import { useStudents } from '@/lib/hooks/use-students';
@@ -164,13 +165,13 @@ function SectionStudents({
             </p>
 
             {/* Student */}
-            <div className="flex items-center gap-2.5 px-1">
+            <Link href={`/students/${s.id}`} className="flex items-center gap-2.5 px-1 hover:opacity-80 transition-opacity">
               <Avatar name={s.name} size="sm" />
               <div>
                 <p style={{ fontSize: '13.5px', fontWeight: 600, color: '#14181c' }}>{s.name}</p>
                 <p style={{ fontSize: '11.5px', color: '#8a929b' }}>{s.admissionNumber}</p>
               </div>
-            </div>
+            </Link>
 
             {/* Roll No */}
             <p style={{ fontSize: '13px', color: '#6b7480', padding: '0 4px' }}>
@@ -193,9 +194,11 @@ function SectionStudents({
 
             {/* Actions */}
             <div className="flex items-center gap-1 px-1">
-              <Button variant="ghost" size="sm" className="text-[#2b5fa8] text-[12px] h-7 px-2">
-                View
-              </Button>
+              <Link href={`/students/${s.id}`}>
+                <Button variant="ghost" size="sm" className="text-[#2b5fa8] text-[12px] h-7 px-2">
+                  View
+                </Button>
+              </Link>
             </div>
           </div>
         );

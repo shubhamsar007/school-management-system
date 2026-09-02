@@ -130,13 +130,24 @@ export class StudentService {
       ...(status ? { studentStatus: status } : {}),
       ...(gender ? { person: { gender } } : {}),
       ...(search
-        ? {
-            OR: [
+        ? (() => {
+            const parts = search.trim().split(/\s+/);
+            const OR: any[] = [
               { admissionNumber: { contains: search, mode: 'insensitive' } },
               { person: { firstName: { contains: search, mode: 'insensitive' } } },
-              { person: { lastName: { contains: search, mode: 'insensitive' } } },
-            ],
-          }
+              { person: { lastName:  { contains: search, mode: 'insensitive' } } },
+            ];
+            // Full-name search: "Shubham Sarvaiya" → firstName contains "Shubham" AND lastName contains "Sarvaiya"
+            if (parts.length >= 2) {
+              OR.push({
+                AND: [
+                  { person: { firstName: { contains: parts[0],                    mode: 'insensitive' } } },
+                  { person: { lastName:  { contains: parts[parts.length - 1]!, mode: 'insensitive' } } },
+                ],
+              });
+            }
+            return { OR };
+          })()
         : {}),
       ...((academicYearId || classId || sectionId)
         ? {
@@ -222,7 +233,9 @@ export class StudentService {
     const student = await this.prisma.student.findFirst({
       where: { id: studentId, organizationId, deletedAt: null },
       include: {
-        person: true,
+        person: {
+          include: { addresses: true },
+        },
         house: true,
         enrollments: {
           include: {

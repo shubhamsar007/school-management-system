@@ -48,15 +48,27 @@ export function PersonalTab({ student }: { student: Student }) {
 
   const status = student.studentStatus.charAt(0) + student.studentStatus.slice(1).toLowerCase();
 
+  const permanentAddress = person.addresses?.find((a) => a.type === 'PERMANENT');
+  const currentAddress   = person.addresses?.find((a) => a.type === 'CURRENT');
+
+  function formatAddress(addr: typeof permanentAddress) {
+    if (!addr) return undefined;
+    return [addr.line1, addr.line2, addr.city, addr.state, addr.postalCode, addr.country]
+      .filter(Boolean)
+      .join(', ') || undefined;
+  }
+
   return (
     <div className="space-y-5">
       {/* Identity */}
       <Section title="Personal Information">
-        <Field label="Full Name"    value={fullName} />
-        <Field label="Date of Birth" value={formatDate(person.dateOfBirth)} />
-        <Field label="Gender"       value={gender} />
-        <Field label="Blood Group"  value={person.bloodGroup} />
-        <Field label="Nationality"  value={person.nationality} />
+        <Field label="Full Name"       value={fullName} />
+        <Field label="Preferred Name"  value={person.preferredName} />
+        <Field label="Date of Birth"   value={formatDate(person.dateOfBirth)} />
+        <Field label="Gender"          value={gender} />
+        <Field label="Blood Group"     value={person.bloodGroup} />
+        <Field label="Nationality"     value={person.nationality} />
+        <Field label="Mother Tongue"   value={person.motherTongue} />
       </Section>
 
       {/* Contact */}
@@ -66,15 +78,33 @@ export function PersonalTab({ student }: { student: Student }) {
         <Field label="Alternate Phone" value={person.alternatePhone} />
       </Section>
 
+      {/* Additional */}
+      <Section title="Additional Information">
+        <Field label="Religion"          value={student.religion} />
+        <Field label="Category"          value={student.category} />
+        <Field label="Caste"             value={student.caste} />
+        <Field label="Student Type"      value={student.studentType} />
+        <Field label="Admission Source"  value={student.admissionSource} />
+      </Section>
+
+      {/* Addresses */}
+      <Section title="Addresses">
+        <Field label="Permanent Address" value={formatAddress(permanentAddress)} />
+        <Field label="Current Address"   value={formatAddress(currentAddress)} />
+      </Section>
+
       {/* Admission */}
       <Section title="Admission & Status">
-        <Field label="Admission Number"     value={student.admissionNumber} />
-        <Field label="Registration Number"  value={student.registrationNumber} />
-        <Field label="Admission Date"       value={formatDate(student.admissionDate)} />
-        <Field label="Joining Date"         value={formatDate(student.joiningDate)} />
-        <Field label="Student Status"       value={status} />
-        {student.joiningDate === undefined && student.studentStatus !== 'ACTIVE' && (
-          <Field label="Leaving Date"     value={formatDate((student as any).leavingDate)} />
+        <Field label="Admission Number"    value={student.admissionNumber} />
+        <Field label="Registration Number" value={student.registrationNumber} />
+        <Field label="Admission Date"      value={formatDate(student.admissionDate)} />
+        <Field label="Joining Date"        value={formatDate(student.joiningDate)} />
+        <Field label="Student Status"      value={status} />
+        {student.studentStatus !== 'ACTIVE' && student.leavingDate && (
+          <Field label="Leaving Date"   value={formatDate(student.leavingDate)} />
+        )}
+        {student.studentStatus !== 'ACTIVE' && student.leavingReason && (
+          <Field label="Leaving Reason" value={student.leavingReason} />
         )}
       </Section>
     </div>

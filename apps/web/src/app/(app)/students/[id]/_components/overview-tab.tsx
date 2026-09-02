@@ -44,8 +44,9 @@ function PersonalSummary({ student }: { student: Student }) {
       <InfoRow label="Gender"       value={person.gender ? person.gender.charAt(0) + person.gender.slice(1).toLowerCase() : undefined} />
       <InfoRow label="Blood Group"  value={person.bloodGroup} />
       <InfoRow label="Nationality"  value={person.nationality} />
-      <InfoRow label="Email"        value={person.email} />
-      <InfoRow label="Phone"        value={person.phone} />
+      <InfoRow label="Email"          value={person.email} />
+      <InfoRow label="Phone"          value={person.phone} />
+      <InfoRow label="Alternate Phone" value={person.alternatePhone} />
     </Card>
   );
 }
