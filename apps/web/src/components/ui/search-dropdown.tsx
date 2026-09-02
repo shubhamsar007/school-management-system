@@ -86,6 +86,7 @@ export function SearchDropdown({ query, onClose }: SearchDropdownProps) {
             {/* Name row — click to open profile */}
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => navigate(`/students/${student.id}`)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10,

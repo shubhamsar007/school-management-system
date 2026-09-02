@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { Users, UserCheck, UserPlus, UserX } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useStudentStats, useStudents } from '@/lib/hooks/use-students';
@@ -155,10 +156,11 @@ function RecentAdmissions() {
           students.map((s) => {
             const enrollment = s.enrollments[0];
             return (
-              <div
+              <Link
                 key={s.id}
-                className="flex items-center gap-3 hover:bg-[#fafbfc] transition-colors"
-                style={{ padding: '11px 20px', borderBottom: '1px solid #f5f6f7' }}
+                href={`/students/${s.id}`}
+                className="flex items-center gap-3 hover:bg-[#fafbfc] transition-colors outline-none"
+                style={{ padding: '11px 20px', borderBottom: '1px solid #f5f6f7', display: 'flex' }}
               >
                 <Avatar name={s.name} size="sm" />
                 <div className="flex-1 min-w-0">
@@ -173,7 +175,7 @@ function RecentAdmissions() {
                 <Badge variant={s.studentStatus === 'ACTIVE' ? 'active' : 'left'}>
                   {s.studentStatus.charAt(0) + s.studentStatus.slice(1).toLowerCase()}
                 </Badge>
-              </div>
+              </Link>
             );
           })
         )}

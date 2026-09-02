@@ -368,7 +368,7 @@ export function AllStudentsTab() {
 
                     {/* Student */}
                     <td style={{ padding: '0 12px', minWidth: 200 }}>
-                      <div className="flex items-center gap-2.5">
+                      <Link href={`/students/${student.id}`} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity outline-none">
                         <Avatar name={student.name} size="sm" />
                         <div>
                           <p style={{ fontSize: '13.5px', fontWeight: 600, color: '#14181c' }}>
@@ -378,7 +378,7 @@ export function AllStudentsTab() {
                             {student.person.email ?? student.person.phone ?? '—'}
                           </p>
                         </div>
-                      </div>
+                      </Link>
                     </td>
 
                     {/* Admission No */}
