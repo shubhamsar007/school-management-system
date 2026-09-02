@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import {
   ChevronLeft, Pencil, MoreHorizontal,
   GraduationCap, Hash,
@@ -105,10 +105,12 @@ function ProfileHeaderSkeleton() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function StudentProfilePage() {
-  const params  = useParams<{ id: string }>();
-  const id      = params?.id ?? null;
+  const params      = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const id          = params?.id ?? null;
 
-  const [activeTab, setActiveTab] = React.useState<TabId>('overview');
+  const initialTab  = (searchParams?.get('tab') as TabId | null) ?? 'overview';
+  const [activeTab, setActiveTab] = React.useState<TabId>(initialTab);
   const [moreOpen, setMoreOpen]   = React.useState(false);
 
   const { data: student, isLoading, isError } = useStudent(id);

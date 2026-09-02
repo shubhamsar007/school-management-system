@@ -33,15 +33,6 @@ function Modal({
   className,
 }: ModalProps) {
   React.useEffect(() => {
-    if (!open) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [open, onClose]);
-
-  React.useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden';
     } else {
@@ -64,7 +55,6 @@ function Modal({
       <div
         className="fixed inset-0"
         style={{ background: 'rgba(20,24,28,0.45)' }}
-        onClick={onClose}
         aria-hidden="true"
       />
 

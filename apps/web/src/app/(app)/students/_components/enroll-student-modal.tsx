@@ -1230,7 +1230,6 @@ export function EnrollStudentModal({ open, onClose }: EnrollStudentModalProps) {
     >
       {/* Backdrop */}
       <div
-        onClick={close}
         style={{
           position: 'fixed', inset: 0,
           background: 'rgba(20,24,28,0.5)',

@@ -405,7 +405,6 @@ export function AddStudentDrawer({ open, onClose }: { open: boolean; onClose: ()
     <>
       {/* Backdrop */}
       <div
-        onClick={close}
         style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 40, backdropFilter: 'blur(2px)' }}
       />
 
