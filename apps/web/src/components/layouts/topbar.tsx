@@ -23,7 +23,7 @@ function Topbar({ onToggle, breadcrumbs, className }: TopbarProps) {
   const [focused, setFocused] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  const showDropdown = focused && query.length >= 2;
+  const showDropdown = focused && query.length >= 1;
 
   // Ctrl+K / ⌘K focuses the input
   React.useEffect(() => {
@@ -104,6 +104,7 @@ function Topbar({ onToggle, breadcrumbs, className }: TopbarProps) {
             border: `1px solid ${focused ? '#c8c3b3' : '#ded9cc'}`,
             borderRadius: 6, background: '#fffdf7',
             transition: 'border-color 150ms',
+            outline: 'none',
           }}
         >
           {/* Search circle icon */}
@@ -116,7 +117,7 @@ function Topbar({ onToggle, breadcrumbs, className }: TopbarProps) {
             onBlur={() => setTimeout(() => setFocused(false), 150)}
             placeholder="Search or jump to…"
             style={{
-              flex: 1, border: 'none', outline: 'none',
+              flex: 1, border: 'none', outline: 'none', boxShadow: 'none',
               fontSize: 12, color: '#23282a', background: 'transparent',
             }}
             autoComplete="off"

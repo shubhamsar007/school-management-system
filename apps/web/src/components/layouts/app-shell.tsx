@@ -5,12 +5,15 @@ import { usePathname } from 'next/navigation';
 import { Sidebar } from './sidebar';
 import { Topbar } from './topbar';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function buildBreadcrumbs(pathname: string): { label: string; href?: string }[] {
   const segments = pathname.split('/').filter(Boolean);
   return segments.map((seg, idx) => {
-    const label = seg
-      .replace(/-/g, ' ')
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+    // Don't show raw UUIDs — replace with "Profile"
+    const label = UUID_RE.test(seg)
+      ? 'Profile'
+      : seg.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
     const isLast = idx === segments.length - 1;
     if (isLast) return { label };
     return { label, href: '/' + segments.slice(0, idx + 1).join('/') };

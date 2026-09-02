@@ -29,11 +29,11 @@ export function SearchDropdown({ query, onClose }: SearchDropdownProps) {
   }, [query]);
 
   const { data } = useStudents(
-    debouncedQuery.length >= 2 ? { search: debouncedQuery, limit: 8 } : {},
+    debouncedQuery.length >= 1 ? { search: debouncedQuery, limit: 8 } : {},
   );
-  const students = debouncedQuery.length >= 2 ? (data?.data ?? []) : [];
+  const students = debouncedQuery.length >= 1 ? (data?.data ?? []) : [];
 
-  if (debouncedQuery.length < 2) return null;
+  if (debouncedQuery.length < 1) return null;
 
   function navigate(href: string) {
     router.push(href);
@@ -48,7 +48,7 @@ export function SearchDropdown({ query, onClose }: SearchDropdownProps) {
         boxShadow: '0 8px 32px rgba(0,0,0,0.13)', border: '1px solid #e6e8eb',
         padding: '20px 16px', textAlign: 'center', zIndex: 9000,
       }}>
-        <p style={{ fontSize: 13, color: '#8a929b' }}>No students found for &ldquo;{debouncedQuery}&rdquo;</p>
+        <p style={{ fontSize: 13, color: '#8a929b' }}>No students found for &ldquo;{debouncedQuery}&rdquo;.</p>
       </div>
     );
   }

@@ -142,7 +142,7 @@ export default function StudentProfilePage() {
       {/* Back link */}
       <Link
         href="/students"
-        className="inline-flex items-center gap-1.5 mb-4 hover:underline"
+        className="inline-flex items-center gap-1.5 mb-4 hover:underline outline-none"
         style={{ fontSize: '13px', color: '#6b7480' }}
       >
         <ChevronLeft size={14} />
