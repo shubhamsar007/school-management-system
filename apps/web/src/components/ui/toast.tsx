@@ -47,13 +47,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     info:    (msg) => add(msg, 'info'),
   };
 
-  const list =
-    typeof document !== 'undefined'
-      ? ReactDOM.createPortal(
-          <ToastList toasts={toasts} onDismiss={dismiss} />,
-          document.body,
-        )
-      : null;
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => { setMounted(true); }, []);
+
+  const list = mounted
+    ? ReactDOM.createPortal(
+        <ToastList toasts={toasts} onDismiss={dismiss} />,
+        document.body,
+      )
+    : null;
 
   return (
     <ToastContext.Provider value={ctx}>
