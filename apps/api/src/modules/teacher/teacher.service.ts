@@ -758,6 +758,134 @@ export class TeacherService {
     }));
   }
 
+  // ─── Performance Reviews ──────────────────────────────────────
+
+  async findPerformanceReviews(organizationId: string, employeeId: string) {
+    await this.findTeacher(organizationId, employeeId);
+    return this.prisma.performanceReview.findMany({
+      where: { employeeId },
+      include: { criteria: true, goals: true },
+      orderBy: { reviewDate: 'desc' },
+    });
+  }
+
+  async createPerformanceReview(
+    organizationId: string,
+    employeeId: string,
+    dto: import('./dto/create-performance-review.dto').CreatePerformanceReviewDto,
+  ) {
+    await this.findTeacher(organizationId, employeeId);
+    return this.prisma.performanceReview.create({
+      data: {
+        organizationId,
+        employeeId,
+        academicYearId: dto.academicYearId,
+        reviewType: dto.reviewType,
+        reviewedBy: dto.reviewedBy,
+        reviewDate: new Date(dto.reviewDate),
+        overallRating: dto.overallRating ?? null,
+        remarks: dto.remarks ?? null,
+        criteria: dto.criteria
+          ? { create: dto.criteria.map((c) => ({ criteriaName: c.criteriaName, rating: c.rating, remarks: c.remarks ?? null })) }
+          : undefined,
+        goals: dto.goals
+          ? { create: dto.goals.map((g) => ({ goal: g.goal, target: g.target ?? null, status: g.status ?? 'PENDING' })) }
+          : undefined,
+      },
+      include: { criteria: true, goals: true },
+    });
+  }
+
+  // ─── Training Records ─────────────────────────────────────────
+
+  async findTrainingRecords(organizationId: string, employeeId: string) {
+    await this.findTeacher(organizationId, employeeId);
+    return this.prisma.trainingRecord.findMany({
+      where: { employeeId },
+      orderBy: { startDate: 'desc' },
+    });
+  }
+
+  async createTrainingRecord(
+    organizationId: string,
+    employeeId: string,
+    dto: import('./dto/create-training-record.dto').CreateTrainingRecordDto,
+  ) {
+    await this.findTeacher(organizationId, employeeId);
+    return this.prisma.trainingRecord.create({
+      data: {
+        employeeId,
+        title: dto.title,
+        trainingType: dto.trainingType,
+        provider: dto.provider ?? null,
+        startDate: new Date(dto.startDate),
+        endDate: dto.endDate ? new Date(dto.endDate) : null,
+        durationHours: dto.durationHours ?? null,
+        expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
+        verificationStatus: dto.verificationStatus ?? 'PENDING',
+      },
+    });
+  }
+
+  async deleteTrainingRecord(organizationId: string, employeeId: string, recordId: string) {
+    await this.findTeacher(organizationId, employeeId);
+    const record = await this.prisma.trainingRecord.findFirst({ where: { id: recordId, employeeId } });
+    if (!record) throw new NotFoundException('Training record not found');
+    await this.prisma.trainingRecord.delete({ where: { id: recordId } });
+  }
+
+  // ─── Assets ───────────────────────────────────────────────────
+
+  async findAssets(organizationId: string, employeeId: string) {
+    await this.findTeacher(organizationId, employeeId);
+    return this.prisma.employeeAsset.findMany({
+      where: { employeeId },
+      orderBy: { issueDate: 'desc' },
+    });
+  }
+
+  async createAsset(
+    organizationId: string,
+    employeeId: string,
+    dto: import('./dto/create-asset.dto').CreateAssetDto,
+  ) {
+    await this.findTeacher(organizationId, employeeId);
+    return this.prisma.employeeAsset.create({
+      data: {
+        organizationId,
+        employeeId,
+        assetType: dto.assetType,
+        assetCode: dto.assetCode ?? null,
+        description: dto.description ?? null,
+        issueDate: new Date(dto.issueDate),
+        expectedReturn: dto.expectedReturn ? new Date(dto.expectedReturn) : null,
+        condition: dto.condition ?? 'GOOD',
+        issuedBy: dto.issuedBy ?? null,
+      },
+    });
+  }
+
+  async updateAsset(
+    organizationId: string,
+    employeeId: string,
+    assetId: string,
+    dto: import('./dto/update-asset.dto').UpdateAssetDto,
+  ) {
+    await this.findTeacher(organizationId, employeeId);
+    const asset = await this.prisma.employeeAsset.findFirst({ where: { id: assetId, employeeId } });
+    if (!asset) throw new NotFoundException('Asset not found');
+    return this.prisma.employeeAsset.update({
+      where: { id: assetId },
+      data: {
+        ...(dto.returnedDate !== undefined ? { returnedDate: dto.returnedDate ? new Date(dto.returnedDate) : null } : {}),
+        ...(dto.returnCondition !== undefined ? { returnCondition: dto.returnCondition ?? null } : {}),
+        ...(dto.expectedReturn !== undefined ? { expectedReturn: dto.expectedReturn ? new Date(dto.expectedReturn) : null } : {}),
+        ...(dto.description !== undefined ? { description: dto.description ?? null } : {}),
+        ...(dto.condition !== undefined ? { condition: dto.condition } : {}),
+      },
+    });
+  }
+
   // ─── Private helpers ──────────────────────────────────────────
 
   private formatEmployee(employee: any) {

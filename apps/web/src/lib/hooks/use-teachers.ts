@@ -366,3 +366,148 @@ export function useEmployeePayHistory(employeeId: string | null) {
     retry: 1,
   });
 }
+
+// ─── Performance review types & hook ─────────────────────────────────────────
+
+export interface PerformanceCriteria {
+  id: string;
+  criteriaName: string;
+  rating: number;
+  remarks?: string | null;
+}
+
+export interface PerformanceGoal {
+  id: string;
+  goal: string;
+  target?: string | null;
+  status: string;
+}
+
+export interface PerformanceReview {
+  id: string;
+  employeeId: string;
+  academicYearId: string;
+  reviewType: string;
+  reviewedBy: string;
+  reviewDate: string;
+  overallRating?: number | null;
+  remarks?: string | null;
+  status: string;
+  createdAt: string;
+  criteria: PerformanceCriteria[];
+  goals: PerformanceGoal[];
+}
+
+export function usePerformanceReviews(employeeId: string | null) {
+  return useQuery<PerformanceReview[]>({
+    queryKey: ['teachers', employeeId, 'performance-reviews'],
+    queryFn: () => apiClient.get<PerformanceReview[]>(`/teachers/${employeeId}/performance-reviews`),
+    enabled: !!employeeId,
+    staleTime: 60_000,
+  });
+}
+
+// ─── Training record types & hook ─────────────────────────────────────────────
+
+export interface TrainingRecord {
+  id: string;
+  employeeId: string;
+  title: string;
+  trainingType: string;
+  provider?: string | null;
+  startDate: string;
+  endDate?: string | null;
+  durationHours?: number | null;
+  expiryDate?: string | null;
+  verificationStatus: string;
+  createdAt: string;
+}
+
+export function useTrainingRecords(employeeId: string | null) {
+  return useQuery<TrainingRecord[]>({
+    queryKey: ['teachers', employeeId, 'training-records'],
+    queryFn: () => apiClient.get<TrainingRecord[]>(`/teachers/${employeeId}/training-records`),
+    enabled: !!employeeId,
+    staleTime: 60_000,
+  });
+}
+
+// ─── Asset types & hook ───────────────────────────────────────────────────────
+
+export interface EmployeeAsset {
+  id: string;
+  employeeId: string;
+  assetType: string;
+  assetCode?: string | null;
+  description?: string | null;
+  issueDate: string;
+  expectedReturn?: string | null;
+  returnedDate?: string | null;
+  condition: string;
+  returnCondition?: string | null;
+  issuedBy?: string | null;
+  createdAt: string;
+}
+
+export function useEmployeeAssets(employeeId: string | null) {
+  return useQuery<EmployeeAsset[]>({
+    queryKey: ['teachers', employeeId, 'assets'],
+    queryFn: () => apiClient.get<EmployeeAsset[]>(`/teachers/${employeeId}/assets`),
+    enabled: !!employeeId,
+    staleTime: 60_000,
+  });
+}
+
+// ─── Document types & hook ────────────────────────────────────────────────────
+
+export interface EmployeeDocument {
+  id: string;
+  documentType: string;
+  entityType: string;
+  entityId: string;
+  verificationStatus: string;
+  verifiedAt?: string | null;
+  expiryDate?: string | null;
+  createdAt: string;
+  file: {
+    id: string;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    storageKey: string;
+  };
+}
+
+export function useEmployeeDocuments(employeeId: string | null) {
+  return useQuery<EmployeeDocument[]>({
+    queryKey: ['documents', 'employee', employeeId],
+    queryFn: () =>
+      apiClient.get<EmployeeDocument[]>(`/storage/documents?entityType=EMPLOYEE&entityId=${employeeId}`),
+    enabled: !!employeeId,
+    staleTime: 60_000,
+  });
+}
+
+// ─── Lifecycle event types & hook ─────────────────────────────────────────────
+
+export interface LifecycleEvent {
+  id: string;
+  employeeId: string;
+  eventType: string;
+  fromStatus?: string | null;
+  toStatus: string;
+  effectiveDate: string;
+  reason?: string | null;
+  remarks?: string | null;
+  performedBy?: string | null;
+  createdAt: string;
+}
+
+export function useLifecycleEvents(employeeId: string | null) {
+  return useQuery<LifecycleEvent[]>({
+    queryKey: ['teachers', employeeId, 'lifecycle-events'],
+    queryFn: () => apiClient.get<LifecycleEvent[]>(`/teachers/${employeeId}/lifecycle-events`),
+    enabled: !!employeeId,
+    staleTime: 60_000,
+  });
+}

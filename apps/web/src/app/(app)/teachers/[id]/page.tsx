@@ -19,6 +19,11 @@ import { TimetableTab }      from './_components/timetable-tab';
 import { AttendanceTab }     from './_components/attendance-tab';
 import { LeaveTab }          from './_components/leave-tab';
 import { PayrollTab }        from './_components/payroll-tab';
+import { DocumentsTab }      from './_components/documents-tab';
+import { PerformanceTab }    from './_components/performance-tab';
+import { TrainingTab }       from './_components/training-tab';
+import { AssetsTab }         from './_components/assets-tab';
+import { HistoryTab }        from './_components/history-tab';
 import { PlaceholderTab }    from './_components/placeholder-tab';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -295,11 +300,11 @@ export default function TeacherProfilePage() {
           {activeTab === 'attendance'     && <AttendanceTab employeeId={employee.id} />}
           {activeTab === 'leave'          && <LeaveTab employeeId={employee.id} />}
           {activeTab === 'payroll'        && <PayrollTab employeeId={employee.id} />}
-          {activeTab === 'documents'      && <PlaceholderTab title="Documents" description="Upload and manage employee documents — ID proof, certificates, contracts — in an upcoming release." />}
-          {activeTab === 'performance'    && <PlaceholderTab title="Performance" description="Performance reviews, goals, and appraisal history will be available here." />}
-          {activeTab === 'training'       && <PlaceholderTab title="Training" description="Training records, certifications, and professional development will be tracked here." />}
-          {activeTab === 'assets'         && <PlaceholderTab title="Assets" description="Assigned assets — laptops, ID cards, keys — will be tracked here." />}
-          {activeTab === 'history'        && <PlaceholderTab title="Audit History" description="A complete audit trail of changes made to this employee's profile will appear here." />}
+          {activeTab === 'documents'      && <DocumentsTab employeeId={employee.id} />}
+          {activeTab === 'performance'    && <PerformanceTab employeeId={employee.id} />}
+          {activeTab === 'training'       && <TrainingTab employeeId={employee.id} />}
+          {activeTab === 'assets'         && <AssetsTab employeeId={employee.id} />}
+          {activeTab === 'history'        && <HistoryTab employeeId={employee.id} />}
         </>
       ) : null}
     </>

@@ -26,6 +26,10 @@ import { UpdateExperienceDto } from './dto/update-experience.dto';
 import { CreateEmergencyContactDto } from './dto/create-emergency-contact.dto';
 import { UpdateEmergencyContactDto } from './dto/update-emergency-contact.dto';
 import { CreateLifecycleEventDto } from './dto/create-lifecycle-event.dto';
+import { CreatePerformanceReviewDto } from './dto/create-performance-review.dto';
+import { CreateTrainingRecordDto } from './dto/create-training-record.dto';
+import { CreateAssetDto } from './dto/create-asset.dto';
+import { UpdateAssetDto } from './dto/update-asset.dto';
 
 @ApiTags('teachers')
 @ApiBearerAuth()
@@ -279,5 +283,90 @@ export class TeacherController {
     @Body() dto: CreateLifecycleEventDto,
   ) {
     return this.teacherService.createLifecycleEvent(user.organizationId, id, dto);
+  }
+
+  // ─── Performance Reviews ──────────────────────────────────────
+
+  @ApiOperation({ summary: 'List performance reviews for an employee' })
+  @Get(':id/performance-reviews')
+  findPerformanceReviews(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.teacherService.findPerformanceReviews(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Create a performance review' })
+  @Post(':id/performance-reviews')
+  createPerformanceReview(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: CreatePerformanceReviewDto,
+  ) {
+    return this.teacherService.createPerformanceReview(user.organizationId, id, dto);
+  }
+
+  // ─── Training Records ─────────────────────────────────────────
+
+  @ApiOperation({ summary: 'List training records for an employee' })
+  @Get(':id/training-records')
+  findTrainingRecords(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.teacherService.findTrainingRecords(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Add a training record' })
+  @Post(':id/training-records')
+  createTrainingRecord(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateTrainingRecordDto,
+  ) {
+    return this.teacherService.createTrainingRecord(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Delete a training record' })
+  @Delete(':id/training-records/:recordId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteTrainingRecord(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('recordId') recordId: string,
+  ) {
+    return this.teacherService.deleteTrainingRecord(user.organizationId, id, recordId);
+  }
+
+  // ─── Assets ───────────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'List assets issued to an employee' })
+  @Get(':id/assets')
+  findAssets(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.teacherService.findAssets(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Issue an asset to an employee' })
+  @Post(':id/assets')
+  createAsset(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateAssetDto,
+  ) {
+    return this.teacherService.createAsset(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Update an asset (e.g. mark as returned)' })
+  @Patch(':id/assets/:assetId')
+  updateAsset(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('assetId') assetId: string,
+    @Body() dto: UpdateAssetDto,
+  ) {
+    return this.teacherService.updateAsset(user.organizationId, id, assetId, dto);
   }
 }
