@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/toast';
 import {
   useUpdateTeacher,
   useFormOptions,
+  useEmployeeDepartments,
   type Employee,
   type UpdateEmployeePayload,
 } from '@/lib/hooks/use-teachers';
@@ -147,7 +148,8 @@ export function EditEmployeeModal({ open, onClose, employee }: EditEmployeeModal
 
   const toast  = useToast();
   const update = useUpdateTeacher(employee.id);
-  const { data: opts } = useFormOptions();
+  const { data: opts, isLoading: optsLoading } = useFormOptions();
+  const { data: departments } = useEmployeeDepartments();
 
   // Re-sync when employee changes (e.g. after a save)
   React.useEffect(() => {
@@ -331,7 +333,7 @@ export function EditEmployeeModal({ open, onClose, employee }: EditEmployeeModal
           label="Department"
           value={form.departmentId}
           onChange={set('departmentId')}
-          options={(opts?.departments ?? []).map((d) => ({ label: d.name, value: d.id }))}
+          options={(departments ?? []).map((d) => ({ label: d.name, value: d.id }))}
           placeholder="Select department"
         />
         <Select
@@ -339,7 +341,7 @@ export function EditEmployeeModal({ open, onClose, employee }: EditEmployeeModal
           value={form.designationId}
           onChange={set('designationId')}
           options={(opts?.designations ?? []).map((d) => ({ label: d.name, value: d.id }))}
-          placeholder="Select designation"
+          placeholder={optsLoading ? 'Loading…' : 'Select designation'}
         />
         <Select
           label="Employee Type"
@@ -349,14 +351,14 @@ export function EditEmployeeModal({ open, onClose, employee }: EditEmployeeModal
             label: `${d.name} (${d.category === 'TEACHING' ? 'Teaching' : 'Non-Teaching'})`,
             value: d.id,
           }))}
-          placeholder="Select employee type"
+          placeholder={optsLoading ? 'Loading…' : 'Select employee type'}
         />
         <Select
           label="Campus"
           value={form.campusId}
           onChange={set('campusId')}
           options={(opts?.campuses ?? []).map((d) => ({ label: d.name, value: d.id }))}
-          placeholder="Select campus"
+          placeholder={optsLoading ? 'Loading…' : 'Select campus'}
         />
         <Input
           label="Joining Date"

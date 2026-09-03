@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
-import { useCreateTeacher, useFormOptions, type CreateEmployeePayload } from '@/lib/hooks/use-teachers';
+import { useCreateTeacher, useFormOptions, useEmployeeDepartments, type CreateEmployeePayload } from '@/lib/hooks/use-teachers';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -76,9 +76,10 @@ export function AddEmployeeModal({ open, onClose }: AddEmployeeModalProps) {
   const [form, setForm]     = React.useState<FormState>(EMPTY);
   const [errors, setErrors] = React.useState<Errors>({});
 
-  const toast          = useToast();
-  const create         = useCreateTeacher();
-  const { data: opts } = useFormOptions();
+  const toast                      = useToast();
+  const create                     = useCreateTeacher();
+  const { data: opts, isLoading: optsLoading } = useFormOptions();
+  const { data: departments }      = useEmployeeDepartments();
 
   React.useEffect(() => {
     if (open) { setStep(0); setForm(EMPTY); setErrors({}); }
@@ -137,7 +138,7 @@ export function AddEmployeeModal({ open, onClose }: AddEmployeeModalProps) {
   }
 
   // Lookup helpers for Review step
-  const deptName  = opts?.departments.find((d) => d.id === form.departmentId)?.name;
+  const deptName  = (departments ?? []).find((d) => d.id === form.departmentId)?.name;
   const desigName = opts?.designations.find((d) => d.id === form.designationId)?.name;
   const etName    = opts?.employeeTypes.find((d) => d.id === form.employeeTypeId)?.name;
   const campName  = opts?.campuses.find((d) => d.id === form.campusId)?.name;
@@ -284,7 +285,7 @@ export function AddEmployeeModal({ open, onClose }: AddEmployeeModalProps) {
             label="Department"
             value={form.departmentId}
             onChange={set('departmentId')}
-            options={(opts?.departments ?? []).map((d) => ({ label: d.name, value: d.id }))}
+            options={(departments ?? []).map((d) => ({ label: d.name, value: d.id }))}
             placeholder="Select department"
           />
           <Select
@@ -292,7 +293,7 @@ export function AddEmployeeModal({ open, onClose }: AddEmployeeModalProps) {
             value={form.designationId}
             onChange={set('designationId')}
             options={(opts?.designations ?? []).map((d) => ({ label: d.name, value: d.id }))}
-            placeholder="Select designation"
+            placeholder={optsLoading ? 'Loading…' : 'Select designation'}
           />
           <Select
             label="Employee Type"
@@ -302,14 +303,14 @@ export function AddEmployeeModal({ open, onClose }: AddEmployeeModalProps) {
               label: `${d.name} (${d.category === 'TEACHING' ? 'Teaching' : 'Non-Teaching'})`,
               value: d.id,
             }))}
-            placeholder="Select employee type"
+            placeholder={optsLoading ? 'Loading…' : 'Select employee type'}
           />
           <Select
             label="Campus"
             value={form.campusId}
             onChange={set('campusId')}
             options={(opts?.campuses ?? []).map((d) => ({ label: d.name, value: d.id }))}
-            placeholder="Select campus"
+            placeholder={optsLoading ? 'Loading…' : 'Select campus'}
           />
         </div>
       )}
