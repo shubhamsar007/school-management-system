@@ -628,7 +628,6 @@ async function main() {
 
   // ── 10. Employees ─────────────────────────────────────────────────────────────
 
-  // Fetch the departments, designations, and employee types we just seeded
   const [deptMap, desigMap, etMap] = await Promise.all([
     prisma.department.findMany({ where: { organizationId: org.id }, select: { id: true, code: true } }),
     prisma.designation.findMany({ where: { organizationId: org.id }, select: { id: true, code: true } }),
@@ -638,73 +637,389 @@ async function main() {
   const desig = Object.fromEntries(desigMap.map((r) => [r.code, r.id]));
   const et    = Object.fromEntries(etMap.map((r) => [r.code, r.id]));
 
-  const employeeData = [
-    // Teaching staff
-    { empNo: 'EMP-001', firstName: 'Anjali',   lastName: 'Sharma',    gender: 'FEMALE', dob: '1980-03-15', email: 'anjali.sharma@sunriseschool.edu.in',   phone: '+91-9810001001', dept: 'MATH',  desig: 'HOD',          et: 'PERM_TEACH',     joining: '2015-06-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
-    { empNo: 'EMP-002', firstName: 'Ramesh',   lastName: 'Verma',     gender: 'MALE',   dob: '1975-07-22', email: 'ramesh.verma@sunriseschool.edu.in',     phone: '+91-9810001002', dept: 'SCI',   desig: 'SR_TEACHER',   et: 'PERM_TEACH',     joining: '2010-04-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
-    { empNo: 'EMP-003', firstName: 'Priya',    lastName: 'Nair',      gender: 'FEMALE', dob: '1988-11-05', email: 'priya.nair@sunriseschool.edu.in',       phone: '+91-9810001003', dept: 'ENG',   desig: 'TEACHER',      et: 'PERM_TEACH',     joining: '2018-07-15', status: 'ACTIVE',    empType: 'FULL_TIME' },
-    { empNo: 'EMP-004', firstName: 'Vikram',   lastName: 'Singh',     gender: 'MALE',   dob: '1985-02-28', email: 'vikram.singh@sunriseschool.edu.in',     phone: '+91-9810001004', dept: 'SST',   desig: 'TEACHER',      et: 'PERM_TEACH',     joining: '2016-04-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
-    { empNo: 'EMP-005', firstName: 'Meena',    lastName: 'Iyer',      gender: 'FEMALE', dob: '1990-06-10', email: 'meena.iyer@sunriseschool.edu.in',       phone: '+91-9810001005', dept: 'CS',    desig: 'TEACHER',      et: 'PERM_TEACH',     joining: '2019-06-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
-    { empNo: 'EMP-006', firstName: 'Arjun',    lastName: 'Patel',     gender: 'MALE',   dob: '1983-09-14', email: 'arjun.patel@sunriseschool.edu.in',      phone: '+91-9810001006', dept: 'PE',    desig: 'TEACHER',      et: 'PERM_TEACH',     joining: '2012-07-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
-    { empNo: 'EMP-007', firstName: 'Sunita',   lastName: 'Rao',       gender: 'FEMALE', dob: '1979-12-01', email: 'sunita.rao@sunriseschool.edu.in',       phone: '+91-9810001007', dept: 'MATH',  desig: 'SR_TEACHER',   et: 'PERM_TEACH',     joining: '2008-04-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
-    { empNo: 'EMP-008', firstName: 'Kiran',    lastName: 'Mehta',     gender: 'MALE',   dob: '1992-04-19', email: 'kiran.mehta@sunriseschool.edu.in',      phone: '+91-9810001008', dept: 'SCI',   desig: 'ASST_TEACHER', et: 'CONTRACT_TEACH', joining: '2022-06-01', status: 'PROBATION', empType: 'FULL_TIME' },
-    { empNo: 'EMP-009', firstName: 'Deepa',    lastName: 'Krishnan',  gender: 'FEMALE', dob: '1987-08-23', email: 'deepa.krishnan@sunriseschool.edu.in',   phone: '+91-9810001009', dept: 'ENG',   desig: 'SR_TEACHER',   et: 'PERM_TEACH',     joining: '2014-04-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
-    { empNo: 'EMP-010', firstName: 'Rahul',    lastName: 'Joshi',     gender: 'MALE',   dob: '1993-01-30', email: 'rahul.joshi@sunriseschool.edu.in',      phone: '+91-9810001010', dept: 'CS',    desig: 'ASST_TEACHER', et: 'CONTRACT_TEACH', joining: '2023-06-01', status: 'PROBATION', empType: 'FULL_TIME' },
-    { empNo: 'EMP-011', firstName: 'Kavya',    lastName: 'Reddy',     gender: 'FEMALE', dob: '1991-05-17', email: 'kavya.reddy@sunriseschool.edu.in',      phone: '+91-9810001011', dept: 'ARTS',  desig: 'TEACHER',      et: 'PERM_TEACH',     joining: '2020-07-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
-    { empNo: 'EMP-012', firstName: 'Suresh',   lastName: 'Gupta',     gender: 'MALE',   dob: '1977-10-08', email: 'suresh.gupta@sunriseschool.edu.in',     phone: '+91-9810001012', dept: 'MATH',  desig: 'TEACHER',      et: 'PERM_TEACH',     joining: '2005-04-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
-    { empNo: 'EMP-013', firstName: 'Neha',     lastName: 'Agarwal',   gender: 'FEMALE', dob: '1995-03-22', email: 'neha.agarwal@sunriseschool.edu.in',     phone: '+91-9810001013', dept: 'ENG',   desig: 'ASST_TEACHER', et: 'VISITING',       joining: '2024-06-01', status: 'ACTIVE',    empType: 'PART_TIME' },
-    { empNo: 'EMP-014', firstName: 'Mohan',    lastName: 'Das',       gender: 'MALE',   dob: '1982-07-11', email: 'mohan.das@sunriseschool.edu.in',        phone: '+91-9810001014', dept: 'SST',   desig: 'SR_TEACHER',   et: 'PERM_TEACH',     joining: '2011-04-01', status: 'ON_LEAVE',  empType: 'FULL_TIME' },
-    { empNo: 'EMP-015', firstName: 'Lakshmi',  lastName: 'Pillai',    gender: 'FEMALE', dob: '1986-09-29', email: 'lakshmi.pillai@sunriseschool.edu.in',   phone: '+91-9810001015', dept: 'SCI',   desig: 'LAB_ASST',     et: 'PERM_NON_TEACH', joining: '2013-07-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
-    // Principal
-    { empNo: 'EMP-000', firstName: 'Rajendra', lastName: 'Kulkarni',  gender: 'MALE',   dob: '1968-04-05', email: 'principal@sunriseschool.edu.in',        phone: '+91-9810000001', dept: 'ADMIN', desig: 'PRINCIPAL',    et: 'PERM_NON_TEACH', joining: '2000-06-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
-    // Non-teaching staff
-    { empNo: 'EMP-016', firstName: 'Geeta',    lastName: 'Bose',      gender: 'FEMALE', dob: '1984-02-14', email: 'geeta.bose@sunriseschool.edu.in',       phone: '+91-9810001016', dept: 'ADMIN', desig: 'ADMIN_OFF',    et: 'PERM_NON_TEACH', joining: '2017-04-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
-    { empNo: 'EMP-017', firstName: 'Santosh',  lastName: 'Tiwari',    gender: 'MALE',   dob: '1989-11-20', email: 'santosh.tiwari@sunriseschool.edu.in',   phone: '+91-9810001017', dept: 'ADMIN', desig: 'ACCOUNTANT',   et: 'PERM_NON_TEACH', joining: '2019-04-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
-    { empNo: 'EMP-018', firstName: 'Usha',     lastName: 'Menon',     gender: 'FEMALE', dob: '1981-06-03', email: 'usha.menon@sunriseschool.edu.in',       phone: '+91-9810001018', dept: 'ADMIN', desig: 'LIBRARIAN',    et: 'PERM_NON_TEACH', joining: '2009-07-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
-    { empNo: 'EMP-019', firstName: 'Dinesh',   lastName: 'Yadav',     gender: 'MALE',   dob: '1994-08-16', email: 'dinesh.yadav@sunriseschool.edu.in',     phone: '+91-9810001019', dept: 'ADMIN', desig: 'COUNSELLOR',   et: 'CONTRACT_NON',   joining: '2023-04-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
-    { empNo: 'EMP-020', firstName: 'Pooja',    lastName: 'Chauhan',   gender: 'FEMALE', dob: '1996-12-25', email: 'pooja.chauhan@sunriseschool.edu.in',    phone: '+91-9810001020', dept: 'SCI',   desig: 'LAB_ASST',     et: 'CONTRACT_NON',   joining: '2024-01-15', status: 'PROBATION', empType: 'FULL_TIME' },
+  // ── Seed helpers ──
+  function pick<T>(arr: readonly T[], idx: number): T { return arr[Math.abs(idx) % arr.length]!; }
+
+  const DEGREES      = ['B.Ed', 'M.Ed', 'B.Sc', 'M.Sc', 'B.A', 'M.A', 'B.Com', 'B.Tech', 'M.Tech', 'Ph.D'] as const;
+  const SPECS        = ['Mathematics', 'Physics', 'Chemistry', 'English Literature', 'History', 'Computer Science', 'Physical Education', 'Fine Arts', 'Economics', 'Geography'] as const;
+  const INSTITUTES   = ['Delhi University', 'Mumbai University', 'JNU New Delhi', 'BHU Varanasi', 'Bangalore University', 'Pune University', 'Hyderabad University', 'Calcutta University', 'Madras University', 'AMU Aligarh'] as const;
+  const BANKS = [
+    { name: 'State Bank of India',  ifsc: 'SBIN0000123', acPfx: '10234' },
+    { name: 'HDFC Bank',            ifsc: 'HDFC0001234', acPfx: '50123' },
+    { name: 'ICICI Bank',           ifsc: 'ICIC0002345', acPfx: '00223' },
+    { name: 'Punjab National Bank', ifsc: 'PUNB0003456', acPfx: '24681' },
+    { name: 'Bank of Baroda',       ifsc: 'BARB0004567', acPfx: '31245' },
+    { name: 'Canara Bank',          ifsc: 'CNRB0005678', acPfx: '41589' },
+    { name: 'Axis Bank',            ifsc: 'UTIB0006789', acPfx: '91001' },
+    { name: 'Kotak Mahindra Bank',  ifsc: 'KKBK0007890', acPfx: '71234' },
   ] as const;
+  const PREV_ORGS      = ['Kendriya Vidyalaya', 'Navodaya Vidyalaya', 'DPS School', 'Ryan International', 'St. Xavier School', 'The Heritage School', 'Modern School', 'Springdales School'] as const;
+  const TRAIN_TITLES   = ['Effective Classroom Management', 'Digital Tools for Teaching', 'Child Safety & POCSO', 'NEP 2020 Workshop', 'Activity-Based Learning', 'Assessment Techniques', 'First Aid & Emergency Response', 'Leadership Development', 'Data-Driven Teaching', 'Inclusive Education'] as const;
+  const TRAIN_PROVS    = ['CBSE Training Centre', 'NCERT', 'British Council', 'State Education Dept', 'Diksha Platform', 'Internal HR Workshop'] as const;
+  const TRAIN_TYPES    = ['INDUCTION', 'PROFESSIONAL_DEVELOPMENT', 'COMPLIANCE', 'SKILLS', 'LEADERSHIP'] as const;
+  const CRITERIA_NAMES = ['Subject Knowledge', 'Classroom Management', 'Student Engagement', 'Punctuality & Attendance', 'Team Collaboration', 'Communication Skills', 'Administrative Compliance', 'Innovation in Teaching'] as const;
+  const GOAL_TEXTS     = ['Complete NEP 2020 training by December', 'Maintain attendance above 95%', 'Implement 2 new teaching methodologies per term', 'Conduct 1 PTM per month', 'Mentor 2 junior staff', 'Complete digital literacy certification', 'Lead departmental project by year-end', 'Submit research paper to state journal'] as const;
+  const ONBOARD_TASKS  = [
+    { name: 'Submit identity proof',           category: 'DOCUMENTS',    req: true  },
+    { name: 'Submit educational certificates', category: 'DOCUMENTS',    req: true  },
+    { name: 'Submit previous employer NOC',    category: 'DOCUMENTS',    req: false },
+    { name: 'Complete HR induction session',   category: 'ORIENTATION',  req: true  },
+    { name: 'Campus tour',                     category: 'ORIENTATION',  req: false },
+    { name: 'IT account setup',                category: 'IT_SETUP',     req: true  },
+    { name: 'Email account activation',        category: 'IT_SETUP',     req: true  },
+    { name: 'ID card issued',                  category: 'ID_CARD',      req: true  },
+    { name: 'Sign employment agreement',       category: 'HR',           req: true  },
+    { name: 'Bank account details submitted',  category: 'PAYROLL',      req: true  },
+  ];
 
+  const employeeData = [
+    // ── Principal & Leadership ──────────────────────────────────────────────────
+    { empNo: 'EMP-000', fn: 'Rajendra', ln: 'Kulkarni',  g: 'MALE',   dob: '1968-04-05', email: 'principal@sunriseschool.edu.in',         ph: '+91-9810000001', dept: 'ADMIN', desig: 'PRINCIPAL',    et: 'PERM_NON_TEACH', j: '2000-06-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'O+' },
+    { empNo: 'EMP-021', fn: 'Supriya',  ln: 'Kapoor',    g: 'FEMALE', dob: '1972-09-18', email: 'vp@sunriseschool.edu.in',                ph: '+91-9810002100', dept: 'ADMIN', desig: 'VP',           et: 'PERM_NON_TEACH', j: '2005-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A+' },
+    // ── Mathematics ─────────────────────────────────────────────────────────────
+    { empNo: 'EMP-001', fn: 'Anjali',   ln: 'Sharma',    g: 'FEMALE', dob: '1980-03-15', email: 'anjali.sharma@sunriseschool.edu.in',     ph: '+91-9810001001', dept: 'MATH',  desig: 'HOD',          et: 'PERM_TEACH',     j: '2015-06-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B+' },
+    { empNo: 'EMP-007', fn: 'Sunita',   ln: 'Rao',       g: 'FEMALE', dob: '1979-12-01', email: 'sunita.rao@sunriseschool.edu.in',        ph: '+91-9810001007', dept: 'MATH',  desig: 'SR_TEACHER',   et: 'PERM_TEACH',     j: '2008-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A-' },
+    { empNo: 'EMP-012', fn: 'Suresh',   ln: 'Gupta',     g: 'MALE',   dob: '1977-10-08', email: 'suresh.gupta@sunriseschool.edu.in',      ph: '+91-9810001012', dept: 'MATH',  desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2005-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'O+' },
+    { empNo: 'EMP-028', fn: 'Tejal',    ln: 'Shah',      g: 'FEMALE', dob: '1985-06-12', email: 'tejal.shah@sunriseschool.edu.in',        ph: '+91-9810002800', dept: 'MATH',  desig: 'SR_TEACHER',   et: 'PERM_TEACH',     j: '2013-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B-' },
+    { empNo: 'EMP-029', fn: 'Prem',     ln: 'Chandra',   g: 'MALE',   dob: '1990-03-22', email: 'prem.chandra@sunriseschool.edu.in',      ph: '+91-9810002900', dept: 'MATH',  desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2016-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A+' },
+    { empNo: 'EMP-030', fn: 'Fatima',   ln: 'Siddiqui',  g: 'FEMALE', dob: '1992-11-08', email: 'fatima.siddiqui@sunriseschool.edu.in',  ph: '+91-9810003000', dept: 'MATH',  desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2018-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'AB+' },
+    { empNo: 'EMP-055', fn: 'Rohit',    ln: 'Saxena',    g: 'MALE',   dob: '1994-07-30', email: 'rohit.saxena@sunriseschool.edu.in',      ph: '+91-9810005500', dept: 'MATH',  desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2021-06-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'O-' },
+    { empNo: 'EMP-031', fn: 'Arun',     ln: 'Bhat',      g: 'MALE',   dob: '1997-04-15', email: 'arun.bhat@sunriseschool.edu.in',         ph: '+91-9810003100', dept: 'MATH',  desig: 'ASST_TEACHER', et: 'CONTRACT_TEACH', j: '2023-06-01', status: 'PROBATION',      eType: 'FULL_TIME', bg: 'B+' },
+    { empNo: 'EMP-060', fn: 'Shreya',   ln: 'Pillai',    g: 'FEMALE', dob: '1999-02-18', email: 'shreya.pillai@sunriseschool.edu.in',    ph: '+91-9810006000', dept: 'MATH',  desig: 'ASST_TEACHER', et: 'CONTRACT_TEACH', j: '2024-06-01', status: 'PROBATION',      eType: 'FULL_TIME', bg: 'A+' },
+    // ── Science ──────────────────────────────────────────────────────────────────
+    { empNo: 'EMP-022', fn: 'Narender', ln: 'Kumar',     g: 'MALE',   dob: '1973-05-25', email: 'narender.kumar@sunriseschool.edu.in',   ph: '+91-9810002200', dept: 'SCI',   desig: 'HOD',          et: 'PERM_TEACH',     j: '2007-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B+' },
+    { empNo: 'EMP-002', fn: 'Ramesh',   ln: 'Verma',     g: 'MALE',   dob: '1975-07-22', email: 'ramesh.verma@sunriseschool.edu.in',     ph: '+91-9810001002', dept: 'SCI',   desig: 'SR_TEACHER',   et: 'PERM_TEACH',     j: '2010-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'O+' },
+    { empNo: 'EMP-032', fn: 'Vinita',   ln: 'Patel',     g: 'FEMALE', dob: '1987-09-14', email: 'vinita.patel@sunriseschool.edu.in',     ph: '+91-9810003200', dept: 'SCI',   desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2015-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A+' },
+    { empNo: 'EMP-033', fn: 'Gopal',    ln: 'Soni',      g: 'MALE',   dob: '1989-02-07', email: 'gopal.soni@sunriseschool.edu.in',       ph: '+91-9810003300', dept: 'SCI',   desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2017-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'O-' },
+    { empNo: 'EMP-056', fn: 'Varsha',   ln: 'Gupta',     g: 'FEMALE', dob: '1993-12-20', email: 'varsha.gupta@sunriseschool.edu.in',     ph: '+91-9810005600', dept: 'SCI',   desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2021-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B+' },
+    { empNo: 'EMP-008', fn: 'Kiran',    ln: 'Mehta',     g: 'MALE',   dob: '1992-04-19', email: 'kiran.mehta@sunriseschool.edu.in',      ph: '+91-9810001008', dept: 'SCI',   desig: 'ASST_TEACHER', et: 'CONTRACT_TEACH', j: '2022-06-01', status: 'PROBATION',      eType: 'FULL_TIME', bg: 'A-' },
+    { empNo: 'EMP-034', fn: 'Mamta',    ln: 'Rawat',     g: 'FEMALE', dob: '1998-07-11', email: 'mamta.rawat@sunriseschool.edu.in',      ph: '+91-9810003400', dept: 'SCI',   desig: 'ASST_TEACHER', et: 'CONTRACT_TEACH', j: '2024-04-01', status: 'PROBATION',      eType: 'FULL_TIME', bg: 'AB-' },
+    { empNo: 'EMP-015', fn: 'Lakshmi',  ln: 'Pillai',    g: 'FEMALE', dob: '1986-09-29', email: 'lakshmi.pillai@sunriseschool.edu.in',  ph: '+91-9810001015', dept: 'SCI',   desig: 'LAB_ASST',     et: 'PERM_NON_TEACH', j: '2013-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A+' },
+    { empNo: 'EMP-053', fn: 'Nirmala',  ln: 'Thakur',    g: 'FEMALE', dob: '1991-03-05', email: 'nirmala.thakur@sunriseschool.edu.in',  ph: '+91-9810005300', dept: 'SCI',   desig: 'LAB_ASST',     et: 'PERM_NON_TEACH', j: '2017-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'O+' },
+    { empNo: 'EMP-054', fn: 'Deepak',   ln: 'Malhotra',  g: 'MALE',   dob: '1995-10-28', email: 'deepak.malhotra@sunriseschool.edu.in', ph: '+91-9810005400', dept: 'SCI',   desig: 'LAB_ASST',     et: 'CONTRACT_NON',   j: '2022-07-01', status: 'PROBATION',      eType: 'FULL_TIME', bg: 'B-' },
+    { empNo: 'EMP-020', fn: 'Pooja',    ln: 'Chauhan',   g: 'FEMALE', dob: '1996-12-25', email: 'pooja.chauhan@sunriseschool.edu.in',   ph: '+91-9810001020', dept: 'SCI',   desig: 'LAB_ASST',     et: 'CONTRACT_NON',   j: '2024-01-15', status: 'PROBATION',      eType: 'FULL_TIME', bg: 'A+' },
+    { empNo: 'EMP-061', fn: 'Mukesh',   ln: 'Jha',       g: 'MALE',   dob: '1998-05-14', email: 'mukesh.jha@sunriseschool.edu.in',      ph: '+91-9810006100', dept: 'SCI',   desig: 'ASST_TEACHER', et: 'CONTRACT_TEACH', j: '2024-07-01', status: 'PROBATION',      eType: 'FULL_TIME', bg: 'O+' },
+    // ── English ──────────────────────────────────────────────────────────────────
+    { empNo: 'EMP-023', fn: 'Divya',    ln: 'Menon',     g: 'FEMALE', dob: '1976-11-30', email: 'divya.menon@sunriseschool.edu.in',      ph: '+91-9810002300', dept: 'ENG',   desig: 'HOD',          et: 'PERM_TEACH',     j: '2009-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B+' },
+    { empNo: 'EMP-009', fn: 'Deepa',    ln: 'Krishnan',  g: 'FEMALE', dob: '1987-08-23', email: 'deepa.krishnan@sunriseschool.edu.in',  ph: '+91-9810001009', dept: 'ENG',   desig: 'SR_TEACHER',   et: 'PERM_TEACH',     j: '2014-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A+' },
+    { empNo: 'EMP-003', fn: 'Priya',    ln: 'Nair',      g: 'FEMALE', dob: '1988-11-05', email: 'priya.nair@sunriseschool.edu.in',      ph: '+91-9810001003', dept: 'ENG',   desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2018-07-15', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'O+' },
+    { empNo: 'EMP-035', fn: 'Manish',   ln: 'Pandey',    g: 'MALE',   dob: '1990-08-19', email: 'manish.pandey@sunriseschool.edu.in',   ph: '+91-9810003500', dept: 'ENG',   desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2016-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B+' },
+    { empNo: 'EMP-036', fn: 'Smita',    ln: 'Naik',      g: 'FEMALE', dob: '1993-01-14', email: 'smita.naik@sunriseschool.edu.in',      ph: '+91-9810003600', dept: 'ENG',   desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2019-06-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A-' },
+    { empNo: 'EMP-057', fn: 'Alka',     ln: 'Jain',      g: 'FEMALE', dob: '1995-09-03', email: 'alka.jain@sunriseschool.edu.in',       ph: '+91-9810005700', dept: 'ENG',   desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2022-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'O+' },
+    { empNo: 'EMP-013', fn: 'Neha',     ln: 'Agarwal',   g: 'FEMALE', dob: '1995-03-22', email: 'neha.agarwal@sunriseschool.edu.in',    ph: '+91-9810001013', dept: 'ENG',   desig: 'ASST_TEACHER', et: 'VISITING',       j: '2024-06-01', status: 'ACTIVE',         eType: 'PART_TIME', bg: 'B+' },
+    { empNo: 'EMP-037', fn: 'Harish',   ln: 'Bisht',     g: 'MALE',   dob: '1997-06-22', email: 'harish.bisht@sunriseschool.edu.in',    ph: '+91-9810003700', dept: 'ENG',   desig: 'ASST_TEACHER', et: 'CONTRACT_TEACH', j: '2024-07-01', status: 'PROBATION',      eType: 'FULL_TIME', bg: 'AB+' },
+    { empNo: 'EMP-062', fn: 'Leela',    ln: 'Prasad',    g: 'FEMALE', dob: '1999-11-09', email: 'leela.prasad@sunriseschool.edu.in',    ph: '+91-9810006200', dept: 'ENG',   desig: 'ASST_TEACHER', et: 'CONTRACT_TEACH', j: '2024-07-01', status: 'PROBATION',      eType: 'FULL_TIME', bg: 'A+' },
+    // ── Social Studies ───────────────────────────────────────────────────────────
+    { empNo: 'EMP-024', fn: 'Rakesh',   ln: 'Tripathi',  g: 'MALE',   dob: '1971-08-14', email: 'rakesh.tripathi@sunriseschool.edu.in', ph: '+91-9810002400', dept: 'SST',   desig: 'HOD',          et: 'PERM_TEACH',     j: '2006-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B+' },
+    { empNo: 'EMP-014', fn: 'Mohan',    ln: 'Das',       g: 'MALE',   dob: '1982-07-11', email: 'mohan.das@sunriseschool.edu.in',        ph: '+91-9810001014', dept: 'SST',   desig: 'SR_TEACHER',   et: 'PERM_TEACH',     j: '2011-04-01', status: 'ON_LEAVE',       eType: 'FULL_TIME', bg: 'O-' },
+    { empNo: 'EMP-038', fn: 'Gita',     ln: 'Rao',       g: 'FEMALE', dob: '1983-04-27', email: 'gita.rao@sunriseschool.edu.in',         ph: '+91-9810003800', dept: 'SST',   desig: 'SR_TEACHER',   et: 'PERM_TEACH',     j: '2012-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A+' },
+    { empNo: 'EMP-004', fn: 'Vikram',   ln: 'Singh',     g: 'MALE',   dob: '1985-02-28', email: 'vikram.singh@sunriseschool.edu.in',    ph: '+91-9810001004', dept: 'SST',   desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2016-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B-' },
+    { empNo: 'EMP-039', fn: 'Ajay',     ln: 'Bansal',    g: 'MALE',   dob: '1989-10-15', email: 'ajay.bansal@sunriseschool.edu.in',     ph: '+91-9810003900', dept: 'SST',   desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2017-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'O+' },
+    { empNo: 'EMP-040', fn: 'Ritu',     ln: 'Sharma',    g: 'FEMALE', dob: '1993-06-02', email: 'ritu.sharma@sunriseschool.edu.in',     ph: '+91-9810004000', dept: 'SST',   desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2020-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A+' },
+    { empNo: 'EMP-058', fn: 'Naveen',   ln: 'Rao',       g: 'MALE',   dob: '1995-03-17', email: 'naveen.rao@sunriseschool.edu.in',      ph: '+91-9810005800', dept: 'SST',   desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2022-06-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B+' },
+    { empNo: 'EMP-065', fn: 'Tara',     ln: 'Devi',      g: 'FEMALE', dob: '1978-09-01', email: 'tara.devi@sunriseschool.edu.in',       ph: '+91-9810006500', dept: 'SST',   desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2008-04-01', status: 'EXIT_INITIATED', eType: 'FULL_TIME', bg: 'O+' },
+    // ── Computer Science ─────────────────────────────────────────────────────────
+    { empNo: 'EMP-025', fn: 'Anjana',   ln: 'Sinha',     g: 'FEMALE', dob: '1979-12-20', email: 'anjana.sinha@sunriseschool.edu.in',    ph: '+91-9810002500', dept: 'CS',    desig: 'HOD',          et: 'PERM_TEACH',     j: '2011-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A-' },
+    { empNo: 'EMP-042', fn: 'Sandhya',  ln: 'Tyagi',     g: 'FEMALE', dob: '1984-07-09', email: 'sandhya.tyagi@sunriseschool.edu.in',  ph: '+91-9810004200', dept: 'CS',    desig: 'SR_TEACHER',   et: 'PERM_TEACH',     j: '2014-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B+' },
+    { empNo: 'EMP-005', fn: 'Meena',    ln: 'Iyer',      g: 'FEMALE', dob: '1990-06-10', email: 'meena.iyer@sunriseschool.edu.in',      ph: '+91-9810001005', dept: 'CS',    desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2019-06-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'O+' },
+    { empNo: 'EMP-041', fn: 'Prakash',  ln: 'Mishra',    g: 'MALE',   dob: '1991-04-23', email: 'prakash.mishra@sunriseschool.edu.in', ph: '+91-9810004100', dept: 'CS',    desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2018-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A+' },
+    { empNo: 'EMP-059', fn: 'Pooja',    ln: 'Mathur',    g: 'FEMALE', dob: '1994-08-16', email: 'pooja.mathur@sunriseschool.edu.in',   ph: '+91-9810005900', dept: 'CS',    desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2022-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B-' },
+    { empNo: 'EMP-010', fn: 'Rahul',    ln: 'Joshi',     g: 'MALE',   dob: '1993-01-30', email: 'rahul.joshi@sunriseschool.edu.in',    ph: '+91-9810001010', dept: 'CS',    desig: 'ASST_TEACHER', et: 'CONTRACT_TEACH', j: '2023-06-01', status: 'PROBATION',      eType: 'FULL_TIME', bg: 'O+' },
+    // ── Physical Education ───────────────────────────────────────────────────────
+    { empNo: 'EMP-026', fn: 'Baldev',   ln: 'Rana',      g: 'MALE',   dob: '1975-01-30', email: 'baldev.rana@sunriseschool.edu.in',     ph: '+91-9810002600', dept: 'PE',    desig: 'HOD',          et: 'PERM_TEACH',     j: '2008-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B+' },
+    { empNo: 'EMP-006', fn: 'Arjun',    ln: 'Patel',     g: 'MALE',   dob: '1983-09-14', email: 'arjun.patel@sunriseschool.edu.in',    ph: '+91-9810001006', dept: 'PE',    desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2012-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A+' },
+    { empNo: 'EMP-043', fn: 'Rahul',    ln: 'Bhatt',     g: 'MALE',   dob: '1993-07-07', email: 'rahul.bhatt@sunriseschool.edu.in',    ph: '+91-9810004300', dept: 'PE',    desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2019-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'O+' },
+    { empNo: 'EMP-044', fn: 'Anjali',   ln: 'Verma',     g: 'FEMALE', dob: '1996-05-23', email: 'anjali.verma@sunriseschool.edu.in',   ph: '+91-9810004400', dept: 'PE',    desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2022-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A-' },
+    // ── Arts & Craft ─────────────────────────────────────────────────────────────
+    { empNo: 'EMP-027', fn: 'Madhuri',  ln: 'Desai',     g: 'FEMALE', dob: '1978-03-14', email: 'madhuri.desai@sunriseschool.edu.in',  ph: '+91-9810002700', dept: 'ARTS',  desig: 'HOD',          et: 'PERM_TEACH',     j: '2010-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A+' },
+    { empNo: 'EMP-011', fn: 'Kavya',    ln: 'Reddy',     g: 'FEMALE', dob: '1991-05-17', email: 'kavya.reddy@sunriseschool.edu.in',    ph: '+91-9810001011', dept: 'ARTS',  desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2020-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B+' },
+    { empNo: 'EMP-045', fn: 'Vinod',    ln: 'Saxena',    g: 'MALE',   dob: '1988-12-01', email: 'vinod.saxena@sunriseschool.edu.in',   ph: '+91-9810004500', dept: 'ARTS',  desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2016-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'O+' },
+    { empNo: 'EMP-046', fn: 'Preethi',  ln: 'Kumar',     g: 'FEMALE', dob: '1992-09-25', email: 'preethi.kumar@sunriseschool.edu.in', ph: '+91-9810004600', dept: 'ARTS',  desig: 'TEACHER',      et: 'PERM_TEACH',     j: '2019-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B-' },
+    // ── Administration ───────────────────────────────────────────────────────────
+    { empNo: 'EMP-016', fn: 'Geeta',    ln: 'Bose',      g: 'FEMALE', dob: '1984-02-14', email: 'geeta.bose@sunriseschool.edu.in',     ph: '+91-9810001016', dept: 'ADMIN', desig: 'ADMIN_OFF',    et: 'PERM_NON_TEACH', j: '2017-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A+' },
+    { empNo: 'EMP-047', fn: 'Ramesh',   ln: 'Babu',      g: 'MALE',   dob: '1980-07-20', email: 'ramesh.babu@sunriseschool.edu.in',    ph: '+91-9810004700', dept: 'ADMIN', desig: 'ADMIN_OFF',    et: 'PERM_NON_TEACH', j: '2014-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'O+' },
+    { empNo: 'EMP-048', fn: 'Archana',  ln: 'Singh',     g: 'FEMALE', dob: '1990-03-08', email: 'archana.singh@sunriseschool.edu.in', ph: '+91-9810004800', dept: 'ADMIN', desig: 'ADMIN_OFF',    et: 'PERM_NON_TEACH', j: '2021-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B+' },
+    { empNo: 'EMP-017', fn: 'Santosh',  ln: 'Tiwari',    g: 'MALE',   dob: '1989-11-20', email: 'santosh.tiwari@sunriseschool.edu.in', ph: '+91-9810001017', dept: 'ADMIN', desig: 'ACCOUNTANT',   et: 'PERM_NON_TEACH', j: '2019-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A+' },
+    { empNo: 'EMP-049', fn: 'Sunil',    ln: 'Aggarwal',  g: 'MALE',   dob: '1981-06-15', email: 'sunil.aggarwal@sunriseschool.edu.in', ph: '+91-9810004900', dept: 'ADMIN', desig: 'ACCOUNTANT',   et: 'PERM_NON_TEACH', j: '2012-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B+' },
+    { empNo: 'EMP-050', fn: 'Kavita',   ln: 'Yadav',     g: 'FEMALE', dob: '1986-08-28', email: 'kavita.yadav@sunriseschool.edu.in',  ph: '+91-9810005000', dept: 'ADMIN', desig: 'ACCOUNTANT',   et: 'CONTRACT_NON',   j: '2018-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'O+' },
+    { empNo: 'EMP-018', fn: 'Usha',     ln: 'Menon',     g: 'FEMALE', dob: '1981-06-03', email: 'usha.menon@sunriseschool.edu.in',     ph: '+91-9810001018', dept: 'ADMIN', desig: 'LIBRARIAN',    et: 'PERM_NON_TEACH', j: '2009-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A-' },
+    { empNo: 'EMP-051', fn: 'Rajan',    ln: 'Pillai',    g: 'MALE',   dob: '1985-11-12', email: 'rajan.pillai@sunriseschool.edu.in',  ph: '+91-9810005100', dept: 'ADMIN', desig: 'LIBRARIAN',    et: 'PERM_NON_TEACH', j: '2016-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B+' },
+    { empNo: 'EMP-019', fn: 'Dinesh',   ln: 'Yadav',     g: 'MALE',   dob: '1994-08-16', email: 'dinesh.yadav@sunriseschool.edu.in',  ph: '+91-9810001019', dept: 'ADMIN', desig: 'COUNSELLOR',   et: 'CONTRACT_NON',   j: '2023-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'O+' },
+    { empNo: 'EMP-052', fn: 'Sneha',    ln: 'Bose',      g: 'FEMALE', dob: '1991-07-04', email: 'sneha.bose@sunriseschool.edu.in',    ph: '+91-9810005200', dept: 'ADMIN', desig: 'COUNSELLOR',   et: 'PERM_NON_TEACH', j: '2020-07-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'A+' },
+    { empNo: 'EMP-063', fn: 'Ravi',     ln: 'Shankar',   g: 'MALE',   dob: '1975-02-28', email: 'ravi.shankar@sunriseschool.edu.in',  ph: '+91-9810006300', dept: 'ADMIN', desig: 'PEON',         et: 'PERM_NON_TEACH', j: '2003-06-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'B+' },
+    { empNo: 'EMP-064', fn: 'Kamal',    ln: 'Mishra',    g: 'MALE',   dob: '1982-10-19', email: 'kamal.mishra@sunriseschool.edu.in',  ph: '+91-9810006400', dept: 'ADMIN', desig: 'PEON',         et: 'PERM_NON_TEACH', j: '2015-04-01', status: 'ACTIVE',         eType: 'FULL_TIME', bg: 'O-' },
+  ];
+
+  // ── Create employees, collect IDs ─────────────────────────────────────────────
+  type EmpInfo = { id: string; joining: string; status: string; desig: string; i: number };
+  const empIdMap: Record<string, EmpInfo> = {};
   let empCount = 0;
-  for (const e of employeeData) {
-    const existing = await prisma.employee.findFirst({
-      where: { organizationId: org.id, employeeNumber: e.empNo },
-    });
-    if (existing) continue;
 
-    const person = await prisma.person.create({
-      data: {
-        firstName:   e.firstName,
-        lastName:    e.lastName,
-        gender:      e.gender,
-        dateOfBirth: d(e.dob),
-        email:       e.email,
-        phone:       e.phone,
-        nationality: 'Indian',
-      },
-    });
+  for (let i = 0; i < employeeData.length; i++) {
+    const e = employeeData[i]!;
+    let emp = await prisma.employee.findFirst({ where: { organizationId: org.id, employeeNumber: e.empNo } });
 
-    await prisma.employee.create({
-      data: {
-        organizationId:   org.id,
-        personId:         person.id,
-        employeeNumber:   e.empNo,
-        joiningDate:      d(e.joining),
-        employmentStatus: e.status,
-        employmentType:   e.empType,
-        campusId:         campus.id,
-        departmentId:     dept[e.dept]  ?? null,
-        designationId:    desig[e.desig] ?? null,
-        employeeTypeId:   et[e.et]      ?? null,
-        ...(e.status === 'PROBATION' ? {
-          probationStart: d(e.joining),
-          probationEnd:   new Date(new Date(e.joining).setMonth(new Date(e.joining).getMonth() + 6)),
-        } : {}),
-      },
-    });
-    empCount++;
+    if (!emp) {
+      const person = await prisma.person.create({
+        data: {
+          firstName:   e.fn,
+          lastName:    e.ln,
+          gender:      e.g,
+          dateOfBirth: d(e.dob),
+          email:       e.email,
+          phone:       e.ph,
+          bloodGroup:  e.bg,
+          nationality: 'Indian',
+        },
+      });
+      const probation = e.status === 'PROBATION';
+      emp = await prisma.employee.create({
+        data: {
+          organizationId:   org.id,
+          personId:         person.id,
+          employeeNumber:   e.empNo,
+          joiningDate:      d(e.j),
+          employmentStatus: e.status,
+          employmentType:   e.eType,
+          campusId:         campus.id,
+          departmentId:     dept[e.dept]   ?? null,
+          designationId:    desig[e.desig] ?? null,
+          employeeTypeId:   et[e.et]       ?? null,
+          ...(probation ? {
+            probationStart: d(e.j),
+            probationEnd:   new Date(new Date(e.j).setMonth(new Date(e.j).getMonth() + 6)),
+          } : {}),
+        },
+      });
+      empCount++;
+    }
+    empIdMap[e.empNo] = { id: emp.id, joining: e.j, status: e.status, desig: e.desig, i };
   }
   console.log(`✅  ${employeeData.length} employees (${empCount} created)`);
+
+  // ── Sub-data for all employees ────────────────────────────────────────────────
+  let qualCount = 0, expCount = 0, bankCount = 0, assetCount = 0;
+  let trainCount = 0, perfCount = 0, eventCount = 0, onboardCount = 0;
+
+  for (const [, info] of Object.entries(empIdMap)) {
+    const { id: employeeId, joining, status, desig: desigCode, i } = info;
+    const joinYear  = parseInt(joining.slice(0, 4));
+    const isVeteran = joinYear <= 2010;
+    const isSenior  = joinYear <= 2015;
+    const isHOD     = ['HOD', 'PRINCIPAL', 'VP'].includes(desigCode);
+    const isSrRole  = ['SR_TEACHER', 'HOD', 'PRINCIPAL', 'VP'].includes(desigCode);
+    const isLaborOrPeon = ['PEON', 'LAB_ASST'].includes(desigCode);
+
+    // ── Qualifications ──────────────────────────────────────────────────────────
+    if (await prisma.employeeQualification.count({ where: { employeeId } }) === 0) {
+      await prisma.employeeQualification.create({ data: {
+        employeeId,
+        degree:             pick(DEGREES, i),
+        institution:        pick(INSTITUTES, i),
+        specialization:     pick(SPECS, i),
+        startYear:          joinYear - 7,
+        endYear:            joinYear - 5,
+        percentage:         65 + (i % 20),
+        verificationStatus: 'VERIFIED',
+      }});
+      await prisma.employeeQualification.create({ data: {
+        employeeId,
+        degree:             'B.Ed',
+        institution:        pick(INSTITUTES, i + 3),
+        startYear:          joinYear - 4,
+        endYear:            joinYear - 3,
+        percentage:         70 + (i % 15),
+        verificationStatus: 'VERIFIED',
+      }});
+      if (isSenior || isHOD) {
+        await prisma.employeeQualification.create({ data: {
+          employeeId,
+          degree:             isHOD ? 'Ph.D' : 'M.Ed',
+          institution:        pick(INSTITUTES, i + 5),
+          specialization:     pick(SPECS, i + 2),
+          startYear:          joinYear - 3,
+          endYear:            joinYear - 1,
+          percentage:         72 + (i % 18),
+          verificationStatus: isHOD ? 'VERIFIED' : 'PENDING',
+        }});
+      }
+      qualCount++;
+    }
+
+    // ── Experience ──────────────────────────────────────────────────────────────
+    if (await prisma.employeeExperience.count({ where: { employeeId } }) === 0 && isSenior) {
+      await prisma.employeeExperience.create({ data: {
+        employeeId,
+        organization:    pick(PREV_ORGS, i),
+        designation:     isSrRole ? 'Senior Teacher' : 'Teacher',
+        startDate:       d(`${joinYear - 5}-04-01`),
+        endDate:         d(`${joinYear - 1}-03-31`),
+        reasonForLeaving: 'Better opportunity',
+      }});
+      if (isVeteran) {
+        await prisma.employeeExperience.create({ data: {
+          employeeId,
+          organization:    pick(PREV_ORGS, i + 4),
+          designation:     'Teacher',
+          startDate:       d(`${joinYear - 10}-04-01`),
+          endDate:         d(`${joinYear - 6}-03-31`),
+          reasonForLeaving: 'Career growth',
+        }});
+      }
+      expCount++;
+    }
+
+    // ── Bank Detail ─────────────────────────────────────────────────────────────
+    if (await prisma.employeeBankDetail.count({ where: { employeeId } }) === 0) {
+      const bank = pick(BANKS, i);
+      await prisma.employeeBankDetail.create({ data: {
+        employeeId,
+        bankName:      bank.name,
+        accountNumber: `${bank.acPfx}${String(i + 100).padStart(6, '0')}`,
+        ifscCode:      bank.ifsc,
+        accountType:   'SAVINGS',
+        isPrimary:     true,
+      }});
+      bankCount++;
+    }
+
+    // ── Assets ──────────────────────────────────────────────────────────────────
+    if (await prisma.employeeAsset.count({ where: { employeeId } }) === 0) {
+      await prisma.employeeAsset.create({ data: {
+        organizationId: org.id, employeeId,
+        assetType: 'ID_CARD', assetCode: `ID-EMP${String(i).padStart(3,'0')}`,
+        description: 'Employee Photo ID Card', issueDate: d(joining), condition: 'GOOD',
+      }});
+      if (!isLaborOrPeon) {
+        await prisma.employeeAsset.create({ data: {
+          organizationId: org.id, employeeId,
+          assetType: 'LAPTOP', assetCode: `LT-EMP${String(i).padStart(3,'0')}`,
+          description: 'Dell Latitude 5520', issueDate: d(joining), condition: 'GOOD', issuedBy: 'IT Department',
+        }});
+      }
+      if (isSrRole) {
+        await prisma.employeeAsset.create({ data: {
+          organizationId: org.id, employeeId,
+          assetType: 'KEY', assetCode: `KEY-EMP${String(i).padStart(3,'0')}`,
+          description: 'Department room key', issueDate: d(joining), condition: 'GOOD',
+        }});
+      }
+      assetCount++;
+    }
+
+    // ── Training Records ────────────────────────────────────────────────────────
+    if (await prisma.trainingRecord.count({ where: { employeeId } }) === 0) {
+      const numTrainings = isVeteran ? 3 : isSenior ? 2 : 1;
+      for (let t = 0; t < numTrainings; t++) {
+        const yr = Math.min(joinYear + t, 2025);
+        await prisma.trainingRecord.create({ data: {
+          employeeId,
+          title:              pick(TRAIN_TITLES, i + t),
+          trainingType:       pick(TRAIN_TYPES, i + t),
+          provider:           pick(TRAIN_PROVS, i + t),
+          startDate:          d(`${yr}-07-01`),
+          endDate:            d(`${yr}-07-05`),
+          durationHours:      8 + (t * 8),
+          verificationStatus: 'VERIFIED',
+        }});
+      }
+      trainCount++;
+    }
+
+    // ── Performance Review ──────────────────────────────────────────────────────
+    if (await prisma.performanceReview.count({ where: { employeeId } }) === 0 && joinYear <= 2024) {
+      const rating = parseFloat((3.5 + ((i * 3) % 15) / 10).toFixed(1));
+      const review = await prisma.performanceReview.create({ data: {
+        organizationId: org.id, employeeId,
+        academicYearId: ay2526.id,
+        reviewType:     'ANNUAL',
+        reviewedBy:     'Principal',
+        reviewDate:     d('2026-03-15'),
+        overallRating:  rating,
+        remarks:        'Consistent performance. Recommended for continued engagement.',
+        status:         'COMPLETED',
+      }});
+      for (let c = 0; c < 4; c++) {
+        await prisma.performanceCriteria.create({ data: {
+          reviewId:     review.id,
+          criteriaName: pick(CRITERIA_NAMES, i + c),
+          rating:       parseFloat((3.5 + ((i + c) % 15) / 10).toFixed(1)),
+        }});
+      }
+      for (let g = 0; g < 2; g++) {
+        await prisma.performanceGoal.create({ data: {
+          reviewId: review.id,
+          goal:     pick(GOAL_TEXTS, i + g),
+          status:   g === 0 ? 'COMPLETED' : 'IN_PROGRESS',
+        }});
+      }
+      perfCount++;
+    }
+
+    // ── Lifecycle Events ────────────────────────────────────────────────────────
+    if (await prisma.employeeLifecycleEvent.count({ where: { employeeId } }) === 0) {
+      await prisma.employeeLifecycleEvent.create({ data: {
+        employeeId, eventType: 'JOINED', fromStatus: null, toStatus: 'ONBOARDING',
+        effectiveDate: d(joining), reason: 'New hire', performedBy: 'HR Department',
+      }});
+      if (joinYear <= 2023) {
+        const confirmDate = new Date(joining);
+        confirmDate.setMonth(confirmDate.getMonth() + 6);
+        await prisma.employeeLifecycleEvent.create({ data: {
+          employeeId, eventType: 'CONFIRMED', fromStatus: 'PROBATION', toStatus: 'ACTIVE',
+          effectiveDate: confirmDate, reason: 'Probation completed successfully', performedBy: 'Principal',
+        }});
+      }
+      if (isVeteran || (isSenior && isHOD)) {
+        const promoteDate = new Date(joining);
+        promoteDate.setFullYear(promoteDate.getFullYear() + 5);
+        await prisma.employeeLifecycleEvent.create({ data: {
+          employeeId, eventType: 'PROMOTED', fromStatus: 'ACTIVE', toStatus: 'ACTIVE',
+          effectiveDate: promoteDate, reason: 'Exceptional performance and seniority', performedBy: 'Management',
+        }});
+      }
+      if (status === 'EXIT_INITIATED') {
+        await prisma.employeeLifecycleEvent.create({ data: {
+          employeeId, eventType: 'EXIT_INITIATED', fromStatus: 'ACTIVE', toStatus: 'EXIT_INITIATED',
+          effectiveDate: d('2026-08-01'), reason: 'Relocation to another city', performedBy: 'HR Department',
+        }});
+      }
+      if (status === 'ON_LEAVE') {
+        await prisma.employeeLifecycleEvent.create({ data: {
+          employeeId, eventType: 'ON_LEAVE', fromStatus: 'ACTIVE', toStatus: 'ON_LEAVE',
+          effectiveDate: d('2026-06-01'), reason: 'Medical leave approved', performedBy: 'HR Department',
+        }});
+      }
+      eventCount++;
+    }
+
+    // ── Onboarding (joining 2022+) ──────────────────────────────────────────────
+    if (joinYear >= 2022 && !(await prisma.employeeOnboarding.findFirst({ where: { employeeId } }))) {
+      const isNewJoiner = joinYear >= 2024;
+      const onboarding  = await prisma.employeeOnboarding.create({ data: {
+        employeeId,
+        status:      isNewJoiner ? 'IN_PROGRESS' : 'COMPLETED',
+        completedAt: isNewJoiner ? null : d(`${joinYear}-10-01`),
+      }});
+      for (let t = 0; t < ONBOARD_TASKS.length; t++) {
+        const task        = ONBOARD_TASKS[t]!;
+        const isDone      = !isNewJoiner || t < 6;
+        await prisma.onboardingTask.create({ data: {
+          onboardingId: onboarding.id,
+          taskName:     task.name,
+          category:     task.category,
+          isRequired:   task.req,
+          isCompleted:  isDone,
+          completedAt:  isDone ? d(`${joinYear}-08-15`) : null,
+          completedBy:  isDone ? 'HR Department' : null,
+        }});
+      }
+      onboardCount++;
+    }
+  }
+
+  console.log(`✅  Sub-data: qualifications(${qualCount}), experience(${expCount}), bank(${bankCount}), assets(${assetCount})`);
+  console.log(`✅  Sub-data: training(${trainCount}), performance(${perfCount}), events(${eventCount}), onboarding(${onboardCount})`);
 
   console.log('\n🎉  Seeding complete!');
   console.log(`\n   Organization : Sunrise Public School`);
