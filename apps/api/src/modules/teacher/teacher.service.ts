@@ -769,12 +769,12 @@ export class TeacherService {
   async getFormOptions(organizationId: string) {
     const [departments, designations, employeeTypes, campuses] = await Promise.all([
       this.prisma.department.findMany({
-        where: { organizationId },
+        where: { organizationId, status: 'ACTIVE' },
         select: { id: true, name: true, code: true },
         orderBy: { name: 'asc' },
       }),
       this.prisma.designation.findMany({
-        where: { organizationId },
+        where: { organizationId, status: 'ACTIVE' },
         select: { id: true, name: true, code: true },
         orderBy: { name: 'asc' },
       }),

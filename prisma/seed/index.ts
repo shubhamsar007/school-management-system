@@ -83,7 +83,89 @@ async function main() {
   });
   console.log(`✅  Campus: ${campus.name}`);
 
-  // ── 3b. Admin User ────────────────────────────────────────────────────────────
+  // ── 3b. Departments ───────────────────────────────────────────────────────────
+
+  const departmentRows = [
+    { name: 'Mathematics',        code: 'MATH'  },
+    { name: 'Science',            code: 'SCI'   },
+    { name: 'English',            code: 'ENG'   },
+    { name: 'Social Studies',     code: 'SST'   },
+    { name: 'Computer Science',   code: 'CS'    },
+    { name: 'Physical Education', code: 'PE'    },
+    { name: 'Arts & Craft',       code: 'ARTS'  },
+    { name: 'Administration',     code: 'ADMIN' },
+  ];
+
+  let deptCount = 0;
+  for (const dept of departmentRows) {
+    const existing = await prisma.department.findFirst({
+      where: { organizationId: org.id, code: dept.code },
+    });
+    if (!existing) {
+      await prisma.department.create({
+        data: { organizationId: org.id, name: dept.name, code: dept.code, status: 'ACTIVE' },
+      });
+      deptCount++;
+    }
+  }
+  console.log(`✅  ${departmentRows.length} departments (${deptCount} created)`);
+
+  // ── 3c. Designations ──────────────────────────────────────────────────────────
+
+  const designationRows = [
+    { name: 'Principal',              code: 'PRINCIPAL'    },
+    { name: 'Vice Principal',         code: 'VP'           },
+    { name: 'Head of Department',     code: 'HOD'          },
+    { name: 'Senior Teacher',         code: 'SR_TEACHER'   },
+    { name: 'Teacher',                code: 'TEACHER'      },
+    { name: 'Assistant Teacher',      code: 'ASST_TEACHER' },
+    { name: 'Lab Assistant',          code: 'LAB_ASST'     },
+    { name: 'Administrative Officer', code: 'ADMIN_OFF'    },
+    { name: 'Accountant',             code: 'ACCOUNTANT'   },
+    { name: 'Librarian',              code: 'LIBRARIAN'    },
+    { name: 'Counsellor',             code: 'COUNSELLOR'   },
+    { name: 'Peon',                   code: 'PEON'         },
+  ];
+
+  let desigCount = 0;
+  for (const desig of designationRows) {
+    const existing = await prisma.designation.findFirst({
+      where: { organizationId: org.id, code: desig.code },
+    });
+    if (!existing) {
+      await prisma.designation.create({
+        data: { organizationId: org.id, name: desig.name, code: desig.code, status: 'ACTIVE' },
+      });
+      desigCount++;
+    }
+  }
+  console.log(`✅  ${designationRows.length} designations (${desigCount} created)`);
+
+  // ── 3d. Employee Types ────────────────────────────────────────────────────────
+
+  const employeeTypeRows = [
+    { name: 'Permanent Teaching Staff',     code: 'PERM_TEACH',     category: 'TEACHING'     },
+    { name: 'Contract Teaching Staff',      code: 'CONTRACT_TEACH', category: 'TEACHING'     },
+    { name: 'Guest / Visiting Faculty',     code: 'VISITING',       category: 'TEACHING'     },
+    { name: 'Permanent Non-Teaching Staff', code: 'PERM_NON_TEACH', category: 'NON_TEACHING' },
+    { name: 'Contract Non-Teaching Staff',  code: 'CONTRACT_NON',   category: 'NON_TEACHING' },
+  ];
+
+  let etCount = 0;
+  for (const et of employeeTypeRows) {
+    const existing = await prisma.employeeType.findFirst({
+      where: { organizationId: org.id, code: et.code },
+    });
+    if (!existing) {
+      await prisma.employeeType.create({
+        data: { organizationId: org.id, name: et.name, code: et.code, category: et.category, status: 'ACTIVE' },
+      });
+      etCount++;
+    }
+  }
+  console.log(`✅  ${employeeTypeRows.length} employee types (${etCount} created)`);
+
+  // ── 4. Admin User ─────────────────────────────────────────────────────────────
 
   const ADMIN_EMAIL    = 'admin@sunriseschool.edu.in';
   const ADMIN_PASSWORD = 'Admin@1234';
