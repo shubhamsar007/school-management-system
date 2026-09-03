@@ -626,6 +626,86 @@ async function main() {
   console.log(`✅  ${guardianCount} guardians linked`);
   console.log(`✅  ${enrollCount} enrollments created`);
 
+  // ── 10. Employees ─────────────────────────────────────────────────────────────
+
+  // Fetch the departments, designations, and employee types we just seeded
+  const [deptMap, desigMap, etMap] = await Promise.all([
+    prisma.department.findMany({ where: { organizationId: org.id }, select: { id: true, code: true } }),
+    prisma.designation.findMany({ where: { organizationId: org.id }, select: { id: true, code: true } }),
+    prisma.employeeType.findMany({ where: { organizationId: org.id }, select: { id: true, code: true } }),
+  ]);
+  const dept  = Object.fromEntries(deptMap.map((r) => [r.code, r.id]));
+  const desig = Object.fromEntries(desigMap.map((r) => [r.code, r.id]));
+  const et    = Object.fromEntries(etMap.map((r) => [r.code, r.id]));
+
+  const employeeData = [
+    // Teaching staff
+    { empNo: 'EMP-001', firstName: 'Anjali',   lastName: 'Sharma',    gender: 'FEMALE', dob: '1980-03-15', email: 'anjali.sharma@sunriseschool.edu.in',   phone: '+91-9810001001', dept: 'MATH',  desig: 'HOD',          et: 'PERM_TEACH',     joining: '2015-06-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
+    { empNo: 'EMP-002', firstName: 'Ramesh',   lastName: 'Verma',     gender: 'MALE',   dob: '1975-07-22', email: 'ramesh.verma@sunriseschool.edu.in',     phone: '+91-9810001002', dept: 'SCI',   desig: 'SR_TEACHER',   et: 'PERM_TEACH',     joining: '2010-04-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
+    { empNo: 'EMP-003', firstName: 'Priya',    lastName: 'Nair',      gender: 'FEMALE', dob: '1988-11-05', email: 'priya.nair@sunriseschool.edu.in',       phone: '+91-9810001003', dept: 'ENG',   desig: 'TEACHER',      et: 'PERM_TEACH',     joining: '2018-07-15', status: 'ACTIVE',    empType: 'FULL_TIME' },
+    { empNo: 'EMP-004', firstName: 'Vikram',   lastName: 'Singh',     gender: 'MALE',   dob: '1985-02-28', email: 'vikram.singh@sunriseschool.edu.in',     phone: '+91-9810001004', dept: 'SST',   desig: 'TEACHER',      et: 'PERM_TEACH',     joining: '2016-04-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
+    { empNo: 'EMP-005', firstName: 'Meena',    lastName: 'Iyer',      gender: 'FEMALE', dob: '1990-06-10', email: 'meena.iyer@sunriseschool.edu.in',       phone: '+91-9810001005', dept: 'CS',    desig: 'TEACHER',      et: 'PERM_TEACH',     joining: '2019-06-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
+    { empNo: 'EMP-006', firstName: 'Arjun',    lastName: 'Patel',     gender: 'MALE',   dob: '1983-09-14', email: 'arjun.patel@sunriseschool.edu.in',      phone: '+91-9810001006', dept: 'PE',    desig: 'TEACHER',      et: 'PERM_TEACH',     joining: '2012-07-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
+    { empNo: 'EMP-007', firstName: 'Sunita',   lastName: 'Rao',       gender: 'FEMALE', dob: '1979-12-01', email: 'sunita.rao@sunriseschool.edu.in',       phone: '+91-9810001007', dept: 'MATH',  desig: 'SR_TEACHER',   et: 'PERM_TEACH',     joining: '2008-04-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
+    { empNo: 'EMP-008', firstName: 'Kiran',    lastName: 'Mehta',     gender: 'MALE',   dob: '1992-04-19', email: 'kiran.mehta@sunriseschool.edu.in',      phone: '+91-9810001008', dept: 'SCI',   desig: 'ASST_TEACHER', et: 'CONTRACT_TEACH', joining: '2022-06-01', status: 'PROBATION', empType: 'FULL_TIME' },
+    { empNo: 'EMP-009', firstName: 'Deepa',    lastName: 'Krishnan',  gender: 'FEMALE', dob: '1987-08-23', email: 'deepa.krishnan@sunriseschool.edu.in',   phone: '+91-9810001009', dept: 'ENG',   desig: 'SR_TEACHER',   et: 'PERM_TEACH',     joining: '2014-04-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
+    { empNo: 'EMP-010', firstName: 'Rahul',    lastName: 'Joshi',     gender: 'MALE',   dob: '1993-01-30', email: 'rahul.joshi@sunriseschool.edu.in',      phone: '+91-9810001010', dept: 'CS',    desig: 'ASST_TEACHER', et: 'CONTRACT_TEACH', joining: '2023-06-01', status: 'PROBATION', empType: 'FULL_TIME' },
+    { empNo: 'EMP-011', firstName: 'Kavya',    lastName: 'Reddy',     gender: 'FEMALE', dob: '1991-05-17', email: 'kavya.reddy@sunriseschool.edu.in',      phone: '+91-9810001011', dept: 'ARTS',  desig: 'TEACHER',      et: 'PERM_TEACH',     joining: '2020-07-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
+    { empNo: 'EMP-012', firstName: 'Suresh',   lastName: 'Gupta',     gender: 'MALE',   dob: '1977-10-08', email: 'suresh.gupta@sunriseschool.edu.in',     phone: '+91-9810001012', dept: 'MATH',  desig: 'TEACHER',      et: 'PERM_TEACH',     joining: '2005-04-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
+    { empNo: 'EMP-013', firstName: 'Neha',     lastName: 'Agarwal',   gender: 'FEMALE', dob: '1995-03-22', email: 'neha.agarwal@sunriseschool.edu.in',     phone: '+91-9810001013', dept: 'ENG',   desig: 'ASST_TEACHER', et: 'VISITING',       joining: '2024-06-01', status: 'ACTIVE',    empType: 'PART_TIME' },
+    { empNo: 'EMP-014', firstName: 'Mohan',    lastName: 'Das',       gender: 'MALE',   dob: '1982-07-11', email: 'mohan.das@sunriseschool.edu.in',        phone: '+91-9810001014', dept: 'SST',   desig: 'SR_TEACHER',   et: 'PERM_TEACH',     joining: '2011-04-01', status: 'ON_LEAVE',  empType: 'FULL_TIME' },
+    { empNo: 'EMP-015', firstName: 'Lakshmi',  lastName: 'Pillai',    gender: 'FEMALE', dob: '1986-09-29', email: 'lakshmi.pillai@sunriseschool.edu.in',   phone: '+91-9810001015', dept: 'SCI',   desig: 'LAB_ASST',     et: 'PERM_NON_TEACH', joining: '2013-07-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
+    // Principal
+    { empNo: 'EMP-000', firstName: 'Rajendra', lastName: 'Kulkarni',  gender: 'MALE',   dob: '1968-04-05', email: 'principal@sunriseschool.edu.in',        phone: '+91-9810000001', dept: 'ADMIN', desig: 'PRINCIPAL',    et: 'PERM_NON_TEACH', joining: '2000-06-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
+    // Non-teaching staff
+    { empNo: 'EMP-016', firstName: 'Geeta',    lastName: 'Bose',      gender: 'FEMALE', dob: '1984-02-14', email: 'geeta.bose@sunriseschool.edu.in',       phone: '+91-9810001016', dept: 'ADMIN', desig: 'ADMIN_OFF',    et: 'PERM_NON_TEACH', joining: '2017-04-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
+    { empNo: 'EMP-017', firstName: 'Santosh',  lastName: 'Tiwari',    gender: 'MALE',   dob: '1989-11-20', email: 'santosh.tiwari@sunriseschool.edu.in',   phone: '+91-9810001017', dept: 'ADMIN', desig: 'ACCOUNTANT',   et: 'PERM_NON_TEACH', joining: '2019-04-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
+    { empNo: 'EMP-018', firstName: 'Usha',     lastName: 'Menon',     gender: 'FEMALE', dob: '1981-06-03', email: 'usha.menon@sunriseschool.edu.in',       phone: '+91-9810001018', dept: 'ADMIN', desig: 'LIBRARIAN',    et: 'PERM_NON_TEACH', joining: '2009-07-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
+    { empNo: 'EMP-019', firstName: 'Dinesh',   lastName: 'Yadav',     gender: 'MALE',   dob: '1994-08-16', email: 'dinesh.yadav@sunriseschool.edu.in',     phone: '+91-9810001019', dept: 'ADMIN', desig: 'COUNSELLOR',   et: 'CONTRACT_NON',   joining: '2023-04-01', status: 'ACTIVE',    empType: 'FULL_TIME' },
+    { empNo: 'EMP-020', firstName: 'Pooja',    lastName: 'Chauhan',   gender: 'FEMALE', dob: '1996-12-25', email: 'pooja.chauhan@sunriseschool.edu.in',    phone: '+91-9810001020', dept: 'SCI',   desig: 'LAB_ASST',     et: 'CONTRACT_NON',   joining: '2024-01-15', status: 'PROBATION', empType: 'FULL_TIME' },
+  ] as const;
+
+  let empCount = 0;
+  for (const e of employeeData) {
+    const existing = await prisma.employee.findFirst({
+      where: { organizationId: org.id, employeeNumber: e.empNo },
+    });
+    if (existing) continue;
+
+    const person = await prisma.person.create({
+      data: {
+        firstName:   e.firstName,
+        lastName:    e.lastName,
+        gender:      e.gender,
+        dateOfBirth: d(e.dob),
+        email:       e.email,
+        phone:       e.phone,
+        nationality: 'Indian',
+      },
+    });
+
+    await prisma.employee.create({
+      data: {
+        organizationId:   org.id,
+        personId:         person.id,
+        employeeNumber:   e.empNo,
+        joiningDate:      d(e.joining),
+        employmentStatus: e.status,
+        employmentType:   e.empType,
+        campusId:         campus.id,
+        departmentId:     dept[e.dept]  ?? null,
+        designationId:    desig[e.desig] ?? null,
+        employeeTypeId:   et[e.et]      ?? null,
+        ...(e.status === 'PROBATION' ? {
+          probationStart: d(e.joining),
+          probationEnd:   new Date(new Date(e.joining).setMonth(new Date(e.joining).getMonth() + 6)),
+        } : {}),
+      },
+    });
+    empCount++;
+  }
+  console.log(`✅  ${employeeData.length} employees (${empCount} created)`);
+
   console.log('\n🎉  Seeding complete!');
   console.log(`\n   Organization : Sunrise Public School`);
   console.log(`   Campus       : Main Campus`);
