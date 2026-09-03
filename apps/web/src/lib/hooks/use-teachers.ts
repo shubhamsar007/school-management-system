@@ -203,6 +203,34 @@ export function useDeleteTeacher() {
   });
 }
 
+// ─── Form options hook ────────────────────────────────────────────────────────
+
+export interface FormOption {
+  id: string;
+  name: string;
+  code?: string;
+}
+
+export interface EmployeeTypeOption extends FormOption {
+  category: string;
+}
+
+export interface FormOptions {
+  departments: FormOption[];
+  designations: FormOption[];
+  employeeTypes: EmployeeTypeOption[];
+  campuses: FormOption[];
+}
+
+export function useFormOptions() {
+  return useQuery<FormOptions>({
+    queryKey: ['teachers', 'form-options'],
+    queryFn: () => apiClient.get<FormOptions>('/teachers/form-options'),
+    staleTime: 300_000,
+    retry: 1,
+  });
+}
+
 export interface CreateEmployeePayload {
   firstName: string;
   middleName?: string;
@@ -228,6 +256,47 @@ export function useCreateTeacher() {
   return useMutation({
     mutationFn: (data: CreateEmployeePayload) =>
       apiClient.post<Employee>('/teachers', data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['teachers'] });
+    },
+  });
+}
+
+export interface UpdateEmployeePayload {
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  email?: string;
+  phone?: string;
+  alternatePhone?: string;
+  bloodGroup?: string;
+  nationality?: string;
+  employeeNumber?: string;
+  joiningDate?: string;
+  employeeTypeId?: string;
+  departmentId?: string;
+  designationId?: string;
+  campusId?: string;
+  employmentStatus?: string;
+  employmentType?: string;
+  probationStart?: string;
+  probationEnd?: string;
+  confirmationDate?: string;
+  contractStart?: string;
+  contractEnd?: string;
+  noticePeriodDays?: number;
+  workLocation?: string;
+  leavingDate?: string;
+  leavingReason?: string;
+}
+
+export function useUpdateTeacher(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: UpdateEmployeePayload) =>
+      apiClient.patch<Employee>(`/teachers/${id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['teachers'] });
     },

@@ -27,6 +27,7 @@ import { HistoryTab }        from './_components/history-tab';
 import { BankTab }           from './_components/bank-tab';
 import { ChecklistTab }      from './_components/checklist-tab';
 import { PlaceholderTab }    from './_components/placeholder-tab';
+import { EditEmployeeModal } from './_components/edit-employee-modal';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -135,6 +136,7 @@ export default function TeacherProfilePage() {
   const initialTab   = (searchParams?.get('tab') as TabId | null) ?? 'overview';
   const [activeTab, setActiveTab] = React.useState<TabId>(initialTab);
   const [moreOpen, setMoreOpen]   = React.useState(false);
+  const [editOpen, setEditOpen]   = React.useState(false);
 
   const { data: employee, isLoading, isError } = useTeacher(id);
 
@@ -225,7 +227,7 @@ export default function TeacherProfilePage() {
 
             {/* Right: actions */}
             <div className="flex items-center gap-2 flex-shrink-0">
-              <Button variant="secondary" className="gap-1.5">
+              <Button variant="secondary" className="gap-1.5" onClick={() => setEditOpen(true)}>
                 <Pencil size={13} />
                 Edit Employee
               </Button>
@@ -315,6 +317,14 @@ export default function TeacherProfilePage() {
           {activeTab === 'history'        && <HistoryTab employeeId={employee.id} />}
         </>
       ) : null}
+
+      {employee && (
+        <EditEmployeeModal
+          open={editOpen}
+          onClose={() => setEditOpen(false)}
+          employee={employee}
+        />
+      )}
     </>
   );
 }

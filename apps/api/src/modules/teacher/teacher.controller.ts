@@ -60,6 +60,14 @@ export class TeacherController {
     return this.teacherService.getDepartments(user.organizationId);
   }
 
+  // ─── Form Options ─────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Get dropdown options for employee forms (departments, designations, employee types, campuses)' })
+  @Get('form-options')
+  getFormOptions(@CurrentUser() user: CurrentUserPayload) {
+    return this.teacherService.getFormOptions(user.organizationId);
+  }
+
   // ─── Employees ────────────────────────────────────────────────
 
   @ApiOperation({ summary: 'Create a new employee' })

@@ -764,6 +764,35 @@ export class TeacherService {
     }));
   }
 
+  // ─── Form Options ─────────────────────────────────────────────
+
+  async getFormOptions(organizationId: string) {
+    const [departments, designations, employeeTypes, campuses] = await Promise.all([
+      this.prisma.department.findMany({
+        where: { organizationId },
+        select: { id: true, name: true, code: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.designation.findMany({
+        where: { organizationId },
+        select: { id: true, name: true, code: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.employeeType.findMany({
+        where: { organizationId, status: 'ACTIVE' },
+        select: { id: true, name: true, code: true, category: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.campus.findMany({
+        where: { organizationId, deletedAt: null },
+        select: { id: true, name: true, code: true },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+
+    return { departments, designations, employeeTypes, campuses };
+  }
+
   // ─── Performance Reviews ──────────────────────────────────────
 
   async findPerformanceReviews(organizationId: string, employeeId: string) {
@@ -791,12 +820,12 @@ export class TeacherService {
         reviewDate: new Date(dto.reviewDate),
         overallRating: dto.overallRating ?? null,
         remarks: dto.remarks ?? null,
-        criteria: dto.criteria
-          ? { create: dto.criteria.map((c) => ({ criteriaName: c.criteriaName, rating: c.rating, remarks: c.remarks ?? null })) }
-          : undefined,
-        goals: dto.goals
-          ? { create: dto.goals.map((g) => ({ goal: g.goal, target: g.target ?? null, status: g.status ?? 'PENDING' })) }
-          : undefined,
+        ...(dto.criteria && {
+          criteria: { create: dto.criteria.map((c) => ({ criteriaName: c.criteriaName, rating: c.rating, remarks: c.remarks ?? null })) },
+        }),
+        ...(dto.goals && {
+          goals: { create: dto.goals.map((g) => ({ goal: g.goal, target: g.target ?? null, status: g.status ?? 'PENDING' })) },
+        }),
       },
       include: { criteria: true, goals: true },
     });

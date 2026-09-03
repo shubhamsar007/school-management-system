@@ -8,6 +8,7 @@ import { useTeacherStats } from '@/lib/hooks/use-teachers';
 import { OverviewTab } from './_components/overview-tab';
 import { DirectoryTab } from './_components/directory-tab';
 import { DepartmentsTab } from './_components/departments-tab';
+import { AddEmployeeModal } from './_components/add-employee-modal';
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
 
@@ -22,7 +23,8 @@ const TABS = [
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TeachersPage() {
-  const [activeTab, setActiveTab] = React.useState<TabId>('overview');
+  const [activeTab, setActiveTab]   = React.useState<TabId>('overview');
+  const [addOpen, setAddOpen]       = React.useState(false);
 
   const { data: stats } = useTeacherStats();
 
@@ -45,7 +47,7 @@ export default function TeachersPage() {
         actions={
           <div className="flex items-center gap-2">
             <Button variant="secondary">Export</Button>
-            <Button variant="primary">+ Add Employee</Button>
+            <Button variant="primary" onClick={() => setAddOpen(true)}>+ Add Employee</Button>
           </div>
         }
       />
@@ -63,6 +65,8 @@ export default function TeachersPage() {
       {activeTab === 'overview'    && <OverviewTab />}
       {activeTab === 'directory'   && <DirectoryTab />}
       {activeTab === 'departments' && <DepartmentsTab />}
+
+      <AddEmployeeModal open={addOpen} onClose={() => setAddOpen(false)} />
     </>
   );
 }
