@@ -233,3 +233,136 @@ export function useCreateTeacher() {
     },
   });
 }
+
+// ─── Timetable types & hook ───────────────────────────────────────────────────
+
+export interface TimetablePeriod {
+  id: string;
+  name: string;
+  periodNumber: number;
+  startTime: string;
+  endTime: string;
+  periodType: string;
+}
+
+export interface TimetableEntry {
+  id: string;
+  dayOfWeek: number;
+  period: TimetablePeriod;
+  section: { id: string; name: string; code: string };
+  subject: { id: string; name: string };
+  room?: { id: string; name: string; code: string } | null;
+}
+
+export interface TimetableDay {
+  day: string;
+  entries: TimetableEntry[];
+}
+
+export function useTeacherTimetable(teacherId: string | null) {
+  return useQuery<TimetableDay[]>({
+    queryKey: ['timetable', 'teacher', teacherId],
+    queryFn: () => apiClient.get<TimetableDay[]>(`/timetable/views/teacher/${teacherId}`),
+    enabled: !!teacherId,
+    staleTime: 120_000,
+    retry: 1,
+  });
+}
+
+// ─── Employee attendance types & hook ─────────────────────────────────────────
+
+export interface EmployeeAttendanceRecord {
+  id: string;
+  employeeId: string;
+  date: string;
+  status: string;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
+  workHours?: number | null;
+  remarks?: string | null;
+}
+
+export function useEmployeeAttendance(
+  employeeId: string | null,
+  from: string,
+  to: string,
+) {
+  return useQuery<EmployeeAttendanceRecord[]>({
+    queryKey: ['attendance', 'employee', employeeId, from, to],
+    queryFn: () =>
+      apiClient.get<EmployeeAttendanceRecord[]>(
+        `/attendance/employees?employeeId=${employeeId}&from=${from}&to=${to}`,
+      ),
+    enabled: !!employeeId,
+    staleTime: 60_000,
+    retry: 1,
+  });
+}
+
+// ─── Leave request types & hook ───────────────────────────────────────────────
+
+export interface LeaveType {
+  id: string;
+  name: string;
+  code: string;
+  isPaid: boolean;
+  annualLimit?: number | null;
+}
+
+export interface LeaveRequest {
+  id: string;
+  employeeId: string;
+  leaveTypeId: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  reason?: string | null;
+  status: string;
+  approvedAt?: string | null;
+  rejectionReason?: string | null;
+  createdAt: string;
+  leaveType: LeaveType;
+}
+
+export function useLeaveRequests(employeeId: string | null) {
+  return useQuery<LeaveRequest[]>({
+    queryKey: ['leave', 'requests', employeeId],
+    queryFn: () =>
+      apiClient.get<LeaveRequest[]>(`/attendance/leave-requests?employeeId=${employeeId}`),
+    enabled: !!employeeId,
+    staleTime: 60_000,
+    retry: 1,
+  });
+}
+
+// ─── Payroll history types & hook ─────────────────────────────────────────────
+
+export interface PayrollRecord {
+  id: string;
+  employeeId: string;
+  payrollRunId: string;
+  workingDays?: number | null;
+  presentDays?: number | null;
+  basic: number;
+  gross: number;
+  totalDeductions: number;
+  netSalary: number;
+  status: string;
+  payrollRun: {
+    id: string;
+    periodStart: string;
+    periodEnd: string;
+    status: string;
+  };
+}
+
+export function useEmployeePayHistory(employeeId: string | null) {
+  return useQuery<PayrollRecord[]>({
+    queryKey: ['payroll', 'history', employeeId],
+    queryFn: () =>
+      apiClient.get<PayrollRecord[]>(`/payroll/employees/${employeeId}/history`),
+    enabled: !!employeeId,
+    staleTime: 120_000,
+    retry: 1,
+  });
+}

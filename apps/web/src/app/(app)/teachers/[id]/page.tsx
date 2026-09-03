@@ -15,6 +15,10 @@ import { EmploymentTab }     from './_components/employment-tab';
 import { QualificationsTab } from './_components/qualifications-tab';
 import { ExperienceTab }     from './_components/experience-tab';
 import { AssignmentsTab }    from './_components/assignments-tab';
+import { TimetableTab }      from './_components/timetable-tab';
+import { AttendanceTab }     from './_components/attendance-tab';
+import { LeaveTab }          from './_components/leave-tab';
+import { PayrollTab }        from './_components/payroll-tab';
 import { PlaceholderTab }    from './_components/placeholder-tab';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -287,10 +291,10 @@ export default function TeacherProfilePage() {
           {activeTab === 'qualifications' && <QualificationsTab employeeId={employee.id} />}
           {activeTab === 'experience'     && <ExperienceTab employeeId={employee.id} />}
           {activeTab === 'assignments'    && <AssignmentsTab employee={employee} />}
-          {activeTab === 'timetable'      && <PlaceholderTab title="Timetable" description="This teacher's class schedule is managed by the Timetable module and will appear here." />}
-          {activeTab === 'attendance'     && <PlaceholderTab title="Attendance" description="Employee attendance records are managed by the Attendance module and will appear here." />}
-          {activeTab === 'leave'          && <PlaceholderTab title="Leave" description="Leave requests, balances, and approvals are managed by the Leave module." />}
-          {activeTab === 'payroll'        && <PlaceholderTab title="Payroll" description="Salary structures, payslips, and payroll history are managed by the Payroll module." />}
+          {activeTab === 'timetable'      && <TimetableTab employeeId={employee.id} />}
+          {activeTab === 'attendance'     && <AttendanceTab employeeId={employee.id} />}
+          {activeTab === 'leave'          && <LeaveTab employeeId={employee.id} />}
+          {activeTab === 'payroll'        && <PayrollTab employeeId={employee.id} />}
           {activeTab === 'documents'      && <PlaceholderTab title="Documents" description="Upload and manage employee documents — ID proof, certificates, contracts — in an upcoming release." />}
           {activeTab === 'performance'    && <PlaceholderTab title="Performance" description="Performance reviews, goals, and appraisal history will be available here." />}
           {activeTab === 'training'       && <PlaceholderTab title="Training" description="Training records, certifications, and professional development will be tracked here." />}
