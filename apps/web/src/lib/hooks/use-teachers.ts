@@ -511,3 +511,110 @@ export function useLifecycleEvents(employeeId: string | null) {
     staleTime: 60_000,
   });
 }
+
+// ─── Bank detail types & hook ─────────────────────────────────────────────────
+
+export interface EmployeeBankDetail {
+  id: string;
+  employeeId: string;
+  bankName: string;
+  accountNumber: string;
+  ifscCode: string;
+  accountType: string;
+  isPrimary: boolean;
+  createdAt: string;
+}
+
+export function useEmployeeBankDetails(employeeId: string | null) {
+  return useQuery<EmployeeBankDetail[]>({
+    queryKey: ['teachers', employeeId, 'bank-details'],
+    queryFn: () => apiClient.get<EmployeeBankDetail[]>(`/teachers/${employeeId}/bank-details`),
+    enabled: !!employeeId,
+    staleTime: 60_000,
+  });
+}
+
+// ─── Onboarding types & hooks ─────────────────────────────────────────────────
+
+export interface OnboardingTask {
+  id: string;
+  onboardingId: string;
+  taskName: string;
+  category: string;
+  isRequired: boolean;
+  isCompleted: boolean;
+  completedAt?: string | null;
+  completedBy?: string | null;
+  remarks?: string | null;
+}
+
+export interface EmployeeOnboarding {
+  id: string;
+  employeeId: string;
+  status: string;
+  completedAt?: string | null;
+  createdAt: string;
+  tasks: OnboardingTask[];
+}
+
+export function useOnboarding(employeeId: string | null) {
+  return useQuery<EmployeeOnboarding | null>({
+    queryKey: ['teachers', employeeId, 'onboarding'],
+    queryFn: () => apiClient.get<EmployeeOnboarding | null>(`/teachers/${employeeId}/onboarding`),
+    enabled: !!employeeId,
+    staleTime: 30_000,
+  });
+}
+
+export function useUpdateOnboardingTask(employeeId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ taskId, isCompleted }: { taskId: string; isCompleted: boolean }) =>
+      apiClient.patch(`/teachers/${employeeId}/onboarding/tasks/${taskId}`, { isCompleted }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['teachers', employeeId, 'onboarding'] }),
+  });
+}
+
+// ─── Offboarding types & hooks ────────────────────────────────────────────────
+
+export interface OffboardingTask {
+  id: string;
+  offboardingId: string;
+  taskName: string;
+  category: string;
+  isRequired: boolean;
+  isCompleted: boolean;
+  completedAt?: string | null;
+  completedBy?: string | null;
+  remarks?: string | null;
+}
+
+export interface EmployeeOffboarding {
+  id: string;
+  employeeId: string;
+  exitType: string;
+  exitDate: string;
+  lastWorkingDate: string;
+  reason?: string | null;
+  status: string;
+  createdAt: string;
+  tasks: OffboardingTask[];
+}
+
+export function useOffboarding(employeeId: string | null) {
+  return useQuery<EmployeeOffboarding | null>({
+    queryKey: ['teachers', employeeId, 'offboarding'],
+    queryFn: () => apiClient.get<EmployeeOffboarding | null>(`/teachers/${employeeId}/offboarding`),
+    enabled: !!employeeId,
+    staleTime: 30_000,
+  });
+}
+
+export function useUpdateOffboardingTask(employeeId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ taskId, isCompleted }: { taskId: string; isCompleted: boolean }) =>
+      apiClient.patch(`/teachers/${employeeId}/offboarding/tasks/${taskId}`, { isCompleted }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['teachers', employeeId, 'offboarding'] }),
+  });
+}

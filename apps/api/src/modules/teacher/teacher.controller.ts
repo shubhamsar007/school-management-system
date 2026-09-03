@@ -30,6 +30,12 @@ import { CreatePerformanceReviewDto } from './dto/create-performance-review.dto'
 import { CreateTrainingRecordDto } from './dto/create-training-record.dto';
 import { CreateAssetDto } from './dto/create-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
+import { CreateBankDetailDto } from './dto/create-bank-detail.dto';
+import { UpdateBankDetailDto } from './dto/update-bank-detail.dto';
+import { CreateOnboardingDto } from './dto/create-onboarding.dto';
+import { UpdateOnboardingTaskDto } from './dto/update-onboarding-task.dto';
+import { CreateOffboardingDto } from './dto/create-offboarding.dto';
+import { UpdateOffboardingTaskDto } from './dto/update-offboarding-task.dto';
 
 @ApiTags('teachers')
 @ApiBearerAuth()
@@ -368,5 +374,112 @@ export class TeacherController {
     @Body() dto: UpdateAssetDto,
   ) {
     return this.teacherService.updateAsset(user.organizationId, id, assetId, dto);
+  }
+
+  // ─── Bank Details ─────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'List bank details for an employee' })
+  @Get(':id/bank-details')
+  findBankDetails(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.teacherService.findBankDetails(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Add a bank detail record' })
+  @Post(':id/bank-details')
+  createBankDetail(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateBankDetailDto,
+  ) {
+    return this.teacherService.createBankDetail(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Update a bank detail record' })
+  @Patch(':id/bank-details/:detailId')
+  updateBankDetail(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('detailId') detailId: string,
+    @Body() dto: UpdateBankDetailDto,
+  ) {
+    return this.teacherService.updateBankDetail(user.organizationId, id, detailId, dto);
+  }
+
+  @ApiOperation({ summary: 'Delete a bank detail record' })
+  @Delete(':id/bank-details/:detailId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteBankDetail(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('detailId') detailId: string,
+  ) {
+    return this.teacherService.deleteBankDetail(user.organizationId, id, detailId);
+  }
+
+  // ─── Onboarding ───────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Get onboarding checklist for an employee' })
+  @Get(':id/onboarding')
+  findOnboarding(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.teacherService.findOnboarding(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Initiate onboarding for an employee' })
+  @Post(':id/onboarding')
+  createOnboarding(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateOnboardingDto,
+  ) {
+    return this.teacherService.createOnboarding(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Update an onboarding task (mark complete/incomplete)' })
+  @Patch(':id/onboarding/tasks/:taskId')
+  updateOnboardingTask(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('taskId') taskId: string,
+    @Body() dto: UpdateOnboardingTaskDto,
+  ) {
+    return this.teacherService.updateOnboardingTask(user.organizationId, id, taskId, dto);
+  }
+
+  // ─── Offboarding ──────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Get offboarding checklist for an employee' })
+  @Get(':id/offboarding')
+  findOffboarding(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.teacherService.findOffboarding(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Initiate offboarding for an employee' })
+  @Post(':id/offboarding')
+  createOffboarding(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateOffboardingDto,
+  ) {
+    return this.teacherService.createOffboarding(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Update an offboarding task (mark complete/incomplete)' })
+  @Patch(':id/offboarding/tasks/:taskId')
+  updateOffboardingTask(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('taskId') taskId: string,
+    @Body() dto: UpdateOffboardingTaskDto,
+  ) {
+    return this.teacherService.updateOffboardingTask(user.organizationId, id, taskId, dto);
   }
 }

@@ -24,6 +24,8 @@ import { PerformanceTab }    from './_components/performance-tab';
 import { TrainingTab }       from './_components/training-tab';
 import { AssetsTab }         from './_components/assets-tab';
 import { HistoryTab }        from './_components/history-tab';
+import { BankTab }           from './_components/bank-tab';
+import { ChecklistTab }      from './_components/checklist-tab';
 import { PlaceholderTab }    from './_components/placeholder-tab';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -43,6 +45,8 @@ type TabId =
   | 'performance'
   | 'training'
   | 'assets'
+  | 'bank'
+  | 'checklist'
   | 'history';
 
 const TABS: { id: TabId; label: string }[] = [
@@ -60,6 +64,8 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'performance',    label: 'Performance' },
   { id: 'training',       label: 'Training' },
   { id: 'assets',         label: 'Assets' },
+  { id: 'bank',           label: 'Bank' },
+  { id: 'checklist',      label: 'Checklist' },
   { id: 'history',        label: 'History' },
 ];
 
@@ -304,6 +310,8 @@ export default function TeacherProfilePage() {
           {activeTab === 'performance'    && <PerformanceTab employeeId={employee.id} />}
           {activeTab === 'training'       && <TrainingTab employeeId={employee.id} />}
           {activeTab === 'assets'         && <AssetsTab employeeId={employee.id} />}
+          {activeTab === 'bank'           && <BankTab employeeId={employee.id} />}
+          {activeTab === 'checklist'      && <ChecklistTab employeeId={employee.id} employmentStatus={employee.employmentStatus} />}
           {activeTab === 'history'        && <HistoryTab employeeId={employee.id} />}
         </>
       ) : null}

@@ -16,6 +16,12 @@ import { UpdateExperienceDto } from './dto/update-experience.dto';
 import { CreateEmergencyContactDto } from './dto/create-emergency-contact.dto';
 import { UpdateEmergencyContactDto } from './dto/update-emergency-contact.dto';
 import { CreateLifecycleEventDto } from './dto/create-lifecycle-event.dto';
+import { CreateBankDetailDto } from './dto/create-bank-detail.dto';
+import { UpdateBankDetailDto } from './dto/update-bank-detail.dto';
+import { CreateOnboardingDto } from './dto/create-onboarding.dto';
+import { UpdateOnboardingTaskDto } from './dto/update-onboarding-task.dto';
+import { CreateOffboardingDto } from './dto/create-offboarding.dto';
+import { UpdateOffboardingTaskDto } from './dto/update-offboarding-task.dto';
 
 @Injectable()
 export class TeacherService {
@@ -884,6 +890,208 @@ export class TeacherService {
         ...(dto.condition !== undefined ? { condition: dto.condition } : {}),
       },
     });
+  }
+
+  // ─── Bank Details ─────────────────────────────────────────────
+
+  async findBankDetails(organizationId: string, employeeId: string) {
+    await this.findTeacher(organizationId, employeeId);
+    return this.prisma.employeeBankDetail.findMany({
+      where: { employeeId },
+      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async createBankDetail(organizationId: string, employeeId: string, dto: CreateBankDetailDto) {
+    await this.findTeacher(organizationId, employeeId);
+    if (dto.isPrimary) {
+      await this.prisma.employeeBankDetail.updateMany({
+        where: { employeeId },
+        data: { isPrimary: false },
+      });
+    }
+    return this.prisma.employeeBankDetail.create({
+      data: {
+        employeeId,
+        bankName: dto.bankName,
+        accountNumber: dto.accountNumber,
+        ifscCode: dto.ifscCode,
+        accountType: dto.accountType ?? 'SAVINGS',
+        isPrimary: dto.isPrimary ?? false,
+      },
+    });
+  }
+
+  async updateBankDetail(
+    organizationId: string,
+    employeeId: string,
+    detailId: string,
+    dto: UpdateBankDetailDto,
+  ) {
+    await this.findTeacher(organizationId, employeeId);
+    const detail = await this.prisma.employeeBankDetail.findFirst({ where: { id: detailId, employeeId } });
+    if (!detail) throw new NotFoundException('Bank detail not found');
+    if (dto.isPrimary) {
+      await this.prisma.employeeBankDetail.updateMany({
+        where: { employeeId, id: { not: detailId } },
+        data: { isPrimary: false },
+      });
+    }
+    return this.prisma.employeeBankDetail.update({
+      where: { id: detailId },
+      data: {
+        ...(dto.bankName !== undefined ? { bankName: dto.bankName } : {}),
+        ...(dto.accountNumber !== undefined ? { accountNumber: dto.accountNumber } : {}),
+        ...(dto.ifscCode !== undefined ? { ifscCode: dto.ifscCode } : {}),
+        ...(dto.accountType !== undefined ? { accountType: dto.accountType } : {}),
+        ...(dto.isPrimary !== undefined ? { isPrimary: dto.isPrimary } : {}),
+      },
+    });
+  }
+
+  async deleteBankDetail(organizationId: string, employeeId: string, detailId: string) {
+    await this.findTeacher(organizationId, employeeId);
+    const detail = await this.prisma.employeeBankDetail.findFirst({ where: { id: detailId, employeeId } });
+    if (!detail) throw new NotFoundException('Bank detail not found');
+    await this.prisma.employeeBankDetail.delete({ where: { id: detailId } });
+  }
+
+  // ─── Onboarding ───────────────────────────────────────────────
+
+  async findOnboarding(organizationId: string, employeeId: string) {
+    await this.findTeacher(organizationId, employeeId);
+    return this.prisma.employeeOnboarding.findUnique({
+      where: { employeeId },
+      include: { tasks: { orderBy: { category: 'asc' } } },
+    });
+  }
+
+  async createOnboarding(organizationId: string, employeeId: string, dto: CreateOnboardingDto) {
+    await this.findTeacher(organizationId, employeeId);
+    const existing = await this.prisma.employeeOnboarding.findUnique({ where: { employeeId } });
+    if (existing) throw new ConflictException('Onboarding record already exists for this employee');
+    return this.prisma.employeeOnboarding.create({
+      data: {
+        employeeId,
+        tasks: {
+          create: (dto.tasks ?? []).map((t) => ({
+            taskName: t.taskName,
+            category: t.category,
+            isRequired: t.isRequired ?? true,
+          })),
+        },
+      },
+      include: { tasks: { orderBy: { category: 'asc' } } },
+    });
+  }
+
+  async updateOnboardingTask(
+    organizationId: string,
+    employeeId: string,
+    taskId: string,
+    dto: UpdateOnboardingTaskDto,
+  ) {
+    await this.findTeacher(organizationId, employeeId);
+    const onboarding = await this.prisma.employeeOnboarding.findUnique({ where: { employeeId } });
+    if (!onboarding) throw new NotFoundException('Onboarding record not found');
+    const task = await this.prisma.onboardingTask.findFirst({ where: { id: taskId, onboardingId: onboarding.id } });
+    if (!task) throw new NotFoundException('Onboarding task not found');
+
+    const updated = await this.prisma.onboardingTask.update({
+      where: { id: taskId },
+      data: {
+        ...(dto.isCompleted !== undefined ? {
+          isCompleted: dto.isCompleted,
+          completedAt: dto.isCompleted ? new Date() : null,
+        } : {}),
+        ...(dto.completedBy !== undefined ? { completedBy: dto.completedBy ?? null } : {}),
+        ...(dto.remarks !== undefined ? { remarks: dto.remarks ?? null } : {}),
+      },
+    });
+
+    // Auto-complete onboarding if all required tasks are done
+    const pendingRequired = await this.prisma.onboardingTask.count({
+      where: { onboardingId: onboarding.id, isRequired: true, isCompleted: false },
+    });
+    if (pendingRequired === 0) {
+      await this.prisma.employeeOnboarding.update({
+        where: { id: onboarding.id },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+      });
+    }
+
+    return updated;
+  }
+
+  // ─── Offboarding ──────────────────────────────────────────────
+
+  async findOffboarding(organizationId: string, employeeId: string) {
+    await this.findTeacher(organizationId, employeeId);
+    return this.prisma.employeeOffboarding.findUnique({
+      where: { employeeId },
+      include: { tasks: { orderBy: { category: 'asc' } } },
+    });
+  }
+
+  async createOffboarding(organizationId: string, employeeId: string, dto: CreateOffboardingDto) {
+    await this.findTeacher(organizationId, employeeId);
+    const existing = await this.prisma.employeeOffboarding.findUnique({ where: { employeeId } });
+    if (existing) throw new ConflictException('Offboarding record already exists for this employee');
+    return this.prisma.employeeOffboarding.create({
+      data: {
+        employeeId,
+        exitType: dto.exitType,
+        exitDate: new Date(dto.exitDate),
+        lastWorkingDate: new Date(dto.lastWorkingDate),
+        reason: dto.reason ?? null,
+        tasks: {
+          create: (dto.tasks ?? []).map((t) => ({
+            taskName: t.taskName,
+            category: t.category,
+            isRequired: t.isRequired ?? true,
+          })),
+        },
+      },
+      include: { tasks: { orderBy: { category: 'asc' } } },
+    });
+  }
+
+  async updateOffboardingTask(
+    organizationId: string,
+    employeeId: string,
+    taskId: string,
+    dto: UpdateOffboardingTaskDto,
+  ) {
+    await this.findTeacher(organizationId, employeeId);
+    const offboarding = await this.prisma.employeeOffboarding.findUnique({ where: { employeeId } });
+    if (!offboarding) throw new NotFoundException('Offboarding record not found');
+    const task = await this.prisma.offboardingTask.findFirst({ where: { id: taskId, offboardingId: offboarding.id } });
+    if (!task) throw new NotFoundException('Offboarding task not found');
+
+    const updated = await this.prisma.offboardingTask.update({
+      where: { id: taskId },
+      data: {
+        ...(dto.isCompleted !== undefined ? {
+          isCompleted: dto.isCompleted,
+          completedAt: dto.isCompleted ? new Date() : null,
+        } : {}),
+        ...(dto.completedBy !== undefined ? { completedBy: dto.completedBy ?? null } : {}),
+        ...(dto.remarks !== undefined ? { remarks: dto.remarks ?? null } : {}),
+      },
+    });
+
+    // Auto-complete offboarding if all required tasks are done
+    const pendingRequired = await this.prisma.offboardingTask.count({
+      where: { offboardingId: offboarding.id, isRequired: true, isCompleted: false },
+    });
+    if (pendingRequired === 0) {
+      await this.prisma.employeeOffboarding.update({
+        where: { id: offboarding.id },
+        data: { status: 'COMPLETED' },
+      });
+    }
+
+    return updated;
   }
 
   // ─── Private helpers ──────────────────────────────────────────
