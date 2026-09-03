@@ -6,16 +6,30 @@ import {
   IsDateString,
   IsEnum,
   IsUUID,
+  IsInt,
+  Min,
   MaxLength,
 } from 'class-validator';
 import { BloodGroupEnum, GenderEnum } from './create-teacher.dto';
 
 export enum EmploymentStatusEnum {
+  DRAFT = 'DRAFT',
+  ONBOARDING = 'ONBOARDING',
+  PROBATION = 'PROBATION',
+  CONFIRMED = 'CONFIRMED',
   ACTIVE = 'ACTIVE',
-  INACTIVE = 'INACTIVE',
   ON_LEAVE = 'ON_LEAVE',
-  TERMINATED = 'TERMINATED',
-  RESIGNED = 'RESIGNED',
+  SUSPENDED = 'SUSPENDED',
+  EXIT_INITIATED = 'EXIT_INITIATED',
+  EXITED = 'EXITED',
+  ARCHIVED = 'ARCHIVED',
+}
+
+export enum EmploymentTypeEnum {
+  FULL_TIME = 'FULL_TIME',
+  PART_TIME = 'PART_TIME',
+  CONTRACT = 'CONTRACT',
+  VISITING = 'VISITING',
 }
 
 export class UpdateTeacherDto {
@@ -118,4 +132,51 @@ export class UpdateTeacherDto {
   @IsUUID()
   @IsOptional()
   reportingManagerId?: string;
+
+  @ApiPropertyOptional({ enum: EmploymentTypeEnum })
+  @IsEnum(EmploymentTypeEnum)
+  @IsOptional()
+  employmentType?: EmploymentTypeEnum;
+
+  @ApiPropertyOptional()
+  @IsDateString()
+  @IsOptional()
+  probationStart?: string;
+
+  @ApiPropertyOptional()
+  @IsDateString()
+  @IsOptional()
+  probationEnd?: string;
+
+  @ApiPropertyOptional()
+  @IsDateString()
+  @IsOptional()
+  confirmationDate?: string;
+
+  @ApiPropertyOptional()
+  @IsDateString()
+  @IsOptional()
+  contractStart?: string;
+
+  @ApiPropertyOptional()
+  @IsDateString()
+  @IsOptional()
+  contractEnd?: string;
+
+  @ApiPropertyOptional()
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  noticePeriodDays?: number;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  workLocation?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  leavingReason?: string;
 }

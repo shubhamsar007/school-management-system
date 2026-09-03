@@ -6,7 +6,7 @@ datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DATABASE_URL")
-  schemas   = ["core", "iam", "hr", "academics", "students", "attendance", "admissions", "finance", "examinations", "ops", "comms", "filestore", "health"]
+  schemas   = ["core", "iam", "hr", "academics", "students", "attendance", "admissions", "finance", "examinations", "ops", "comms", "filestore", "health", "storage"]
 }
 
 // ─────────────────────────────────────────────
@@ -352,25 +352,297 @@ model Employee {
   joiningDate       DateTime  @map("joining_date") @db.Date
   employmentStatus  String    @default("ACTIVE") @map("employment_status") @db.VarChar(20)
   reportingManagerId String?  @map("reporting_manager_id")
-  leavingDate       DateTime? @map("leaving_date") @db.Date
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  deletedAt         DateTime? @map("deleted_at")
+  leavingDate        DateTime? @map("leaving_date") @db.Date
+  leavingReason      String?   @map("leaving_reason")
+  employmentType     String?   @map("employment_type") @db.VarChar(20)
+  probationStart     DateTime? @map("probation_start") @db.Date
+  probationEnd       DateTime? @map("probation_end") @db.Date
+  confirmationDate   DateTime? @map("confirmation_date") @db.Date
+  contractStart      DateTime? @map("contract_start") @db.Date
+  contractEnd        DateTime? @map("contract_end") @db.Date
+  noticePeriodDays   Int?      @map("notice_period_days")
+  workLocation       String?   @map("work_location") @db.VarChar(100)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
 
-  organization     Organization   @relation(fields: [organizationId], references: [id])
-  person           Person         @relation(fields: [personId], references: [id])
-  employeeType     EmployeeType?  @relation(fields: [employeeTypeId], references: [id])
-  department       Department?    @relation(fields: [departmentId], references: [id])
-  designation      Designation?   @relation(fields: [designationId], references: [id])
-  campus           Campus?        @relation(fields: [campusId], references: [id])
-  reportingManager Employee?      @relation("ManagerReports", fields: [reportingManagerId], references: [id])
-  directReports    Employee[]     @relation("ManagerReports")
+  organization       Organization   @relation(fields: [organizationId], references: [id])
+  person             Person         @relation(fields: [personId], references: [id])
+  employeeType       EmployeeType?  @relation(fields: [employeeTypeId], references: [id])
+  department         Department?    @relation(fields: [departmentId], references: [id])
+  designation        Designation?   @relation(fields: [designationId], references: [id])
+  campus             Campus?        @relation(fields: [campusId], references: [id])
+  reportingManager   Employee?      @relation("ManagerReports", fields: [reportingManagerId], references: [id])
+  directReports      Employee[]     @relation("ManagerReports")
   teacherAssignments TeacherAssignment[]
   employeeAttendance EmployeeAttendance[]
-  leaveRequests    LeaveRequest[]
+  leaveRequests      LeaveRequest[]
+  qualifications     EmployeeQualification[]
+  experiences        EmployeeExperience[]
+  emergencyContacts  EmployeeEmergencyContact[]
+  lifecycleEvents    EmployeeLifecycleEvent[]
+  bankDetails        EmployeeBankDetail[]
+  performanceReviews PerformanceReview[] @relation("EmployeePerformanceReviews")
+  trainingRecords    TrainingRecord[]
+  assets             EmployeeAsset[]
+  onboarding         EmployeeOnboarding?
+  offboarding        EmployeeOffboarding?
 
   @@unique([organizationId, employeeNumber])
   @@map("employees")
+  @@schema("hr")
+}
+
+model EmployeeQualification {
+  id                 String    @id @default(uuid())
+  employeeId         String    @map("employee_id")
+  degree             String    @db.VarChar(200)
+  institution        String    @db.VarChar(200)
+  university         String?   @db.VarChar(200)
+  specialization     String?   @db.VarChar(200)
+  startYear          Int       @map("start_year")
+  endYear            Int?      @map("end_year")
+  percentage         Decimal?  @db.Decimal(5, 2)
+  grade              String?   @db.VarChar(20)
+  certificateFileId  String?   @map("certificate_file_id")
+  verificationStatus String    @default("PENDING") @map("verification_status") @db.VarChar(20)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("employee_qualifications")
+  @@schema("hr")
+}
+
+model EmployeeExperience {
+  id                String    @id @default(uuid())
+  employeeId        String    @map("employee_id")
+  organization      String    @db.VarChar(200)
+  designation       String    @db.VarChar(200)
+  department        String?   @db.VarChar(200)
+  startDate         DateTime  @map("start_date") @db.Date
+  endDate           DateTime? @map("end_date") @db.Date
+  responsibilities  String?
+  reasonForLeaving  String?   @map("reason_for_leaving") @db.VarChar(200)
+  certificateFileId String?   @map("certificate_file_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("employee_experiences")
+  @@schema("hr")
+}
+
+model EmployeeEmergencyContact {
+  id             String   @id @default(uuid())
+  employeeId     String   @map("employee_id")
+  name           String   @db.VarChar(200)
+  relationship   String   @db.VarChar(100)
+  phone          String   @db.VarChar(30)
+  alternatePhone String?  @map("alternate_phone") @db.VarChar(30)
+  address        String?
+  priority       Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("employee_emergency_contacts")
+  @@schema("hr")
+}
+
+model EmployeeLifecycleEvent {
+  id            String   @id @default(uuid())
+  employeeId    String   @map("employee_id")
+  eventType     String   @map("event_type") @db.VarChar(50)
+  fromStatus    String?  @map("from_status") @db.VarChar(50)
+  toStatus      String   @map("to_status") @db.VarChar(50)
+  effectiveDate DateTime @map("effective_date") @db.Date
+  reason        String?
+  remarks       String?
+  performedBy   String?  @map("performed_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("employee_lifecycle_events")
+  @@schema("hr")
+}
+
+model EmployeeBankDetail {
+  id            String   @id @default(uuid())
+  employeeId    String   @map("employee_id")
+  bankName      String   @map("bank_name") @db.VarChar(200)
+  accountNumber String   @map("account_number") @db.VarChar(100)
+  ifscCode      String   @map("ifsc_code") @db.VarChar(20)
+  accountType   String   @default("SAVINGS") @map("account_type") @db.VarChar(20)
+  isPrimary     Boolean  @default(false) @map("is_primary")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("employee_bank_details")
+  @@schema("hr")
+}
+
+model PerformanceReview {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  employeeId     String   @map("employee_id")
+  academicYearId String   @map("academic_year_id")
+  reviewType     String   @map("review_type") @db.VarChar(30)
+  reviewedBy     String   @map("reviewed_by")
+  reviewDate     DateTime @map("review_date") @db.Date
+  overallRating  Decimal? @map("overall_rating") @db.Decimal(3, 1)
+  remarks        String?
+  status         String   @default("DRAFT") @db.VarChar(20)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  employee Employee              @relation("EmployeePerformanceReviews", fields: [employeeId], references: [id])
+  criteria PerformanceCriteria[]
+  goals    PerformanceGoal[]
+
+  @@map("performance_reviews")
+  @@schema("hr")
+}
+
+model PerformanceCriteria {
+  id           String  @id @default(uuid())
+  reviewId     String  @map("review_id")
+  criteriaName String  @map("criteria_name") @db.VarChar(200)
+  rating       Decimal @db.Decimal(3, 1)
+  remarks      String?
+
+  review PerformanceReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@map("performance_criteria")
+  @@schema("hr")
+}
+
+model PerformanceGoal {
+  id       String  @id @default(uuid())
+  reviewId String  @map("review_id")
+  goal     String
+  target   String? @db.VarChar(500)
+  status   String  @default("PENDING") @db.VarChar(20)
+
+  review PerformanceReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@map("performance_goals")
+  @@schema("hr")
+}
+
+model TrainingRecord {
+  id                 String    @id @default(uuid())
+  employeeId         String    @map("employee_id")
+  title              String    @db.VarChar(255)
+  trainingType       String    @map("training_type") @db.VarChar(30)
+  provider           String?   @db.VarChar(200)
+  startDate          DateTime  @map("start_date") @db.Date
+  endDate            DateTime? @map("end_date") @db.Date
+  durationHours      Int?      @map("duration_hours")
+  certificateFileId  String?   @map("certificate_file_id")
+  expiryDate         DateTime? @map("expiry_date") @db.Date
+  verificationStatus String    @default("PENDING") @map("verification_status") @db.VarChar(20)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("training_records")
+  @@schema("hr")
+}
+
+model EmployeeAsset {
+  id              String    @id @default(uuid())
+  organizationId  String    @map("organization_id")
+  employeeId      String    @map("employee_id")
+  assetType       String    @map("asset_type") @db.VarChar(50)
+  assetCode       String?   @map("asset_code") @db.VarChar(100)
+  description     String?   @db.VarChar(500)
+  issueDate       DateTime  @map("issue_date") @db.Date
+  expectedReturn  DateTime? @map("expected_return") @db.Date
+  returnedDate    DateTime? @map("returned_date") @db.Date
+  condition       String    @default("GOOD") @db.VarChar(20)
+  returnCondition String?   @map("return_condition") @db.VarChar(20)
+  issuedBy        String?   @map("issued_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("employee_assets")
+  @@schema("hr")
+}
+
+model EmployeeOnboarding {
+  id          String    @id @default(uuid())
+  employeeId  String    @unique @map("employee_id")
+  status      String    @default("IN_PROGRESS") @db.VarChar(20)
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  employee Employee        @relation(fields: [employeeId], references: [id])
+  tasks    OnboardingTask[]
+
+  @@map("employee_onboarding")
+  @@schema("hr")
+}
+
+model OnboardingTask {
+  id           String    @id @default(uuid())
+  onboardingId String    @map("onboarding_id")
+  taskName     String    @map("task_name") @db.VarChar(255)
+  category     String    @db.VarChar(50)
+  isRequired   Boolean   @default(true) @map("is_required")
+  isCompleted  Boolean   @default(false) @map("is_completed")
+  completedAt  DateTime? @map("completed_at")
+  completedBy  String?   @map("completed_by")
+  remarks      String?
+
+  onboarding EmployeeOnboarding @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+
+  @@map("onboarding_tasks")
+  @@schema("hr")
+}
+
+model EmployeeOffboarding {
+  id              String   @id @default(uuid())
+  employeeId      String   @unique @map("employee_id")
+  exitType        String   @map("exit_type") @db.VarChar(30)
+  exitDate        DateTime @map("exit_date") @db.Date
+  lastWorkingDate DateTime @map("last_working_date") @db.Date
+  reason          String?
+  status          String   @default("INITIATED") @db.VarChar(20)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  employee Employee          @relation(fields: [employeeId], references: [id])
+  tasks    OffboardingTask[]
+
+  @@map("employee_offboarding")
+  @@schema("hr")
+}
+
+model OffboardingTask {
+  id            String    @id @default(uuid())
+  offboardingId String    @map("offboarding_id")
+  taskName      String    @map("task_name") @db.VarChar(255)
+  category      String    @db.VarChar(50)
+  isRequired    Boolean   @default(true) @map("is_required")
+  isCompleted   Boolean   @default(false) @map("is_completed")
+  completedAt   DateTime? @map("completed_at")
+  completedBy   String?   @map("completed_by")
+  remarks       String?
+
+  offboarding EmployeeOffboarding @relation(fields: [offboardingId], references: [id], onDelete: Cascade)
+
+  @@map("offboarding_tasks")
   @@schema("hr")
 }
 

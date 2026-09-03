@@ -469,11 +469,194 @@ department_id FK → departments.id
 designation_id FK → designations.id
 campus_id FK → campuses.id
 joining_date DATE NOT NULL
-employment_status ENUM('ACTIVE','ON_LEAVE','SUSPENDED','RESIGNED','TERMINATED','RETIRED')
+employment_status ENUM(
+  -- Lifecycle states (primary)
+  'DRAFT',           -- record created, not yet active
+  'ONBOARDING',      -- joined, completing onboarding checklist
+  'PROBATION',       -- within probation period
+  'CONFIRMED',       -- probation passed, permanent employee
+  'ACTIVE',          -- regular active employee
+  'EXIT_INITIATED',  -- resignation/termination initiated
+  'EXITED',          -- formally exited
+  'ARCHIVED',        -- historical record only
+  -- Transient states (overlay on ACTIVE)
+  'ON_LEAVE',        -- currently on approved leave
+  'SUSPENDED'        -- disciplinary suspension
+)
+employment_type ENUM('FULL_TIME','PART_TIME','CONTRACT','VISITING')
+probation_start DATE
+probation_end DATE
+confirmation_date DATE
+contract_start DATE
+contract_end DATE
+notice_period_days INT
+work_location VARCHAR(100)
 reporting_manager_id FK → employees.id   -- self-referential
 leaving_date DATE
+leaving_reason TEXT
 created_at, updated_at, deleted_at
 UNIQUE (organization_id, employee_number)
+
+-- employee_qualifications
+id UUID PK
+employee_id FK → employees.id NOT NULL
+degree VARCHAR(200) NOT NULL       -- 'B.Sc Mathematics', 'M.Ed', 'CTET'
+institution VARCHAR(200) NOT NULL
+university VARCHAR(200)
+specialization VARCHAR(200)
+start_year INT NOT NULL
+end_year INT                       -- NULL = ongoing
+percentage DECIMAL(5,2)
+grade VARCHAR(20)
+certificate_file_id FK → files.id  -- uploaded certificate
+verification_status ENUM('PENDING','VERIFIED','REJECTED') DEFAULT 'PENDING'
+created_at, updated_at
+
+-- employee_experience  [previous employment history]
+id UUID PK
+employee_id FK → employees.id NOT NULL
+organization VARCHAR(200) NOT NULL
+designation VARCHAR(200) NOT NULL
+department VARCHAR(200)
+start_date DATE NOT NULL
+end_date DATE                      -- NULL = current (shouldn't happen for previous jobs)
+responsibilities TEXT
+reason_for_leaving VARCHAR(200)
+certificate_file_id FK → files.id
+created_at, updated_at
+
+-- employee_emergency_contacts
+id UUID PK
+employee_id FK → employees.id NOT NULL
+name VARCHAR(200) NOT NULL
+relationship VARCHAR(100) NOT NULL
+phone VARCHAR(30) NOT NULL
+alternate_phone VARCHAR(30)
+address TEXT
+priority INT DEFAULT 1             -- 1=primary, 2=secondary
+created_at, updated_at
+
+-- employee_lifecycle_events  [status changes become historical events]
+id UUID PK
+employee_id FK → employees.id NOT NULL
+event_type ENUM(
+  'JOINED','ONBOARDING_COMPLETED','PROBATION_STARTED','CONFIRMED',
+  'PROMOTED','TRANSFERRED','DEPARTMENT_CHANGED','DESIGNATION_CHANGED',
+  'SALARY_REVISED','SUSPENDED','REINSTATED',
+  'RESIGNED','TERMINATED','RETIRED','ARCHIVED'
+)
+from_status VARCHAR(50)            -- previous employment_status
+to_status VARCHAR(50) NOT NULL     -- new employment_status
+effective_date DATE NOT NULL
+reason TEXT
+remarks TEXT
+performed_by FK → employees.id     -- HR/admin who recorded the event
+created_at
+
+-- employee_bank_details  [for payroll disbursement]
+id UUID PK
+employee_id FK → employees.id NOT NULL
+bank_name VARCHAR(200) NOT NULL
+account_number VARCHAR(100) NOT NULL
+ifsc_code VARCHAR(20) NOT NULL
+account_type ENUM('SAVINGS','CURRENT') DEFAULT 'SAVINGS'
+is_primary BOOLEAN DEFAULT false
+created_at, updated_at
+
+-- performance_reviews
+id UUID PK
+organization_id FK NOT NULL
+employee_id FK → employees.id NOT NULL
+academic_year_id FK NOT NULL
+review_type ENUM('ANNUAL','HALF_YEARLY','QUARTERLY','PROBATION_END')
+reviewed_by FK → employees.id NOT NULL   -- the reviewer
+review_date DATE NOT NULL
+overall_rating DECIMAL(3,1)              -- 0.0 to 5.0
+remarks TEXT
+status ENUM('DRAFT','SUBMITTED','ACKNOWLEDGED','CLOSED') DEFAULT 'DRAFT'
+created_at, updated_at
+
+-- performance_criteria  [configurable criteria per review]
+id UUID PK
+review_id FK → performance_reviews.id NOT NULL
+criteria_name VARCHAR(200) NOT NULL    -- 'Teaching Quality', 'Student Engagement'
+rating DECIMAL(3,1) NOT NULL
+remarks TEXT
+
+-- performance_goals
+id UUID PK
+review_id FK → performance_reviews.id NOT NULL
+goal TEXT NOT NULL
+target VARCHAR(500)
+status ENUM('PENDING','IN_PROGRESS','ACHIEVED','NOT_ACHIEVED') DEFAULT 'PENDING'
+
+-- training_records  [professional development log]
+id UUID PK
+employee_id FK → employees.id NOT NULL
+title VARCHAR(255) NOT NULL
+training_type ENUM('TRAINING','WORKSHOP','CERTIFICATION','SEMINAR','CONFERENCE')
+provider VARCHAR(200)
+start_date DATE NOT NULL
+end_date DATE
+duration_hours INT
+certificate_file_id FK → files.id
+expiry_date DATE                   -- for certifications that expire
+verification_status ENUM('PENDING','VERIFIED','REJECTED') DEFAULT 'PENDING'
+created_at, updated_at
+
+-- employee_assets  [items issued to employee]
+id UUID PK
+organization_id FK NOT NULL
+employee_id FK → employees.id NOT NULL
+asset_type ENUM('LAPTOP','ID_CARD','ACCESS_CARD','TABLET','KEYS','TEACHING_EQUIPMENT','UNIFORM','OTHER')
+asset_code VARCHAR(100)
+description VARCHAR(500)
+issue_date DATE NOT NULL
+expected_return DATE
+returned_date DATE
+condition ENUM('GOOD','FAIR','DAMAGED') DEFAULT 'GOOD'
+return_condition ENUM('GOOD','FAIR','DAMAGED')
+issued_by FK → employees.id
+created_at, updated_at
+
+-- employee_onboarding  [one checklist per employee]
+id UUID PK
+employee_id FK → employees.id NOT NULL UNIQUE
+status ENUM('IN_PROGRESS','COMPLETED','CANCELLED') DEFAULT 'IN_PROGRESS'
+completed_at TIMESTAMPTZ
+created_at, updated_at
+
+-- onboarding_tasks
+id UUID PK
+onboarding_id FK → employee_onboarding.id NOT NULL
+task_name VARCHAR(255) NOT NULL
+category ENUM('PERSONAL','EMPLOYMENT','DOCUMENT','SYSTEM_ACCESS','ASSET','ORIENTATION')
+is_required BOOLEAN DEFAULT true
+is_completed BOOLEAN DEFAULT false
+completed_at TIMESTAMPTZ
+completed_by FK → employees.id
+remarks TEXT
+
+-- employee_offboarding
+id UUID PK
+employee_id FK → employees.id NOT NULL UNIQUE
+exit_type ENUM('RESIGNATION','TERMINATION','RETIREMENT','TRANSFER')
+exit_date DATE NOT NULL
+last_working_date DATE NOT NULL
+reason TEXT
+status ENUM('INITIATED','IN_PROGRESS','COMPLETED','CANCELLED') DEFAULT 'INITIATED'
+created_at, updated_at
+
+-- offboarding_tasks
+id UUID PK
+offboarding_id FK → employee_offboarding.id NOT NULL
+task_name VARCHAR(255) NOT NULL
+category ENUM('KNOWLEDGE_TRANSFER','ASSIGNMENT_HANDOVER','ASSET_RETURN','LEAVE_SETTLEMENT','PAYROLL_SETTLEMENT','ACCESS_REVOKE','DOCUMENT_ISSUE')
+is_required BOOLEAN DEFAULT true
+is_completed BOOLEAN DEFAULT false
+completed_at TIMESTAMPTZ
+completed_by FK → employees.id
+remarks TEXT
 ```
 
 ### ACADEMICS
@@ -1483,12 +1666,66 @@ GET    /api/v1/students/:id/fees
 GET    /api/v1/students/:id/results
 
 Employees
-GET    /api/v1/employees
-POST   /api/v1/employees
-GET    /api/v1/employees/:id
-PATCH  /api/v1/employees/:id
-GET    /api/v1/employees/:id/attendance
-GET    /api/v1/employees/:id/leaves
+GET    /api/v1/employees                                  -- list: ?search, department, designation, type, status, campus, page, limit
+POST   /api/v1/employees                                  -- create employee
+GET    /api/v1/employees/stats                            -- KPI dashboard counts
+GET    /api/v1/employees/:id                              -- full profile
+PATCH  /api/v1/employees/:id                             -- update core fields
+DELETE /api/v1/employees/:id                             -- soft-delete
+
+-- Sub-resources (mirrors student module pattern)
+GET    /api/v1/employees/:id/qualifications
+POST   /api/v1/employees/:id/qualifications
+PATCH  /api/v1/employees/:id/qualifications/:qId
+DELETE /api/v1/employees/:id/qualifications/:qId
+
+GET    /api/v1/employees/:id/experience
+POST   /api/v1/employees/:id/experience
+PATCH  /api/v1/employees/:id/experience/:expId
+DELETE /api/v1/employees/:id/experience/:expId
+
+GET    /api/v1/employees/:id/emergency-contacts
+POST   /api/v1/employees/:id/emergency-contacts
+PATCH  /api/v1/employees/:id/emergency-contacts/:contactId
+DELETE /api/v1/employees/:id/emergency-contacts/:contactId
+
+GET    /api/v1/employees/:id/assignments               -- teacher assignments
+POST   /api/v1/employees/:id/assignments
+DELETE /api/v1/employees/:id/assignments/:assignmentId
+
+GET    /api/v1/employees/:id/attendance                -- delegates to attendance module
+GET    /api/v1/employees/:id/leaves                    -- delegates to leave module
+GET    /api/v1/employees/:id/payroll                   -- delegates to payroll module
+-- Timetable: reuse GET /api/v1/timetables/teacher/:id (already in plan)
+
+GET    /api/v1/employees/:id/performance
+POST   /api/v1/employees/:id/performance
+PATCH  /api/v1/employees/:id/performance/:reviewId
+
+GET    /api/v1/employees/:id/training
+POST   /api/v1/employees/:id/training
+PATCH  /api/v1/employees/:id/training/:recordId
+DELETE /api/v1/employees/:id/training/:recordId
+
+GET    /api/v1/employees/:id/assets
+POST   /api/v1/employees/:id/assets
+PATCH  /api/v1/employees/:id/assets/:assetId
+
+GET    /api/v1/employees/:id/documents                -- uses documents table (entity_type='EMPLOYEE')
+
+GET    /api/v1/employees/:id/lifecycle-events
+POST   /api/v1/employees/:id/lifecycle-events         -- status change with reason
+
+GET    /api/v1/employees/:id/onboarding
+PATCH  /api/v1/employees/:id/onboarding/tasks/:taskId -- complete/uncomplete a task
+
+POST   /api/v1/employees/:id/offboarding              -- initiate offboarding
+PATCH  /api/v1/employees/:id/offboarding/tasks/:taskId
+
+GET    /api/v1/employees/:id/bank-details
+POST   /api/v1/employees/:id/bank-details
+PATCH  /api/v1/employees/:id/bank-details/:detailId
+DELETE /api/v1/employees/:id/bank-details/:detailId
 
 Timetable
 GET    /api/v1/timetables
@@ -1621,13 +1858,16 @@ FileStorageService (interface)
 
 ### Phase 2 — People & Academic Config (Week 3-4)
 
-- Prisma schema Layer 2
-- Employee CRUD + departments + designations
+- Prisma schema Layer 2 (employees, students, academics, HR sub-models)
+- Employee CRUD + departments + designations + employee types
+- Employee qualifications, experience, emergency contacts
+- Employee lifecycle events (status changes with history)
+- Employee onboarding/offboarding checklists
 - Student CRUD + guardian linking
 - Academic years, classes, sections, subjects
 - Class-subject mapping
-- Teacher assignments
-- Basic UI: dashboards, people tables
+- Teacher assignments (with workload tracking)
+- Basic UI: dashboards, people tables, employee profile skeleton
 
 ### Phase 3 — Timetable & Attendance (Week 5-6)
 
@@ -1766,3 +2006,751 @@ The following were outstanding at time of plan creation. Confirm before implemen
 ---
 
 *Plan version: 1.0 — ready for implementation after open decisions are confirmed.*
+
+---
+
+## 19. Frontend API Layer Strategy
+
+**Decision: TanStack Query v5 + typed API client**
+
+### Why TanStack Query (not raw fetch, not SWR, not tRPC)
+
+| Option | Reason rejected |
+|---|---|
+| Raw `fetch` in components | No caching, no deduplication, loading/error state written by hand in every component — does not scale across 14 modules |
+| SWR | Good for simple read-heavy apps. Lacks first-class mutation support, optimistic updates, and query invalidation patterns needed for an ERP with complex write operations |
+| tRPC | Excellent type safety but requires the backend to speak tRPC. Our backend is NestJS REST — wrapping it with a tRPC layer adds complexity without real benefit at this stage |
+| TanStack Query v5 | Industry standard for React server-state management. Built-in caching, background refetch, loading/error states, optimistic updates, and query invalidation. Pairs perfectly with our REST API. |
+
+### Structure
+
+```
+apps/web/src/
+├── lib/
+│   ├── api-client.ts          ← base fetch wrapper (auth headers, base URL, error handling)
+│   └── hooks/
+│       ├── use-students.ts    ← useStudents(), useStudent(id), useStudentStats()
+│       ├── use-academics.ts   ← useClasses(), useSections(classId)
+│       ├── use-academic-years.ts
+│       └── ...                ← one file per module, added as modules are built
+```
+
+### Why a typed API client wrapper (not fetch directly in hooks)
+
+- One place to attach the `Authorization: Bearer <token>` header
+- One place to handle 401 → redirect to login
+- One place to parse the response envelope (`{ success, data, meta }`)
+- Hooks stay clean — they only describe *what* to fetch, not *how*
+
+### Query key convention
+
+```ts
+// Consistent keys enable targeted invalidation
+['students', { orgId }]               // list
+['students', id]                       // single student
+['students', 'stats', { orgId }]      // KPI stats
+['students', id, 'enrollments']        // enrollments sub-resource
+['students', id, 'guardians']          // guardians sub-resource
+['academics', 'classes', { orgId }]    // class list
+['academics', 'sections', classId]     // sections for a class
+```
+
+---
+
+## 20. Student Module — Implementation Plan
+
+### What the user confirmed they want
+
+Based on design discussion, the Students section should have:
+
+**URL structure (clean, no separate pages per class)**
+```
+/students                        → landing (Overview tab)
+/students?class=8                → Classes tab filtered to Class 8
+/students?class=8&section=A      → All Students tab filtered
+/students/:studentId             → Student profile
+```
+
+**Three-tab landing page**
+
+```
+Students                                    + Add Student
+Academic Year: 2026-27 ▼
+
+[Overview]  [Classes]  [All Students]
+```
+
+### Tab 1 — Overview
+
+KPI cards (6 stats):
+```
+Total Students    Active Students    New Admissions
+1,248             1,210              86
+
+Boys              Girls              Inactive
+642               606                38
+```
+
+Charts:
+- Bar chart: Students by Class (Class 1 → Class 10 with student count)
+- Inline breakdown: Students by Section within each class
+
+Lists:
+- Recent Admissions (last 5–10 students added)
+- Students Requiring Attention (pending status, incomplete profile)
+
+### Tab 2 — Classes
+
+Hierarchical drill-down rendered on one page using URL params (no page navigation):
+
+**Level 1 — Class list:**
+```
+Class 1    4 Sections    128 Students   →
+Class 2    4 Sections    135 Students   →
+...
+Class 10   4 Sections    177 Students   →
+```
+
+**Level 2 — Section list (click a class):**
+```
+← Class 8
+Section A    38 Students   →
+Section B    36 Students   →
+Section C    37 Students   →
+Section D    36 Students   →
+```
+
+**Level 3 — Student list (click a section):**
+```
+← Class 8 / Section A
+Photo | Student | Roll | Gender | Status | Actions
+```
+
+### Tab 3 — All Students
+
+Full searchable, filterable, paginated table.
+
+**Search:** student name, admission number, parent name
+
+**Basic filters:** Academic Year, Class, Section, Gender, Status
+
+**Advanced filters (collapsed by default):**
+House, Admission Date range, Age, Blood Group, Transport Required, Hostel Student, Scholarship, Fee Status, Attendance Status
+
+**Table columns:** Student (avatar + name + email), Admission No., Class, Section, Parent, Phone, Status, Actions (View, Edit)
+
+**Bulk operations (when rows selected):**
+Assign Section, Change House, Promote, Transfer, Generate ID Cards, Export, Send Notification, Upload Documents, Deactivate
+
+Destructive bulk actions (Deactivate, Transfer) require confirmation modal + permission check.
+
+### Student Profile (`/students/:id`)
+
+```
+← Students
+
+[Photo]  Rahul Sharma
+         Admission No: ADM-1024  |  Class 8-A  |  Roll No: 17
+         Status: Active
+
+[Edit Student]  [More Actions ▼]
+```
+
+**Tabs:**
+
+| Tab | Source | Status |
+|---|---|---|
+| Overview | Aggregates from all modules | Build now (summary only) |
+| Personal | `GET /v1/students/:id` → person fields | Build now |
+| Parents & Guardians | `GET /v1/students/:id/guardians` | Build now |
+| Enrollment | `GET /v1/students/:id/enrollments` | Build now |
+| Documents | `GET /v1/documents?entity=STUDENT&entityId=:id` | Build now (basic) |
+| Health | `GET /v1/students/:id/health` | Build now (read-only, no backend yet) |
+| Discipline | Future module | Placeholder tab |
+| Activities | Future module | Placeholder tab |
+| Communication | Future module | Placeholder tab |
+| History / Audit | Future module | Placeholder tab |
+
+Tabs for Academic, Attendance, Examinations, and Fees **do not duplicate** those modules. The profile shows a summary widget that links to the respective module.
+
+### APIs needed — gap analysis
+
+| Feature | API Status | Action needed |
+|---|---|---|
+| KPI stats (total, active, boys, girls, new admissions, inactive) | ❌ Missing | Add `GET /v1/students/stats` |
+| Student list with filters + pagination + search | ❌ Missing query params | Add query DTO to `GET /v1/students` |
+| Student list filtered by classId + sectionId + academicYearId | ❌ Missing | Same — add as query params |
+| Academic year list | ✅ `GET /v1/organizations/:id/academic-years` | Ready |
+| Class list | ✅ `GET /v1/academics/classes` | Ready |
+| Sections per class | ✅ `GET /v1/academics/classes/:classId/sections` | Ready |
+| Student detail | ✅ `GET /v1/students/:id` | Ready |
+| Guardians | ✅ `GET /v1/students/:id/guardians` | Ready |
+| Enrollment history | ✅ `GET /v1/students/:id/enrollments` | Ready |
+| Bulk operations | ❌ None exist | Phase 3 — add bulk endpoints |
+| Add Student (multi-step form) | ✅ `POST /v1/students` | Ready |
+
+### Build order
+
+**Phase 1 — Backend gaps (do first)**
+1. Add query params + pagination to `GET /v1/students` (search, classId, sectionId, academicYearId, status, gender, page, limit)
+2. Add `GET /v1/students/stats` endpoint
+
+**Phase 2 — Frontend: landing page**
+3. API client setup (`lib/api-client.ts`)
+4. Query hooks (`use-students.ts`, `use-academics.ts`, `use-academic-years.ts`)
+5. Three-tab Students page (Overview, Classes, All Students) connected to real API
+
+**Phase 3 — Frontend: student profile**
+6. Student profile page with Overview, Personal, Parents, Enrollment tabs
+7. Add Student multi-step form / drawer
+
+**Phase 4 — Advanced (later)**
+8. Bulk operations (needs new API endpoints)
+9. Documents, Health tabs
+10. Advanced filters (House, Transport, Hostel, etc.)
+
+*Plan version: 1.1 — Student module plan and API layer strategy added 2026-08-31.*
+
+---
+
+## 21. Teachers & Staff Module — Implementation Plan
+
+### Design principles
+
+- Visual and interaction design must mirror the student module exactly — same component patterns, same tab layout, same filter/search UX
+- Every sub-resource (qualifications, experience, emergency contacts, etc.) follows the same sub-resource API pattern as students (guardians, enrollments)
+- All tab data is fetched independently via TanStack Query so each tab loads without blocking others
+- Shared UI components live in `apps/web/src/components/shared/` and are imported by both student and teacher modules — one file to change, both modules update
+- Status changes are never overwrites — they produce a lifecycle event record so full history is always available
+
+### URL structure
+
+```
+/teachers                          → landing page (3 tabs)
+/teachers/:employeeId              → Employee 360° profile (15 tabs)
+```
+
+### Landing page — three tabs
+
+```
+Teachers & Staff                            [+ Add Employee]
+Academic Year: 2026-27 ▼
+
+[Overview]  [Directory]  [Departments]
+```
+
+### Tab 1 — Overview
+
+KPI cards (two rows):
+```
+Total Staff    Active    On Leave    Absent Today    Present Today
+87             82        4           3               79
+
+Teachers    Non-Teaching    New Joiners    Probation Ending    Contracts Expiring
+72          15              6              2                   1
+```
+
+Charts:
+- Bar chart: Staff by Department (mirrors Students by Class chart)
+- Line chart: Monthly attendance trend (last 6 months, staff average %)
+
+Lists:
+- New Joiners this month (last 5, with avatar + name + designation + joined date)
+- Attention Required (contract expiring ≤30 days, probation ending ≤10 days, missing documents, attendance below threshold)
+
+### Tab 2 — Directory
+
+Mirrors the All Students tab exactly in structure.
+
+**Search:** name, employee ID, phone, email
+
+**Filters:** Department, Designation, Employee Type, Employment Status, Campus, Employment Type (Full-time/Part-time/Contract)
+
+**Columns:** Employee (avatar + name + designation) | Employee ID | Department | Subjects | Status | Joined | Actions
+
+**Sub-tabs within Directory:**
+```
+[All Staff (87)]  [Teachers (72)]  [Non-Teaching (15)]  [Former (12)]
+```
+
+**Bulk operations (when rows selected):**
+Assign Department, Assign Campus, Change Status, Export, Send Notification
+
+### Tab 3 — Departments
+
+Hierarchical drill-down mirroring the Classes tab.
+
+**Level 1 — Department list:**
+```
+Academic Department     3 Sub-departments    52 Employees   →
+Administration          –                    12 Employees   →
+Finance                 –                    5 Employees    →
+```
+
+**Level 2 — Employees in department:**
+```
+← Academic Department
+[Avatar] Rahul Sharma    Mathematics Teacher    ACTIVE    →
+[Avatar] Priya Gupta     Science Teacher        ACTIVE    →
+```
+
+Clicking a row navigates to `/teachers/:id`.
+
+---
+
+### Employee 360° Profile (`/teachers/:id`)
+
+```
+← Teachers & Staff
+
+[Large Avatar]  Rahul Sharma
+                EMP-2024-0012 · Mathematics Teacher · Academic Department
+                8-A Class Teacher · 2026–27
+                                                         [Edit Employee]  [More Actions ▼]
+                ACTIVE
+```
+
+**Tab strip (15 tabs):**
+
+```
+[Overview] [Personal] [Employment] [Qualifications] [Experience]
+[Assignments] [Timetable] [Attendance] [Leave] [Payroll]
+[Documents] [Performance] [Training] [Assets] [History]
+```
+
+---
+
+### Tab: Overview
+
+The employee command center. Aggregates live data from all sub-resources.
+
+```
+Today's Attendance          Today's Classes     Weekly Workload
+Present — 08:42 AM          5 periods           28 / 32 periods
+
+Leave Balance               Current Net Salary  Latest Rating
+Casual: 8 remaining         ₹48,500             4.2 / 5.0
+```
+
+Today's Schedule (read from timetable):
+```
+08:00   Mathematics — 8-A
+09:00   Mathematics — 7-B
+10:00   Free period
+11:00   Mathematics — 9-A
+```
+
+Alerts (system-generated, shown only if applicable):
+```
+⚠  Contract expires in 28 days
+⚠  B.Ed verification pending
+✓  All documents verified
+```
+
+Recent Activity (from lifecycle events + audit log):
+```
+Today         Checked in 08:42
+Yesterday     Leave request approved
+Aug 30        Teaching assignment added — 9-A Mathematics
+Aug 20        Salary revised ₹45,000 → ₹48,500
+```
+
+---
+
+### Tab: Personal
+
+Two-column layout matching student personal tab.
+
+**Personal Information section:**
+Name (first / middle / last / preferred), DOB, Gender, Blood Group, Nationality, Marital Status, Profile Photo
+
+**Contact Information section:**
+Personal Phone, Work Phone, Personal Email, Work Email, Alternate Phone
+
+**Address section:**
+Current Address (line 1, line 2, city, state, postal code, country), Permanent Address (same fields + "Same as current" toggle)
+
+**Emergency Contacts section:**
+List of emergency contacts (add/edit/remove).
+Each contact: Name, Relationship, Phone, Alternate Phone, Priority badge (Primary / Secondary)
+
+---
+
+### Tab: Employment
+
+**Employment Details section:**
+Employee ID, Employee Type, Employment Type (Full-time/Part-time/Contract/Visiting), Department, Designation, Campus, Reporting Manager, Joining Date, Work Location
+
+**Lifecycle section:**
+Current Status badge, Probation Start/End, Confirmation Date, Contract Start/End, Notice Period
+
+**Status History (lifecycle events, most recent first):**
+```
+Sept 1, 2026    CONFIRMED         Probation completed successfully
+Apr 1, 2024     PROBATION         Joined — probation begins
+```
+
+---
+
+### Tab: Qualifications
+
+Table of qualification records.
+```
+Degree          Institution          Year      Grade    Status      Actions
+B.Sc Maths      XYZ University       2015–18   82%      ✓ Verified  Edit | Delete
+M.Ed            ABC College          2018–20   78%      ✓ Verified
+CTET            CBSE                 2021      Pass     Pending     Edit | Delete
+```
+
+[+ Add Qualification] button opens a modal (same pattern as Add Guardian).
+
+Each record: Degree, Institution, University, Specialization, Start Year, End Year, Percentage/Grade, Certificate upload, Verification Status.
+
+---
+
+### Tab: Experience
+
+Timeline of previous employment.
+```
+2021 – 2024    Senior Teacher — ABC Public School
+               Mathematics Department
+               3 years · Left: Better opportunity
+
+2018 – 2021    Teacher — XYZ High School
+               Mathematics + Science
+               3 years · Left: Career growth
+```
+
+Total experience computed: 6 years (previous) + current tenure.
+
+[+ Add Experience] button.
+
+---
+
+### Tab: Assignments
+
+Current academic year's teaching assignments + workload.
+
+**Workload bar:**
+```
+Assigned: ████████████████████░░░░  28 / 32 periods/week
+```
+
+**Assignment table:**
+```
+Class    Section    Subject        Is Class Teacher    Start Date    Status
+8        A          Mathematics    Yes (Class Teacher) Apr 1, 2026   ACTIVE
+7        B          Mathematics    No                  Apr 1, 2026   ACTIVE
+9        A          Mathematics    No                  Apr 1, 2026   ACTIVE
+```
+
+**History toggle:** Show assignments from previous years.
+
+[+ Add Assignment] button with conflict detection (same subject/section already assigned, workload exceeded).
+
+---
+
+### Tab: Timetable
+
+Read-only view of the teacher's weekly timetable. Data from `GET /api/v1/timetables/teacher/:id`.
+
+```
+         Monday      Tuesday     Wednesday   Thursday    Friday
+08:00    8-A Math    7-B Math    8-A Math    9-A Math    8-A Math
+09:00    7-B Math    Free        9-A Math    Free        7-B Math
+10:00    Free        8-A Math    Free        8-A Math    Free
+```
+
+Link: "View Full Timetable →" → navigates to `/timetable`.
+
+---
+
+### Tab: Attendance
+
+Monthly calendar + analytics. Mirrors student attendance tab design.
+
+**Summary cards:**
+```
+Present    Absent    Late    Half Day    WFH     Leave
+18         1         2       0           3       2
+```
+
+**Attendance % bar:** 88% this month
+
+**Monthly trend (last 6 months):**
+```
+Apr 96%  May 94%  Jun 91%  Jul 95%  Aug 88%  Sep —
+```
+
+**Detail table:** Date | Check-in | Check-out | Work Hours | Status | Remarks
+
+---
+
+### Tab: Leave
+
+**Leave Balance cards (one per leave type):**
+```
+Casual Leave        Sick Leave         Earned Leave
+Used: 4 / 12        Used: 2 / 10       Used: 0 / 15
+Remaining: 8        Remaining: 8       Remaining: 15
+```
+
+**Leave Request history table:**
+Leave Type | From | To | Days | Reason | Status | Approved By
+
+[+ Apply Leave] button (only available if user has permission or is viewing own profile).
+
+---
+
+### Tab: Payroll
+
+**Current Salary Structure:**
+```
+Basic Salary        ₹28,000
+HRA                 ₹11,200   (40% of basic)
+Conveyance          ₹1,600    (fixed)
+─────────────────────────────
+Gross               ₹40,800
+PF Deduction        ₹3,360    (12% of basic)
+─────────────────────────────
+Net Salary          ₹37,440
+```
+
+Effective from: Apr 1, 2026
+
+**Salary History:** Previous structures with effective date ranges.
+
+**Payslip History table:** Month | Working Days | Present | Gross | Deductions | Net | Download
+
+**Bank Details:** Bank name, account (masked), IFSC — with edit action.
+
+---
+
+### Tab: Documents
+
+List of uploaded documents with category grouping.
+
+**Categories:** Identity | Employment | Qualifications | Verification | Other
+
+Each document: Document type | File name | Uploaded date | Expiry date | Status badge | View | Delete
+
+Status badges: PENDING (yellow) | VERIFIED (green) | REJECTED (red) | EXPIRED (red)
+
+[+ Upload Document] button.
+
+---
+
+### Tab: Performance
+
+**Review history:**
+```
+2025–26    Annual Review     Overall: 4.2 / 5.0    CLOSED
+2024–25    Annual Review     Overall: 4.0 / 5.0    CLOSED
+```
+
+**Review detail (expandable):**
+```
+Teaching Quality       4.4 / 5.0
+Student Engagement     4.1 / 5.0
+Lesson Planning        4.5 / 5.0
+Assessment Quality     4.2 / 5.0
+Attendance             4.8 / 5.0
+Parent Communication   4.0 / 5.0
+```
+
+Goals for the period listed below criteria.
+
+[+ Start Review] button (restricted to HR/Principal role).
+
+---
+
+### Tab: Training
+
+Timeline of professional development records.
+```
+Aug 15, 2026    Advanced Mathematics Pedagogy (Workshop)
+                Duration: 8 hours · Certificate: Verified
+
+Jun 2025        CTET Refresher (Certification)
+                Expires: Jun 2028 · Certificate: Verified
+```
+
+[+ Add Training Record] button.
+
+Expiry alerts shown inline for records expiring within 60 days.
+
+---
+
+### Tab: Assets
+
+**Currently issued assets:**
+```
+Asset         Code          Issued       Condition    Expected Return
+Laptop        LT-2024-042   Apr 1, 2024  Good         —
+ID Card       ID-2024-312   Apr 1, 2024  Good         —
+Access Card   AC-2024-099   Apr 1, 2024  Good         —
+```
+
+[+ Issue Asset] button.
+
+On offboarding, this tab drives the asset return checklist automatically.
+
+---
+
+### Tab: History
+
+Full chronological timeline of all significant events for this employee.
+
+```
+Sept 2, 2026
+  ✓  Checked in — 08:41 AM
+
+Aug 30, 2026
+  ✓  Leave approved — Casual Leave (Aug 28–29)
+     Approved by: Principal Sharma
+
+Aug 20, 2026
+  ✓  Teaching assignment added — 9-A Mathematics
+
+Aug 10, 2026
+  ✓  Training certificate uploaded — CTET Refresher
+
+Jul 1, 2026
+  ✓  Salary revised — ₹45,000 → ₹48,500 net
+     Recorded by: HR Admin
+
+Apr 1, 2024
+  ✓  Joined — Probation started
+```
+
+Sources: lifecycle_events table + audit_logs, merged and sorted by date.
+
+---
+
+### Shared reusable components
+
+Create in `apps/web/src/components/shared/` — imported by both student and teacher modules. One file = one source of truth.
+
+| Component | File | Reused by |
+|---|---|---|
+| `ProfileHeader` | `profile-header.tsx` | Student profile, Employee profile |
+| `InfoSection` | `info-section.tsx` | All personal/employment tabs |
+| `InfoRow` | `info-row.tsx` | Inside `InfoSection` |
+| `ContactCard` | `contact-card.tsx` | Student personal, Employee personal |
+| `EmergencyContactList` | `emergency-contact-list.tsx` | Student health, Employee personal |
+| `DocumentListItem` | `document-list-item.tsx` | Student docs, Employee docs |
+| `AttendanceSummaryCard` | `attendance-summary-card.tsx` | Student attendance, Employee attendance |
+| `MonthlyTrendChart` | `monthly-trend-chart.tsx` | Student attendance, Employee attendance |
+| `LeaveBalanceCard` | `leave-balance-card.tsx` | Employee leave tab |
+| `ModuleLinksGrid` | `module-links-grid.tsx` | Student overview, Employee overview |
+| `TimelineList` | `timeline-list.tsx` | Student history, Employee history |
+| `TimelineEvent` | `timeline-event.tsx` | Inside `TimelineList` |
+| `AlertBanner` | `alert-banner.tsx` | Employee overview (expiry alerts) |
+| `WorkloadBar` | `workload-bar.tsx` | Employee assignments tab |
+| `ChecklistItem` | `checklist-item.tsx` | Onboarding + offboarding tasks |
+| `StatsGrid` | `stats-grid.tsx` | Both landing page KPI sections |
+
+### API hooks file
+
+Create `apps/web/src/lib/hooks/use-employees.ts` mirroring `use-students.ts`.
+
+Key hooks:
+
+```ts
+useEmployeeStats()                         // GET /v1/employees/stats
+useEmployees(params)                       // GET /v1/employees with filters
+useEmployee(id)                            // GET /v1/employees/:id
+useEmployeeQualifications(id)             // GET /v1/employees/:id/qualifications
+useEmployeeExperience(id)                 // GET /v1/employees/:id/experience
+useEmployeeEmergencyContacts(id)          // GET /v1/employees/:id/emergency-contacts
+useEmployeeAssignments(id)                // GET /v1/employees/:id/assignments
+useEmployeeAttendance(id, params)         // GET /v1/employees/:id/attendance
+useEmployeeLeaves(id)                     // GET /v1/employees/:id/leaves
+useEmployeePayroll(id)                    // GET /v1/employees/:id/payroll
+useEmployeePerformance(id)                // GET /v1/employees/:id/performance
+useEmployeeTraining(id)                   // GET /v1/employees/:id/training
+useEmployeeAssets(id)                     // GET /v1/employees/:id/assets
+useEmployeeDocuments(id)                  // GET /v1/employees/:id/documents
+useEmployeeLifecycleEvents(id)            // GET /v1/employees/:id/lifecycle-events
+useEmployeeTimetable(id)                  // GET /v1/timetables/teacher/:id
+```
+
+Query key convention:
+```ts
+['employees', 'stats']
+['employees', 'list', params]
+['employees', id]
+['employees', id, 'qualifications']
+['employees', id, 'experience']
+['employees', id, 'emergency-contacts']
+['employees', id, 'assignments']
+['employees', id, 'attendance', params]
+['employees', id, 'leaves']
+['employees', id, 'payroll']
+['employees', id, 'performance']
+['employees', id, 'training']
+['employees', id, 'assets']
+['employees', id, 'documents']
+['employees', id, 'lifecycle-events']
+```
+
+### APIs needed — gap analysis
+
+| Feature | Status | Action |
+|---|---|---|
+| Employee stats (KPI counts) | ❌ Missing | Add `GET /v1/employees/stats` |
+| Employee list with full filters | ⚠️ No query params | Expand existing endpoint |
+| Employee profile page (frontend) | ❌ Missing | Build `/teachers/[id]/page.tsx` |
+| Qualifications CRUD | ❌ Missing | New schema + endpoints |
+| Experience CRUD | ❌ Missing | New schema + endpoints |
+| Emergency contacts CRUD | ❌ Missing | New schema + endpoints |
+| Lifecycle events | ❌ Missing | New schema + endpoints |
+| Onboarding checklist | ❌ Missing | New schema + endpoints |
+| Offboarding workflow | ❌ Missing | New schema + endpoints |
+| Performance reviews | ❌ Missing | New schema + endpoints |
+| Training records | ❌ Missing | New schema + endpoints |
+| Employee assets | ❌ Missing | New schema + endpoints |
+| Bank details | ❌ Missing | New schema + endpoints |
+| Timetable view on profile | ⚠️ API exists | Frontend only — reuse `/timetables/teacher/:id` |
+| Attendance tab on profile | ⚠️ API exists | Frontend only — reuse attendance module |
+| Leave tab on profile | ⚠️ API exists | Frontend only — reuse leave module |
+| Payroll tab on profile | ⚠️ API exists | Frontend only — reuse payroll module |
+| Documents tab on profile | ⚠️ Generic API exists | Frontend only — filter by entity_type='EMPLOYEE' |
+
+### Build order
+
+**Phase A — Schema & Backend (prerequisite for everything)**
+1. Add new models to `prisma/schema.prisma` and run migration
+2. Expand `Employee.employmentStatus` enum + add employment type/lifecycle fields
+3. `GET /v1/employees/stats` endpoint
+4. `GET /v1/employees` query params (search, department, designation, type, status, campus, page, limit)
+5. Sub-resource endpoints: qualifications, experience, emergency-contacts, lifecycle-events
+
+**Phase B — Landing page (wire mock data to real API)**
+6. Create `use-employees.ts` hooks
+7. Connect existing `teachers/page.tsx` to real API
+8. Build `OverviewTab` (KPI cards + attendance chart + new joiners + alerts)
+9. Build `DepartmentsTab` (mirrors ClassesTab)
+
+**Phase C — Employee profile page (core)**
+10. `/teachers/[id]/page.tsx` with `ProfileHeader` and tab scaffold
+11. `OverviewTab` — today's summary + schedule + alerts + recent activity
+12. `PersonalTab` — personal info + emergency contacts
+13. `EmploymentTab` — employment details + lifecycle history
+14. `QualificationsTab` + `ExperienceTab`
+15. `AssignmentsTab` with workload bar
+
+**Phase D — Module integration tabs (read-only)**
+16. `AttendanceTab` — monthly analytics (calls attendance module API)
+17. `LeaveTab` — balances + history (calls leave module API)
+18. `PayrollTab` — salary structure + payslip history (calls payroll module API)
+19. `TimetableTab` — weekly schedule (calls timetable module API)
+20. `DocumentsTab` — uploaded files (calls documents API)
+
+**Phase E — Advanced tabs**
+21. `PerformanceTab` + `TrainingTab` (needs Phase A schema)
+22. `AssetsTab`
+23. `OnboardingTab` / `OffboardingTab`
+24. `HistoryTab` — timeline from lifecycle_events + audit_logs
+
+*Plan version: 1.2 — Teachers & Staff module plan added 2026-09-02.*

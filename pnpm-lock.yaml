@@ -284,6 +284,9 @@ importers:
       '@prisma/client':
         specifier: ^6.11.1
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      argon2:
+        specifier: ^0.43.1
+        version: 0.43.1
     devDependencies:
       '@school/config':
         specifier: workspace:*

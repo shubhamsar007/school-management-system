@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -17,6 +18,14 @@ import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current
 import { CreateTeacherDto } from './dto/create-teacher.dto';
 import { UpdateTeacherDto } from './dto/update-teacher.dto';
 import { CreateAssignmentDto } from './dto/create-assignment.dto';
+import { ListEmployeesDto } from './dto/list-employees.dto';
+import { CreateQualificationDto } from './dto/create-qualification.dto';
+import { UpdateQualificationDto } from './dto/update-qualification.dto';
+import { CreateExperienceDto } from './dto/create-experience.dto';
+import { UpdateExperienceDto } from './dto/update-experience.dto';
+import { CreateEmergencyContactDto } from './dto/create-emergency-contact.dto';
+import { UpdateEmergencyContactDto } from './dto/update-emergency-contact.dto';
+import { CreateLifecycleEventDto } from './dto/create-lifecycle-event.dto';
 
 @ApiTags('teachers')
 @ApiBearerAuth()
@@ -25,9 +34,25 @@ import { CreateAssignmentDto } from './dto/create-assignment.dto';
 export class TeacherController {
   constructor(private readonly teacherService: TeacherService) {}
 
-  // ─── Teachers ─────────────────────────────────────────────────
+  // ─── Stats ────────────────────────────────────────────────────
 
-  @ApiOperation({ summary: 'Create a new teacher' })
+  @ApiOperation({ summary: 'Get employee KPI stats for the organisation' })
+  @Get('stats')
+  getStats(@CurrentUser() user: CurrentUserPayload) {
+    return this.teacherService.getStats(user.organizationId);
+  }
+
+  // ─── Departments ──────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'List departments with employee headcounts' })
+  @Get('departments')
+  getDepartments(@CurrentUser() user: CurrentUserPayload) {
+    return this.teacherService.getDepartments(user.organizationId);
+  }
+
+  // ─── Employees ────────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Create a new employee' })
   @Post()
   createTeacher(
     @CurrentUser() user: CurrentUserPayload,
@@ -36,13 +61,16 @@ export class TeacherController {
     return this.teacherService.createTeacher(user.organizationId, dto);
   }
 
-  @ApiOperation({ summary: 'List all teachers in the organisation' })
+  @ApiOperation({ summary: 'List employees with filters and pagination' })
   @Get()
-  findTeachers(@CurrentUser() user: CurrentUserPayload) {
-    return this.teacherService.findTeachers(user.organizationId);
+  findTeachers(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query() query: ListEmployeesDto,
+  ) {
+    return this.teacherService.findTeachers(user.organizationId, query);
   }
 
-  @ApiOperation({ summary: 'Get a teacher by ID' })
+  @ApiOperation({ summary: 'Get a single employee by ID' })
   @Get(':id')
   findTeacher(
     @CurrentUser() user: CurrentUserPayload,
@@ -51,7 +79,7 @@ export class TeacherController {
     return this.teacherService.findTeacher(user.organizationId, id);
   }
 
-  @ApiOperation({ summary: 'Update a teacher' })
+  @ApiOperation({ summary: 'Update an employee' })
   @Patch(':id')
   updateTeacher(
     @CurrentUser() user: CurrentUserPayload,
@@ -61,7 +89,7 @@ export class TeacherController {
     return this.teacherService.updateTeacher(user.organizationId, id, dto);
   }
 
-  @ApiOperation({ summary: 'Soft-delete a teacher' })
+  @ApiOperation({ summary: 'Soft-delete an employee' })
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteTeacher(
@@ -73,7 +101,7 @@ export class TeacherController {
 
   // ─── Assignments ──────────────────────────────────────────────
 
-  @ApiOperation({ summary: 'Assign a teacher to a class/section/subject for an academic year' })
+  @ApiOperation({ summary: 'Assign teacher to class/section/subject' })
   @Post(':id/assignments')
   createAssignment(
     @CurrentUser() user: CurrentUserPayload,
@@ -101,5 +129,155 @@ export class TeacherController {
     @Param('assignmentId') assignmentId: string,
   ) {
     return this.teacherService.deleteAssignment(user.organizationId, id, assignmentId);
+  }
+
+  // ─── Qualifications ───────────────────────────────────────────
+
+  @ApiOperation({ summary: 'List qualifications for an employee' })
+  @Get(':id/qualifications')
+  findQualifications(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.teacherService.findQualifications(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Add a qualification record' })
+  @Post(':id/qualifications')
+  createQualification(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateQualificationDto,
+  ) {
+    return this.teacherService.createQualification(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Update a qualification record' })
+  @Patch(':id/qualifications/:qId')
+  updateQualification(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('qId') qId: string,
+    @Body() dto: UpdateQualificationDto,
+  ) {
+    return this.teacherService.updateQualification(user.organizationId, id, qId, dto);
+  }
+
+  @ApiOperation({ summary: 'Delete a qualification record' })
+  @Delete(':id/qualifications/:qId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteQualification(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('qId') qId: string,
+  ) {
+    return this.teacherService.deleteQualification(user.organizationId, id, qId);
+  }
+
+  // ─── Experience ───────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'List experience records for an employee' })
+  @Get(':id/experience')
+  findExperience(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.teacherService.findExperience(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Add an experience record' })
+  @Post(':id/experience')
+  createExperience(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateExperienceDto,
+  ) {
+    return this.teacherService.createExperience(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Update an experience record' })
+  @Patch(':id/experience/:expId')
+  updateExperience(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('expId') expId: string,
+    @Body() dto: UpdateExperienceDto,
+  ) {
+    return this.teacherService.updateExperience(user.organizationId, id, expId, dto);
+  }
+
+  @ApiOperation({ summary: 'Delete an experience record' })
+  @Delete(':id/experience/:expId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteExperience(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('expId') expId: string,
+  ) {
+    return this.teacherService.deleteExperience(user.organizationId, id, expId);
+  }
+
+  // ─── Emergency Contacts ───────────────────────────────────────
+
+  @ApiOperation({ summary: 'List emergency contacts for an employee' })
+  @Get(':id/emergency-contacts')
+  findEmergencyContacts(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.teacherService.findEmergencyContacts(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Add an emergency contact' })
+  @Post(':id/emergency-contacts')
+  createEmergencyContact(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateEmergencyContactDto,
+  ) {
+    return this.teacherService.createEmergencyContact(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Update an emergency contact' })
+  @Patch(':id/emergency-contacts/:contactId')
+  updateEmergencyContact(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('contactId') contactId: string,
+    @Body() dto: UpdateEmergencyContactDto,
+  ) {
+    return this.teacherService.updateEmergencyContact(user.organizationId, id, contactId, dto);
+  }
+
+  @ApiOperation({ summary: 'Delete an emergency contact' })
+  @Delete(':id/emergency-contacts/:contactId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteEmergencyContact(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('contactId') contactId: string,
+  ) {
+    return this.teacherService.deleteEmergencyContact(user.organizationId, id, contactId);
+  }
+
+  // ─── Lifecycle Events ─────────────────────────────────────────
+
+  @ApiOperation({ summary: 'List lifecycle events for an employee' })
+  @Get(':id/lifecycle-events')
+  findLifecycleEvents(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.teacherService.findLifecycleEvents(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Record a lifecycle event (status change)' })
+  @Post(':id/lifecycle-events')
+  createLifecycleEvent(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateLifecycleEventDto,
+  ) {
+    return this.teacherService.createLifecycleEvent(user.organizationId, id, dto);
   }
 }
