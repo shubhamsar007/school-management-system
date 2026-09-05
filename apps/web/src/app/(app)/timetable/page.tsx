@@ -2,173 +2,719 @@
 
 import * as React from 'react';
 import { PageHeader } from '@/components/layouts/page-header';
-import { Button, Badge, KpiCard, Dropdown, Pagination, Tabs, DataTable, ExportButton } from '@/components/ui';
+import {
+  Button,
+  Badge,
+  KpiCard,
+  Tabs,
+  DataTable,
+  ExportButton,
+  Pagination,
+  ConfirmDialog,
+} from '@/components/ui';
 import type { ColumnDef } from '@/components/ui';
+import { useToast } from '@/components/ui/toast';
+import { KpiSkeleton } from '@/components/ui/skeleton';
+import { useOrganization, useCampuses, useClasses, useSections } from '@/lib/hooks/use-academics';
+import {
+  useBuildings,
+  useRooms,
+  usePeriods,
+  useTimetables,
+  useSectionSchedule,
+  useDeleteRoom,
+  useDeletePeriod,
+  useDeleteBuilding,
+  type TimetableRoom,
+  type TimetablePeriod,
+  type TimetableBuilding,
+} from '@/lib/hooks/use-timetable';
+import { WeeklyScheduleGrid } from '@/components/shared/weekly-schedule-grid';
+import { PeriodTypeBadge } from '@/components/shared/period-type-badge';
+import { PeriodModal } from './_components/period-modal';
+import { RoomModal } from './_components/room-modal';
+import { BuildingModal } from './_components/building-modal';
 
-interface Room { id: string; name: string; building: string; capacity: number; type: string; floor: string; status: string; }
-interface Period { id: string; name: string; startTime: string; endTime: string; duration: string; type: string; }
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-const ROOMS: Room[] = [
-  { id: '1', name: 'Room 101', building: 'Block A', capacity: 40, type: 'CLASSROOM', floor: '1st Floor', status: 'ACTIVE' },
-  { id: '2', name: 'Room 102', building: 'Block A', capacity: 40, type: 'CLASSROOM', floor: '1st Floor', status: 'ACTIVE' },
-  { id: '3', name: 'Lab 201', building: 'Block B', capacity: 30, type: 'LAB', floor: '2nd Floor', status: 'ACTIVE' },
-  { id: '4', name: 'Lab 202', building: 'Block B', capacity: 30, type: 'LAB', floor: '2nd Floor', status: 'ACTIVE' },
-  { id: '5', name: 'Hall 301', building: 'Block C', capacity: 120, type: 'HALL', floor: '3rd Floor', status: 'ACTIVE' },
-  { id: '6', name: 'Room 103', building: 'Block A', capacity: 38, type: 'CLASSROOM', floor: '1st Floor', status: 'ACTIVE' },
-  { id: '7', name: 'Room 201', building: 'Block B', capacity: 42, type: 'CLASSROOM', floor: '2nd Floor', status: 'MAINTENANCE' },
-  { id: '8', name: 'Library', building: 'Block C', capacity: 60, type: 'HALL', floor: '1st Floor', status: 'ACTIVE' },
+const TABS = [
+  { id: 'timetable', label: 'Timetable View' },
+  { id: 'rooms', label: 'Rooms' },
+  { id: 'periods', label: 'Periods' },
 ];
 
-const PERIODS: Period[] = [
-  { id: '1', name: 'Period 1', startTime: '08:00', endTime: '08:45', duration: '45 min', type: 'CLASS' },
-  { id: '2', name: 'Period 2', startTime: '08:45', endTime: '09:30', duration: '45 min', type: 'CLASS' },
-  { id: '3', name: 'Break', startTime: '09:30', endTime: '10:00', duration: '30 min', type: 'BREAK' },
-  { id: '4', name: 'Period 3', startTime: '10:00', endTime: '10:45', duration: '45 min', type: 'CLASS' },
-  { id: '5', name: 'Period 4', startTime: '10:45', endTime: '11:30', duration: '45 min', type: 'CLASS' },
-  { id: '6', name: 'Period 5', startTime: '11:30', endTime: '12:15', duration: '45 min', type: 'CLASS' },
-  { id: '7', name: 'Lunch', startTime: '12:15', endTime: '13:00', duration: '45 min', type: 'LUNCH' },
-  { id: '8', name: 'Period 6', startTime: '13:00', endTime: '13:45', duration: '45 min', type: 'CLASS' },
-  { id: '9', name: 'Period 7', startTime: '13:45', endTime: '14:30', duration: '45 min', type: 'CLASS' },
-  { id: '10', name: 'Period 8', startTime: '14:30', endTime: '15:15', duration: '45 min', type: 'CLASS' },
-];
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-type Cell = { subject: string; teacher: string } | null;
-type SlotRow = { label: string; time: string; isBreak?: boolean; breakLabel?: string; cells?: Cell[] };
+function formatTime(t: string): string {
+  const timePart = t.includes('T') ? (t.split('T')[1] ?? '') : t;
+  const [hStr, mStr] = timePart.split(':');
+  const h = parseInt(hStr ?? '0', 10);
+  const m = mStr ?? '00';
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${m} ${ampm}`;
+}
 
-const SCHEDULE: SlotRow[] = [
-  { label: 'Period 1', time: '08:00–08:45', cells: [{ subject: 'Mathematics', teacher: 'Ravi Kumar' }, { subject: 'Science', teacher: 'Priya Sharma' }, { subject: 'English', teacher: 'Ananya Das' }, { subject: 'Mathematics', teacher: 'Ravi Kumar' }, { subject: 'History', teacher: 'Suresh Menon' }] },
-  { label: 'Period 2', time: '08:45–09:30', cells: [{ subject: 'Science', teacher: 'Priya Sharma' }, { subject: 'English', teacher: 'Ananya Das' }, { subject: 'Mathematics', teacher: 'Ravi Kumar' }, { subject: 'Science', teacher: 'Priya Sharma' }, { subject: 'Mathematics', teacher: 'Ravi Kumar' }] },
-  { label: 'Break', time: '09:30–10:00', isBreak: true, breakLabel: 'BREAK' },
-  { label: 'Period 3', time: '10:00–10:45', cells: [{ subject: 'History', teacher: 'Suresh Menon' }, { subject: 'Mathematics', teacher: 'Ravi Kumar' }, { subject: 'Biology', teacher: 'Lakshmi Nair' }, { subject: 'English', teacher: 'Ananya Das' }, { subject: 'Science', teacher: 'Priya Sharma' }] },
-  { label: 'Period 4', time: '10:45–11:30', cells: [{ subject: 'English', teacher: 'Ananya Das' }, { subject: 'Biology', teacher: 'Lakshmi Nair' }, { subject: 'History', teacher: 'Suresh Menon' }, { subject: 'Biology', teacher: 'Lakshmi Nair' }, { subject: 'PE', teacher: 'Kiran Bhat' }] },
-  { label: 'Period 5', time: '11:30–12:15', cells: [{ subject: 'PE', teacher: 'Kiran Bhat' }, { subject: 'Drawing', teacher: 'Deepa Rao' }, { subject: 'PE', teacher: 'Kiran Bhat' }, { subject: 'Drawing', teacher: 'Deepa Rao' }, { subject: 'English', teacher: 'Ananya Das' }] },
-  { label: 'Lunch', time: '12:15–13:00', isBreak: true, breakLabel: 'LUNCH' },
-  { label: 'Period 6', time: '13:00–13:45', cells: [{ subject: 'Biology', teacher: 'Lakshmi Nair' }, { subject: 'History', teacher: 'Suresh Menon' }, { subject: 'Drawing', teacher: 'Deepa Rao' }, { subject: 'PE', teacher: 'Kiran Bhat' }, { subject: 'Drawing', teacher: 'Deepa Rao' }] },
-];
+function durationMins(start: string, end: string): string {
+  const toMins = (t: string) => {
+    const timePart = t.includes('T') ? (t.split('T')[1] ?? '') : t;
+    const [h, m] = timePart.split(':').map(Number);
+    return (h ?? 0) * 60 + (m ?? 0);
+  };
+  const diff = toMins(end) - toMins(start);
+  return diff > 0 ? `${diff} min` : '—';
+}
 
-const DAYS = ['Mon 25/8', 'Tue 26/8', 'Wed 27/8', 'Thu 28/8', 'Fri 29/8'];
-const CLASS_OPTIONS = [{ label: 'Grade 8·B', value: 'grade8b' }, { label: 'Grade 9·A', value: 'grade9a' }, { label: 'Grade 10·A', value: 'grade10a' }];
-const TABS = [{ id: 'timetable', label: 'Timetable View' }, { id: 'rooms', label: 'Rooms', count: 24 }, { id: 'periods', label: 'Periods', count: 10 }];
+// ─── Context selector ─────────────────────────────────────────────────────────
 
-const TYPE_BADGE: Record<string, 'active' | 'default'> = { CLASSROOM: 'default', LAB: 'graduated' as 'default', HALL: 'active', CLASS: 'active', BREAK: 'default', LUNCH: 'default' };
+const SELECT_STYLE: React.CSSProperties = {
+  height: 30,
+  padding: '0 28px 0 10px',
+  fontSize: '12px',
+  fontWeight: 500,
+  color: '#2c322f',
+  background: '#fff',
+  border: '1px solid #e0ddd5',
+  borderRadius: 7,
+  appearance: 'none',
+  cursor: 'pointer',
+  outline: 'none',
+  minWidth: 140,
+};
 
-export default function TimetablePage() {
-  const [activeTab, setActiveTab] = React.useState('timetable');
-  const [selectedClass, setSelectedClass] = React.useState('grade8b');
+interface ContextBarProps {
+  campusId: string;
+  onCampusChange: (id: string) => void;
+}
+
+function ContextBar({ campusId, onCampusChange }: ContextBarProps) {
+  const { data: org } = useOrganization();
+  const { data: campuses = [], isLoading } = useCampuses(org?.id);
+
+  React.useEffect(() => {
+    if (campuses.length > 0 && !campusId) {
+      onCampusChange(campuses[0]!.id);
+    }
+  }, [campuses, campusId, onCampusChange]);
+
+  return (
+    <div
+      className="flex items-center gap-3 flex-wrap"
+      style={{ padding: '8px 0 16px', borderBottom: '1px solid #eef0f2', marginBottom: 20 }}
+    >
+      <span style={{ fontSize: '12px', color: '#8a929b', fontWeight: 500 }}>Campus</span>
+      <div style={{ position: 'relative' }}>
+        <select
+          value={campusId}
+          onChange={(e) => onCampusChange(e.target.value)}
+          style={SELECT_STYLE}
+          disabled={isLoading}
+        >
+          {campuses.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <span
+          style={{
+            position: 'absolute',
+            right: 8,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            pointerEvents: 'none',
+            color: '#8a929b',
+            fontSize: 10,
+          }}
+        >
+          ▼
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── KPI cards ────────────────────────────────────────────────────────────────
+
+const KPI_VARIANTS = ['sage', 'blue', 'clay', 'heather'] as const;
+
+interface KpiRowProps {
+  campusId: string;
+}
+
+function KpiRow({ campusId }: KpiRowProps) {
+  const { data: buildings, isLoading: bl } = useBuildings(campusId);
+  const { data: rooms, isLoading: rl } = useRooms(campusId);
+  const { data: activeTimetables, isLoading: tl } = useTimetables({ campusId, status: 'ACTIVE' });
+
+  const totalRooms = rooms?.length ?? 0;
+  const totalBuildings = buildings?.length ?? 0;
+  const activeCount = activeTimetables?.length ?? 0;
+
+  const loading = bl || rl || tl;
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-4 gap-4 mb-4">
+        {Array.from({ length: 4 }).map((_, i) => <KpiSkeleton key={i} />)}
+      </div>
+    );
+  }
+
+  const kpis = [
+    { title: 'BUILDINGS', value: String(totalBuildings), subtitle: 'on this campus' },
+    { title: 'TOTAL ROOMS', value: String(totalRooms), subtitle: 'configured' },
+    { title: 'ACTIVE TIMETABLES', value: String(activeCount), subtitle: 'this term' },
+    { title: 'CONFLICTS', value: '0', subtitle: 'detected' },
+  ];
+
+  return (
+    <div className="grid grid-cols-4 gap-4 mb-4">
+      {kpis.map((k, i) => (
+        <KpiCard key={k.title} title={k.title} value={k.value} subtitle={k.subtitle} variant={KPI_VARIANTS[i]!} />
+      ))}
+    </div>
+  );
+}
+
+// ─── Timetable view tab ───────────────────────────────────────────────────────
+
+const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+interface TimetableViewProps {
+  campusId: string;
+}
+
+function TimetableView({ campusId }: TimetableViewProps) {
+  const [classId, setClassId] = React.useState('');
+  const [sectionId, setSectionId] = React.useState('');
+
+  const { data: classes = [] } = useClasses();
+  const { data: sections = [] } = useSections(classId || null);
+  const { data: periods = [] } = usePeriods(campusId);
+  const { data: scheduleDays, isLoading, isError } = useSectionSchedule(sectionId || null);
+
+  // Reset section when class changes
+  React.useEffect(() => { setSectionId(''); }, [classId]);
+
+  // Build entry lookup: day → periodId → entry
+  const entryMap = React.useMemo(() => {
+    type Entry = NonNullable<typeof scheduleDays>[number]['entries'][number];
+    const map = new Map<string, Map<string, Entry>>();
+    scheduleDays?.forEach((d) => {
+      const dayMap = new Map<string, Entry>();
+      d.entries.forEach((e) => dayMap.set(e.period.id, e));
+      map.set(d.day, dayMap);
+    });
+    return map;
+  }, [scheduleDays]);
+
+  // Active days (days that have at least one entry)
+  const activeDays = React.useMemo(() => {
+    if (!scheduleDays) return DAY_ORDER.slice(0, 5);
+    const daysWithEntries = new Set(scheduleDays.map((d) => d.day));
+    return DAY_ORDER.filter((d) => daysWithEntries.has(d));
+  }, [scheduleDays]);
+
+  const classOptions = classes.map((c) => ({ label: c.name, value: c.id }));
+  const sectionOptions = sections.map((s) => ({ label: `${s.name} (${s.code})`, value: s.id }));
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-[#e6e8eb] bg-white shadow-sm">
+      {/* Toolbar */}
+      <div className="flex items-center gap-3 border-b border-[#eef0f2] p-3.5 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span style={{ fontSize: 12, color: '#8a929b', fontWeight: 500 }}>Class</span>
+          <div style={{ position: 'relative' }}>
+            <select
+              value={classId}
+              onChange={(e) => setClassId(e.target.value)}
+              style={{ ...SELECT_STYLE, minWidth: 120 }}
+            >
+              <option value="">Select class</option>
+              {classOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#8a929b', fontSize: 10 }}>▼</span>
+          </div>
+        </div>
+
+        {classId && (
+          <div className="flex items-center gap-2">
+            <span style={{ fontSize: 12, color: '#8a929b', fontWeight: 500 }}>Section</span>
+            <div style={{ position: 'relative' }}>
+              <select
+                value={sectionId}
+                onChange={(e) => setSectionId(e.target.value)}
+                style={{ ...SELECT_STYLE, minWidth: 120 }}
+              >
+                <option value="">Select section</option>
+                {sectionOptions.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#8a929b', fontSize: 10 }}>▼</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Grid or prompt */}
+      {!sectionId ? (
+        <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
+          Select a class and section to view the timetable
+        </div>
+      ) : (
+        <div className="p-4">
+          {isLoading && (
+            <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
+              Loading schedule…
+            </div>
+          )}
+          {isError && (
+            <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
+              No active timetable found for this section's campus.
+            </div>
+          )}
+          {!isLoading && !isError && (
+            <div className="overflow-x-auto">
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: `110px repeat(${activeDays.length}, 1fr)`,
+                  gap: '1px',
+                  background: '#e6e8eb',
+                  minWidth: 600,
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                }}
+              >
+                {/* Header row */}
+                <div style={{ background: '#fafbfc' }} className="px-3 py-2.5" />
+                {activeDays.map((d) => (
+                  <div
+                    key={d}
+                    style={{ background: '#fafbfc' }}
+                    className="py-2.5 text-center text-xs font-semibold text-[#14181c]"
+                  >
+                    {d.slice(0, 3)}
+                  </div>
+                ))}
+
+                {/* Period rows */}
+                {periods.map((period) => {
+                  const isBreak = period.periodType !== 'CLASS';
+                  return (
+                    <React.Fragment key={period.id}>
+                      {/* Period label cell */}
+                      <div
+                        style={{ background: isBreak ? '#f6f7f8' : 'white' }}
+                        className="px-3 py-2 text-right"
+                      >
+                        <div className="text-[11px] font-semibold text-[#14181c]">{period.name}</div>
+                        <div className="text-[10px] text-[#8a929b]">
+                          {formatTime(period.startTime)}
+                        </div>
+                      </div>
+
+                      {/* Break row: spans all day columns */}
+                      {isBreak ? (
+                        <div
+                          style={{
+                            background: '#f6f7f8',
+                            gridColumn: `span ${activeDays.length}`,
+                          }}
+                          className="flex items-center justify-center py-2"
+                        >
+                          <span className="text-[11px] font-medium text-[#8a929b] tracking-wider">
+                            {period.periodType}
+                          </span>
+                          <span className="ml-2 text-[10px] text-[#b0b7bf]">
+                            {formatTime(period.startTime)} – {formatTime(period.endTime)}
+                          </span>
+                        </div>
+                      ) : (
+                        /* Class period: one cell per day */
+                        activeDays.map((day) => {
+                          const entry = entryMap.get(day)?.get(period.id);
+                          return (
+                            <div
+                              key={day}
+                              style={{ background: 'white' }}
+                              className="p-1.5"
+                            >
+                              {entry ? (
+                                <div className="rounded-lg bg-[#f0f6ff] border border-[#dbe8f5] px-2 py-1.5 h-full">
+                                  <div className="text-[11px] font-semibold text-[#2b5fa8] leading-tight">
+                                    {entry.subject.name}
+                                  </div>
+                                  {entry.room && (
+                                    <div className="text-[10px] text-[#6b7480] mt-0.5">
+                                      {entry.room.name}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="rounded-lg border border-dashed border-[#e6e8eb] px-2 py-1.5 h-full flex items-center justify-center">
+                                  <span className="text-[10px] text-[#c5c9cf]">—</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Rooms tab ────────────────────────────────────────────────────────────────
+
+const ROOM_TYPE_COLORS: Record<string, 'default' | 'active' | 'graduated' | 'pending'> = {
+  CLASSROOM: 'default',
+  LAB:       'graduated',
+  LIBRARY:   'active',
+  AUDITORIUM: 'active',
+  STAFF_ROOM: 'default',
+  OFFICE:    'default',
+  STORE:     'default',
+};
+
+interface RoomsTabProps {
+  campusId: string;
+}
+
+function RoomsTab({ campusId }: RoomsTabProps) {
+  const toast = useToast();
+  const { data: rooms = [], isLoading } = useRooms(campusId);
+  const deleteRoom = useDeleteRoom();
+
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [editRoom, setEditRoom] = React.useState<TimetableRoom | null>(null);
+  const [deleteRoom_, setDeleteRoom] = React.useState<TimetableRoom | null>(null);
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
 
-  const roomColumns: ColumnDef<Room>[] = [
-    { id: 'name', header: 'ROOM NAME', width: '120px', accessor: 'name' },
-    { id: 'building', header: 'BUILDING', width: '100px', accessor: 'building' },
-    { id: 'capacity', header: 'CAPACITY', width: '90px', align: 'center', accessor: (r) => r.capacity },
-    { id: 'type', header: 'TYPE', width: '110px', cell: (r) => <Badge variant={r.type === 'LAB' ? 'graduated' : r.type === 'HALL' ? 'active' : 'default'}>{r.type}</Badge> },
-    { id: 'floor', header: 'FLOOR', width: '100px', accessor: 'floor' },
-    { id: 'status', header: 'STATUS', width: '90px', cell: (r) => <Badge variant={r.status === 'ACTIVE' ? 'active' : 'pending'}>{r.status}</Badge> },
-    { id: 'actions', header: 'ACTIONS', width: '80px', align: 'right', cell: () => <div className="flex justify-end gap-1.5 text-xs font-medium text-[#2b5fa8]"><button>Edit</button><span className="text-[#d7dce1]">|</span><button>Delete</button></div> },
+  const paginated = rooms.slice((page - 1) * pageSize, page * pageSize);
+
+  const columns: ColumnDef<TimetableRoom>[] = [
+    { id: 'name', header: 'ROOM NAME', width: '130px', accessor: 'name' },
+    {
+      id: 'building',
+      header: 'BUILDING',
+      width: '120px',
+      accessor: (r) => r.building?.name ?? '—',
+    },
+    {
+      id: 'capacity',
+      header: 'CAPACITY',
+      width: '90px',
+      align: 'center',
+      accessor: (r) => (r.capacity != null ? String(r.capacity) : '—'),
+    },
+    {
+      id: 'type',
+      header: 'TYPE',
+      width: '120px',
+      cell: (r) => (
+        <Badge variant={ROOM_TYPE_COLORS[r.roomType] ?? 'default'}>
+          {r.roomType.replace('_', ' ')}
+        </Badge>
+      ),
+    },
+    {
+      id: 'status',
+      header: 'STATUS',
+      width: '100px',
+      cell: (r) => (
+        <Badge variant={r.status === 'ACTIVE' ? 'active' : r.status === 'MAINTENANCE' ? 'pending' : 'default'}>
+          {r.status}
+        </Badge>
+      ),
+    },
+    {
+      id: 'actions',
+      header: 'ACTIONS',
+      width: '90px',
+      align: 'right',
+      cell: (r) => (
+        <div className="flex justify-end gap-1.5 text-xs font-medium text-[#2b5fa8]">
+          <button onClick={() => setEditRoom(r)}>Edit</button>
+          <span className="text-[#d7dce1]">|</span>
+          <button className="text-[#b3261e]" onClick={() => setDeleteRoom(r)}>Delete</button>
+        </div>
+      ),
+    },
   ];
 
-  const periodColumns: ColumnDef<Period>[] = [
-    { id: 'name', header: 'PERIOD NAME', width: '130px', accessor: 'name' },
-    { id: 'startTime', header: 'START TIME', width: '110px', accessor: 'startTime' },
-    { id: 'endTime', header: 'END TIME', width: '110px', accessor: 'endTime' },
-    { id: 'duration', header: 'DURATION', width: '100px', align: 'center', accessor: 'duration' },
-    { id: 'type', header: 'TYPE', width: '90px', cell: (r) => <Badge variant={TYPE_BADGE[r.type] ?? 'default'}>{r.type}</Badge> },
+  async function handleDelete() {
+    if (!deleteRoom_) return;
+    try {
+      await deleteRoom.mutateAsync({ id: deleteRoom_.id, campusId });
+      toast.success(`Room "${deleteRoom_.name}" deleted.`);
+      setDeleteRoom(null);
+    } catch (e: unknown) {
+      toast.error((e as { message?: string })?.message ?? 'Failed to delete room.');
+    }
+  }
+
+  return (
+    <>
+      <div className="overflow-hidden rounded-xl border border-[#e6e8eb] bg-white shadow-sm">
+        <div className="flex items-center gap-2 border-b border-[#eef0f2] p-3.5">
+          <div className="flex-1" />
+          <ExportButton
+            label="Export"
+            data={rooms}
+            filename="rooms"
+            formats={['csv', 'excel']}
+            columns={[
+              { header: 'Room', accessor: 'name' },
+              { header: 'Building', accessor: (r: TimetableRoom) => r.building?.name ?? '' },
+              { header: 'Type', accessor: 'roomType' },
+              { header: 'Capacity', accessor: (r: TimetableRoom) => r.capacity ?? '' },
+              { header: 'Status', accessor: 'status' },
+            ]}
+          />
+          <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
+            + Add Room
+          </Button>
+        </div>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16 text-sm text-[#8a929b]">
+            Loading rooms…
+          </div>
+        ) : rooms.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-2">
+            <p className="text-sm font-medium text-[#4a5260]">No rooms configured</p>
+            <p className="text-xs text-[#8a929b]">Add a room to get started.</p>
+          </div>
+        ) : (
+          <>
+            <DataTable columns={columns} data={paginated} />
+            <div className="border-t border-[#eef0f2] p-3">
+              <Pagination
+                page={page}
+                pageSize={pageSize}
+                total={rooms.length}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+              />
+            </div>
+          </>
+        )}
+      </div>
+
+      <RoomModal open={addOpen} onClose={() => setAddOpen(false)} campusId={campusId} />
+      {editRoom && (
+        <RoomModal
+          open={!!editRoom}
+          onClose={() => setEditRoom(null)}
+          campusId={campusId}
+          room={editRoom}
+        />
+      )}
+      <ConfirmDialog
+        open={!!deleteRoom_}
+        onClose={() => setDeleteRoom(null)}
+        onConfirm={handleDelete}
+        title="Delete Room"
+        description={`Delete "${deleteRoom_?.name}"? This cannot be undone. Deletion is blocked if the room is assigned to any timetable entries.`}
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteRoom.isPending}
+      />
+    </>
+  );
+}
+
+// ─── Periods tab ──────────────────────────────────────────────────────────────
+
+interface PeriodsTabProps {
+  campusId: string;
+}
+
+function PeriodsTab({ campusId }: PeriodsTabProps) {
+  const toast = useToast();
+  const { data: periods = [], isLoading } = usePeriods(campusId);
+  const deletePeriod = useDeletePeriod();
+
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [editPeriod, setEditPeriod] = React.useState<TimetablePeriod | null>(null);
+  const [deletePeriod_, setDeletePeriod] = React.useState<TimetablePeriod | null>(null);
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(25);
+
+  const paginated = periods.slice((page - 1) * pageSize, page * pageSize);
+
+  const columns: ColumnDef<TimetablePeriod>[] = [
+    { id: 'num', header: '#', width: '50px', align: 'center', accessor: (p) => String(p.periodNumber) },
+    { id: 'name', header: 'PERIOD NAME', width: '140px', accessor: 'name' },
+    { id: 'start', header: 'START', width: '100px', accessor: (p) => formatTime(p.startTime) },
+    { id: 'end', header: 'END', width: '100px', accessor: (p) => formatTime(p.endTime) },
+    {
+      id: 'duration',
+      header: 'DURATION',
+      width: '90px',
+      align: 'center',
+      accessor: (p) => durationMins(p.startTime, p.endTime),
+    },
+    {
+      id: 'type',
+      header: 'TYPE',
+      width: '110px',
+      cell: (p) => <PeriodTypeBadge type={p.periodType} />,
+    },
+    {
+      id: 'actions',
+      header: 'ACTIONS',
+      width: '90px',
+      align: 'right',
+      cell: (p) => (
+        <div className="flex justify-end gap-1.5 text-xs font-medium text-[#2b5fa8]">
+          <button onClick={() => setEditPeriod(p)}>Edit</button>
+          <span className="text-[#d7dce1]">|</span>
+          <button className="text-[#b3261e]" onClick={() => setDeletePeriod(p)}>Delete</button>
+        </div>
+      ),
+    },
   ];
+
+  async function handleDelete() {
+    if (!deletePeriod_) return;
+    try {
+      await deletePeriod.mutateAsync({ id: deletePeriod_.id, campusId });
+      toast.success(`Period "${deletePeriod_.name}" deleted.`);
+      setDeletePeriod(null);
+    } catch (e: unknown) {
+      toast.error((e as { message?: string })?.message ?? 'Failed to delete period.');
+    }
+  }
+
+  return (
+    <>
+      <div className="overflow-hidden rounded-xl border border-[#e6e8eb] bg-white shadow-sm">
+        <div className="flex items-center gap-2 border-b border-[#eef0f2] p-3.5">
+          <div className="flex-1" />
+          <ExportButton
+            label="Export"
+            data={periods}
+            filename="periods"
+            formats={['csv']}
+            columns={[
+              { header: 'Name', accessor: 'name' },
+              { header: 'Start', accessor: (p: TimetablePeriod) => formatTime(p.startTime) },
+              { header: 'End', accessor: (p: TimetablePeriod) => formatTime(p.endTime) },
+              { header: 'Type', accessor: 'periodType' },
+            ]}
+          />
+          <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
+            + Add Period
+          </Button>
+        </div>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16 text-sm text-[#8a929b]">
+            Loading periods…
+          </div>
+        ) : periods.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-2">
+            <p className="text-sm font-medium text-[#4a5260]">No periods configured</p>
+            <p className="text-xs text-[#8a929b]">Add period slots to build your school day.</p>
+          </div>
+        ) : (
+          <>
+            <DataTable columns={columns} data={paginated} />
+            <div className="border-t border-[#eef0f2] p-3">
+              <Pagination
+                page={page}
+                pageSize={pageSize}
+                total={periods.length}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+              />
+            </div>
+          </>
+        )}
+      </div>
+
+      <PeriodModal open={addOpen} onClose={() => setAddOpen(false)} campusId={campusId} />
+      {editPeriod && (
+        <PeriodModal
+          open={!!editPeriod}
+          onClose={() => setEditPeriod(null)}
+          campusId={campusId}
+          period={editPeriod}
+        />
+      )}
+      <ConfirmDialog
+        open={!!deletePeriod_}
+        onClose={() => setDeletePeriod(null)}
+        onConfirm={handleDelete}
+        title="Delete Period"
+        description={`Delete "${deletePeriod_?.name}"? Deletion is blocked if this period is used in any timetable entries.`}
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deletePeriod.isPending}
+      />
+    </>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function TimetablePage() {
+  const [activeTab, setActiveTab] = React.useState('timetable');
+  const [campusId, setCampusId] = React.useState('');
 
   return (
     <div>
       <PageHeader
         title="Timetable"
-        subtitle="Schedule management across buildings and rooms"
-        actions={<Button variant="primary">+ Add Entry</Button>}
+        subtitle="Schedule management across classes, teachers, and rooms"
       />
 
-      <div className="grid grid-cols-4 gap-4 mb-4">
-        <KpiCard title="BUILDINGS" value="3" subtitle="campuses" />
-        <KpiCard title="TOTAL ROOMS" value="24" subtitle="configured" />
-        <KpiCard title="ACTIVE TIMETABLES" value="8" subtitle="this term" />
-        <KpiCard title="CONFLICTS" value="0" subtitle="resolved" />
-      </div>
+      <ContextBar campusId={campusId} onCampusChange={setCampusId} />
+
+      {campusId && <KpiRow campusId={campusId} />}
 
       <Tabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} className="mb-4" />
 
       {activeTab === 'timetable' && (
-        <div className="overflow-hidden rounded-xl border border-[#e6e8eb] bg-white shadow-sm">
-          <div className="flex items-center gap-3 border-b border-[#eef0f2] p-3.5">
-            <Dropdown label="Class" value={selectedClass} options={CLASS_OPTIONS} onChange={setSelectedClass} />
-            <div className="flex-1" />
-            <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm">‹</Button>
-              <span className="text-sm text-[#14181c]">25 Aug – 29 Aug 2025</span>
-              <Button variant="secondary" size="sm">›</Button>
-            </div>
+        campusId ? (
+          <TimetableView campusId={campusId} />
+        ) : (
+          <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
+            Select a campus to view the timetable
           </div>
-          <div className="overflow-x-auto p-4">
-            <div style={{ display: 'grid', gridTemplateColumns: '100px repeat(5, 1fr)', gap: '1px', background: '#e6e8eb', minWidth: 700 }}>
-              {/* Header */}
-              <div style={{ background: '#fafbfc' }} className="px-3 py-2.5" />
-              {DAYS.map((d) => (
-                <div key={d} style={{ background: '#fafbfc' }} className="py-2.5 text-center text-xs font-semibold text-[#14181c]">{d}</div>
-              ))}
-              {/* Rows */}
-              {SCHEDULE.map((slot) => (
-                <React.Fragment key={slot.label + slot.time}>
-                  <div style={{ background: 'white' }} className="px-3 py-2 text-right">
-                    <div className="text-[11px] font-semibold text-[#14181c]">{slot.label}</div>
-                    <div className="text-[10px] text-[#8a929b]">{slot.time}</div>
-                  </div>
-                  {slot.isBreak ? (
-                    <div style={{ background: '#f6f7f8', gridColumn: 'span 5' }} className="flex items-center justify-center py-3 text-xs font-medium text-[#8a929b]">
-                      {slot.breakLabel}
-                    </div>
-                  ) : (
-                    slot.cells?.map((cell, ci) => (
-                      <div key={ci} style={{ background: 'white' }} className="rounded-lg border border-[#e6e8eb] p-2 m-0.5">
-                        {cell ? (
-                          <>
-                            <div className="text-xs font-semibold text-[#14181c]">{cell.subject}</div>
-                            <div className="text-[11px] text-[#6b7480]">{cell.teacher}</div>
-                          </>
-                        ) : (
-                          <div className="text-[11px] text-[#a2aab3]">—</div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </React.Fragment>
-              ))}
-            </div>
-          </div>
-        </div>
+        )
       )}
 
       {activeTab === 'rooms' && (
-        <div className="overflow-hidden rounded-xl border border-[#e6e8eb] bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-[#eef0f2] p-3.5">
-            <div className="flex-1" />
-            <ExportButton label="Export" data={ROOMS} filename="rooms" formats={['csv', 'excel']}
-              columns={[{ header: 'Room', accessor: 'name' }, { header: 'Building', accessor: 'building' }, { header: 'Capacity', accessor: (r: Room) => r.capacity }]} />
+        campusId ? (
+          <RoomsTab campusId={campusId} />
+        ) : (
+          <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
+            Select a campus to manage rooms
           </div>
-          <DataTable columns={roomColumns} data={ROOMS} />
-          <div className="border-t border-[#eef0f2] p-3">
-            <Pagination page={page} pageSize={pageSize} total={ROOMS.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
-          </div>
-        </div>
+        )
       )}
 
       {activeTab === 'periods' && (
-        <div className="overflow-hidden rounded-xl border border-[#e6e8eb] bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-[#eef0f2] p-3.5">
-            <div className="flex-1" />
-            <ExportButton label="Export" data={PERIODS} filename="periods" formats={['csv']}
-              columns={[{ header: 'Name', accessor: 'name' }, { header: 'Start', accessor: 'startTime' }, { header: 'End', accessor: 'endTime' }]} />
+        campusId ? (
+          <PeriodsTab campusId={campusId} />
+        ) : (
+          <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
+            Select a campus to manage periods
           </div>
-          <DataTable columns={periodColumns} data={PERIODS} />
-          <div className="border-t border-[#eef0f2] p-3">
-            <Pagination page={page} pageSize={pageSize} total={PERIODS.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
-          </div>
-        </div>
+        )
       )}
     </div>
   );
