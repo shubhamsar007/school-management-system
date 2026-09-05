@@ -505,6 +505,114 @@ export class TimetableService {
     }
   }
 
+  // ─── Conflict Detection ───────────────────────────────────────
+
+  async getConflicts(organizationId: string, timetableId: string) {
+    await this.getTimetableOrFail(organizationId, timetableId);
+
+    const entries = await this.prisma.timetableEntry.findMany({
+      where: { timetableId },
+      include: {
+        period: true,
+        section: true,
+        subject: true,
+        room: true,
+        teacher: { select: { id: true, person: { select: { firstName: true, lastName: true } } } },
+      },
+    });
+
+    type ConflictEntry = {
+      id: string;
+      section: { id: string; name: string; code: string };
+      subject: { id: string; name: string } | null;
+      teacher: { id: string; person: { firstName: string; lastName: string } } | null;
+      room: { id: string; name: string; code: string } | null;
+    };
+
+    type Conflict = {
+      type: 'TEACHER' | 'ROOM';
+      dayOfWeek: number;
+      day: string;
+      period: { id: string; name: string; startTime: string; endTime: string };
+      teacher?: { id: string; person: { firstName: string; lastName: string } } | null;
+      room?: { id: string; name: string } | null;
+      entries: ConflictEntry[];
+    };
+
+    const teacherConflicts: Conflict[] = [];
+    const roomConflicts: Conflict[] = [];
+
+    // Group by teacherId + day + period
+    const teacherMap = new Map<string, typeof entries>();
+    for (const e of entries) {
+      if (!e.teacherId) continue;
+      const key = `${e.teacherId}|${e.dayOfWeek}|${e.periodId}`;
+      if (!teacherMap.has(key)) teacherMap.set(key, []);
+      teacherMap.get(key)!.push(e);
+    }
+    for (const [, group] of teacherMap) {
+      if (group.length < 2) continue;
+      const first = group[0]!;
+      teacherConflicts.push({
+        type: 'TEACHER',
+        dayOfWeek: first.dayOfWeek,
+        day: DAY_NAMES[first.dayOfWeek] ?? `Day ${first.dayOfWeek}`,
+        period: {
+          id: first.period.id,
+          name: first.period.name,
+          startTime: String(first.period.startTime),
+          endTime: String(first.period.endTime),
+        },
+        teacher: first.teacher,
+        entries: group.map((e) => ({
+          id: e.id,
+          section: e.section,
+          subject: e.subject,
+          teacher: e.teacher,
+          room: e.room,
+        })),
+      });
+    }
+
+    // Group by roomId + day + period
+    const roomMap = new Map<string, typeof entries>();
+    for (const e of entries) {
+      if (!e.roomId) continue;
+      const key = `${e.roomId}|${e.dayOfWeek}|${e.periodId}`;
+      if (!roomMap.has(key)) roomMap.set(key, []);
+      roomMap.get(key)!.push(e);
+    }
+    for (const [, group] of roomMap) {
+      if (group.length < 2) continue;
+      const first = group[0]!;
+      roomConflicts.push({
+        type: 'ROOM',
+        dayOfWeek: first.dayOfWeek,
+        day: DAY_NAMES[first.dayOfWeek] ?? `Day ${first.dayOfWeek}`,
+        period: {
+          id: first.period.id,
+          name: first.period.name,
+          startTime: String(first.period.startTime),
+          endTime: String(first.period.endTime),
+        },
+        room: first.room,
+        entries: group.map((e) => ({
+          id: e.id,
+          section: e.section,
+          subject: e.subject,
+          teacher: e.teacher,
+          room: e.room,
+        })),
+      });
+    }
+
+    return {
+      total: teacherConflicts.length + roomConflicts.length,
+      teacherConflicts,
+      roomConflicts,
+    };
+  }
+
   // ─── Views ────────────────────────────────────────────────────
 
   /** Weekly schedule for a section */
@@ -559,6 +667,34 @@ export class TimetableService {
         section: true,
         subject: true,
         room: true,
+      },
+      orderBy: [{ dayOfWeek: 'asc' }, { period: { periodNumber: 'asc' } }],
+    });
+
+    return this.groupByDay(entries);
+  }
+
+  /** Weekly schedule for a room */
+  async getRoomSchedule(organizationId: string, roomId: string, timetableId?: string) {
+    const room = await this.getRoomOrFail(organizationId, roomId);
+
+    let resolvedTimetableId = timetableId;
+    if (!resolvedTimetableId) {
+      const activeTimetable = await this.prisma.timetable.findFirst({
+        where: { organizationId, campusId: room.campusId, status: 'ACTIVE' },
+        orderBy: { effectiveFrom: 'desc' },
+      });
+      if (!activeTimetable) throw new NotFoundException('No active timetable found for this campus');
+      resolvedTimetableId = activeTimetable.id;
+    }
+
+    const entries = await this.prisma.timetableEntry.findMany({
+      where: { timetableId: resolvedTimetableId, roomId },
+      include: {
+        period: true,
+        section: true,
+        subject: true,
+        teacher: { select: { id: true, person: { select: { firstName: true, lastName: true } } } },
       },
       orderBy: [{ dayOfWeek: 'asc' }, { period: { periodNumber: 'asc' } }],
     });

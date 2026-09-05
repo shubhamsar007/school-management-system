@@ -218,6 +218,15 @@ export class TimetableController {
     return this.timetableService.archiveTimetable(user.organizationId, id);
   }
 
+  @ApiOperation({ summary: 'Detect teacher/room conflicts across all entries in a timetable' })
+  @Get(':id/conflicts')
+  getConflicts(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.timetableService.getConflicts(user.organizationId, id);
+  }
+
   @ApiOperation({ summary: 'Delete a DRAFT timetable' })
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -284,6 +293,17 @@ export class TimetableController {
     @Query('timetableId') timetableId?: string,
   ) {
     return this.timetableService.getSectionSchedule(user.organizationId, sectionId, timetableId);
+  }
+
+  @ApiOperation({ summary: "Get a room's weekly schedule grouped by day" })
+  @ApiQuery({ name: 'timetableId', required: false, description: 'Defaults to active timetable' })
+  @Get('views/room/:roomId')
+  getRoomSchedule(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('roomId') roomId: string,
+    @Query('timetableId') timetableId?: string,
+  ) {
+    return this.timetableService.getRoomSchedule(user.organizationId, roomId, timetableId);
   }
 
   @ApiOperation({ summary: "Get a teacher's weekly schedule grouped by day" })

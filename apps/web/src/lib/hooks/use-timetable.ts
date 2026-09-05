@@ -62,6 +62,7 @@ export interface ScheduleEntry {
   section: { id: string; name: string; code: string };
   subject: { id: string; name: string };
   room?: { id: string; name: string; code: string } | null;
+  teacher?: { id: string; person: { firstName: string; lastName: string } } | null;
 }
 
 export interface ScheduleDay {
@@ -462,5 +463,54 @@ export function useMoveEntry() {
     onSuccess: (_data, { timetableId }) => {
       void qc.invalidateQueries({ queryKey: ['timetable', 'full', timetableId] });
     },
+  });
+}
+
+// ─── Conflicts ────────────────────────────────────────────────────────────────
+
+export interface TimetableConflictEntry {
+  id: string;
+  section: { id: string; name: string; code: string };
+  subject?: { id: string; name: string } | null;
+  teacher?: { id: string; person: { firstName: string; lastName: string } } | null;
+  room?: { id: string; name: string; code: string } | null;
+}
+
+export interface TimetableConflict {
+  type: 'TEACHER' | 'ROOM';
+  dayOfWeek: number;
+  day: string;
+  period: { id: string; name: string; startTime: string; endTime: string };
+  teacher?: { id: string; person: { firstName: string; lastName: string } } | null;
+  room?: { id: string; name: string } | null;
+  entries: TimetableConflictEntry[];
+}
+
+export interface TimetableConflicts {
+  total: number;
+  teacherConflicts: TimetableConflict[];
+  roomConflicts: TimetableConflict[];
+}
+
+export function useConflicts(timetableId: string | null) {
+  return useQuery<TimetableConflicts>({
+    queryKey: ['timetable', 'conflicts', timetableId],
+    queryFn: () => apiClient.get<TimetableConflicts>(`/timetable/${timetableId}/conflicts`),
+    enabled: !!timetableId,
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+// ─── Room Schedule ────────────────────────────────────────────────────────────
+
+export function useRoomSchedule(roomId: string | null, timetableId?: string) {
+  const qs = timetableId ? `?timetableId=${timetableId}` : '';
+  return useQuery<ScheduleDay[]>({
+    queryKey: ['timetable', 'schedule', 'room', roomId, timetableId],
+    queryFn: () => apiClient.get<ScheduleDay[]>(`/timetable/views/room/${roomId}${qs}`),
+    enabled: !!roomId,
+    staleTime: 120_000,
+    retry: 1,
   });
 }

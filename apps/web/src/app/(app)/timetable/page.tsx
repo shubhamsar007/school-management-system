@@ -22,6 +22,8 @@ import {
   usePeriods,
   useTimetables,
   useSectionSchedule,
+  useRoomSchedule,
+  useConflicts,
   useDeleteRoom,
   useDeletePeriod,
   useDeleteBuilding,
@@ -39,11 +41,13 @@ import { RoomModal } from './_components/room-modal';
 import { BuildingModal } from './_components/building-modal';
 import { CreateTimetableModal } from './_components/create-timetable-modal';
 import { BuilderGrid } from './_components/builder-grid';
+import { HealthTab } from './_components/health-tab';
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
   { id: 'builder', label: 'Builder' },
+  { id: 'health', label: 'Health' },
   { id: 'timetable', label: 'Schedule View' },
   { id: 'rooms', label: 'Rooms' },
   { id: 'periods', label: 'Periods' },
@@ -152,10 +156,13 @@ function KpiRow({ campusId }: KpiRowProps) {
   const { data: buildings, isLoading: bl } = useBuildings(campusId);
   const { data: rooms, isLoading: rl } = useRooms(campusId);
   const { data: activeTimetables, isLoading: tl } = useTimetables({ campusId, status: 'ACTIVE' });
+  const activeTimetableId = activeTimetables?.[0]?.id ?? null;
+  const { data: conflicts } = useConflicts(activeTimetableId);
 
   const totalRooms = rooms?.length ?? 0;
   const totalBuildings = buildings?.length ?? 0;
   const activeCount = activeTimetables?.length ?? 0;
+  const conflictCount = conflicts?.total ?? 0;
 
   const loading = bl || rl || tl;
 
@@ -171,7 +178,7 @@ function KpiRow({ campusId }: KpiRowProps) {
     { title: 'BUILDINGS', value: String(totalBuildings), subtitle: 'on this campus' },
     { title: 'TOTAL ROOMS', value: String(totalRooms), subtitle: 'configured' },
     { title: 'ACTIVE TIMETABLES', value: String(activeCount), subtitle: 'this term' },
-    { title: 'CONFLICTS', value: '0', subtitle: 'detected' },
+    { title: 'CONFLICTS', value: String(conflictCount), subtitle: conflictCount > 0 ? 'need resolution' : 'detected' },
   ];
 
   return (
@@ -187,23 +194,22 @@ function KpiRow({ campusId }: KpiRowProps) {
 
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-interface TimetableViewProps {
+/** Shared read-only period×day matrix used by both section and room views */
+function ScheduleMatrix({
+  campusId,
+  scheduleDays,
+  isLoading,
+  isError,
+  emptyPrompt,
+}: {
   campusId: string;
-}
-
-function TimetableView({ campusId }: TimetableViewProps) {
-  const [classId, setClassId] = React.useState('');
-  const [sectionId, setSectionId] = React.useState('');
-
-  const { data: classes = [] } = useClasses();
-  const { data: sections = [] } = useSections(classId || null);
+  scheduleDays: ReturnType<typeof useSectionSchedule>['data'];
+  isLoading: boolean;
+  isError: boolean;
+  emptyPrompt: string;
+}) {
   const { data: periods = [] } = usePeriods(campusId);
-  const { data: scheduleDays, isLoading, isError } = useSectionSchedule(sectionId || null);
 
-  // Reset section when class changes
-  React.useEffect(() => { setSectionId(''); }, [classId]);
-
-  // Build entry lookup: day → periodId → entry
   const entryMap = React.useMemo(() => {
     type Entry = NonNullable<typeof scheduleDays>[number]['entries'][number];
     const map = new Map<string, Map<string, Entry>>();
@@ -215,49 +221,174 @@ function TimetableView({ campusId }: TimetableViewProps) {
     return map;
   }, [scheduleDays]);
 
-  // Active days (days that have at least one entry)
   const activeDays = React.useMemo(() => {
-    if (!scheduleDays) return DAY_ORDER.slice(0, 5);
+    if (!scheduleDays?.length) return DAY_ORDER.slice(0, 5);
     const daysWithEntries = new Set(scheduleDays.map((d) => d.day));
     return DAY_ORDER.filter((d) => daysWithEntries.has(d));
   }, [scheduleDays]);
 
-  const classOptions = classes.map((c) => ({ label: c.name, value: c.id }));
-  const sectionOptions = sections.map((s) => ({ label: `${s.name} (${s.code})`, value: s.id }));
+  if (!scheduleDays) {
+    return (
+      <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
+        {emptyPrompt}
+      </div>
+    );
+  }
+  if (isLoading) return <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">Loading schedule…</div>;
+  if (isError) return <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">No active timetable found for this campus.</div>;
+
+  return (
+    <div className="overflow-x-auto">
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `110px repeat(${activeDays.length}, 1fr)`,
+          gap: '1px',
+          background: '#e6e8eb',
+          minWidth: 600,
+          borderRadius: 8,
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ background: '#fafbfc' }} className="px-3 py-2.5" />
+        {activeDays.map((d) => (
+          <div key={d} style={{ background: '#fafbfc' }} className="py-2.5 text-center text-xs font-semibold text-[#14181c]">
+            {d.slice(0, 3)}
+          </div>
+        ))}
+        {periods.map((period) => {
+          const isBreak = period.periodType !== 'CLASS';
+          return (
+            <React.Fragment key={period.id}>
+              <div style={{ background: isBreak ? '#f6f7f8' : 'white' }} className="px-3 py-2 text-right">
+                <div className="text-[11px] font-semibold text-[#14181c]">{period.name}</div>
+                <div className="text-[10px] text-[#8a929b]">{formatTime(period.startTime)}</div>
+              </div>
+              {isBreak ? (
+                <div style={{ background: '#f6f7f8', gridColumn: `span ${activeDays.length}` }} className="flex items-center justify-center py-2">
+                  <span className="text-[11px] font-medium text-[#8a929b] tracking-wider">{period.periodType}</span>
+                  <span className="ml-2 text-[10px] text-[#b0b7bf]">{formatTime(period.startTime)} – {formatTime(period.endTime)}</span>
+                </div>
+              ) : (
+                activeDays.map((day) => {
+                  const entry = entryMap.get(day)?.get(period.id);
+                  return (
+                    <div key={day} style={{ background: 'white' }} className="p-1.5">
+                      {entry ? (
+                        <div className="rounded-lg bg-[#f0f6ff] border border-[#dbe8f5] px-2 py-1.5 h-full">
+                          <div className="text-[11px] font-semibold text-[#2b5fa8] leading-tight">{entry.subject.name}</div>
+                          {entry.room && <div className="text-[10px] text-[#6b7480] mt-0.5">{entry.room.name}</div>}
+                          {entry.teacher && (
+                            <div className="text-[10px] text-[#8a929b] mt-0.5">
+                              {entry.teacher.person.firstName} {entry.teacher.person.lastName}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-dashed border-[#e6e8eb] px-2 py-1.5 h-full flex items-center justify-center">
+                          <span className="text-[10px] text-[#c5c9cf]">—</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+interface TimetableViewProps {
+  campusId: string;
+}
+
+function TimetableView({ campusId }: TimetableViewProps) {
+  const [viewMode, setViewMode] = React.useState<'section' | 'room'>('section');
+
+  // Section view state
+  const [classId, setClassId] = React.useState('');
+  const [sectionId, setSectionId] = React.useState('');
+  const { data: classes = [] } = useClasses();
+  const { data: sections = [] } = useSections(classId || null);
+  const { data: sectionSchedule, isLoading: secLoading, isError: secError } = useSectionSchedule(sectionId || null);
+  React.useEffect(() => { setSectionId(''); }, [classId]);
+
+  // Room view state
+  const [roomId, setRoomId] = React.useState('');
+  const { data: rooms = [] } = useRooms(campusId);
+  const { data: roomSchedule, isLoading: roomLoading, isError: roomError } = useRoomSchedule(roomId || null);
+
+  const VIEW_PILLS = [
+    { id: 'section', label: 'Section' },
+    { id: 'room', label: 'Room' },
+  ] as const;
 
   return (
     <div className="overflow-hidden rounded-xl border border-[#e6e8eb] bg-white shadow-sm">
       {/* Toolbar */}
       <div className="flex items-center gap-3 border-b border-[#eef0f2] p-3.5 flex-wrap">
-        <div className="flex items-center gap-2">
-          <span style={{ fontSize: 12, color: '#8a929b', fontWeight: 500 }}>Class</span>
-          <div style={{ position: 'relative' }}>
-            <select
-              value={classId}
-              onChange={(e) => setClassId(e.target.value)}
-              style={{ ...SELECT_STYLE, minWidth: 120 }}
+        {/* Section | Room switcher */}
+        <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid #e0ddd5' }}>
+          {VIEW_PILLS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => setViewMode(p.id)}
+              style={{
+                padding: '4px 14px',
+                fontSize: 11,
+                fontWeight: 600,
+                color: viewMode === p.id ? '#fff' : '#6b7480',
+                background: viewMode === p.id ? '#2b5fa8' : 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
             >
-              <option value="">Select class</option>
-              {classOptions.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-            <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#8a929b', fontSize: 10 }}>▼</span>
-          </div>
+              {p.label}
+            </button>
+          ))}
         </div>
 
-        {classId && (
+        {/* Section selectors */}
+        {viewMode === 'section' && (
+          <>
+            <div className="flex items-center gap-2">
+              <span style={{ fontSize: 12, color: '#8a929b', fontWeight: 500 }}>Class</span>
+              <div style={{ position: 'relative' }}>
+                <select value={classId} onChange={(e) => setClassId(e.target.value)} style={{ ...SELECT_STYLE, minWidth: 120 }}>
+                  <option value="">Select class</option>
+                  {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#8a929b', fontSize: 10 }}>▼</span>
+              </div>
+            </div>
+            {classId && (
+              <div className="flex items-center gap-2">
+                <span style={{ fontSize: 12, color: '#8a929b', fontWeight: 500 }}>Section</span>
+                <div style={{ position: 'relative' }}>
+                  <select value={sectionId} onChange={(e) => setSectionId(e.target.value)} style={{ ...SELECT_STYLE, minWidth: 120 }}>
+                    <option value="">Select section</option>
+                    {sections.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
+                  </select>
+                  <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#8a929b', fontSize: 10 }}>▼</span>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Room selector */}
+        {viewMode === 'room' && (
           <div className="flex items-center gap-2">
-            <span style={{ fontSize: 12, color: '#8a929b', fontWeight: 500 }}>Section</span>
+            <span style={{ fontSize: 12, color: '#8a929b', fontWeight: 500 }}>Room</span>
             <div style={{ position: 'relative' }}>
-              <select
-                value={sectionId}
-                onChange={(e) => setSectionId(e.target.value)}
-                style={{ ...SELECT_STYLE, minWidth: 120 }}
-              >
-                <option value="">Select section</option>
-                {sectionOptions.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
+              <select value={roomId} onChange={(e) => setRoomId(e.target.value)} style={{ ...SELECT_STYLE, minWidth: 160 }}>
+                <option value="">Select room</option>
+                {rooms.filter((r) => r.status === 'ACTIVE').map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}{r.building ? ` · ${r.building.name}` : ''}</option>
                 ))}
               </select>
               <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#8a929b', fontSize: 10 }}>▼</span>
@@ -266,118 +397,27 @@ function TimetableView({ campusId }: TimetableViewProps) {
         )}
       </div>
 
-      {/* Grid or prompt */}
-      {!sectionId ? (
-        <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
-          Select a class and section to view the timetable
-        </div>
-      ) : (
-        <div className="p-4">
-          {isLoading && (
-            <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
-              Loading schedule…
-            </div>
-          )}
-          {isError && (
-            <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
-              No active timetable found for this section's campus.
-            </div>
-          )}
-          {!isLoading && !isError && (
-            <div className="overflow-x-auto">
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: `110px repeat(${activeDays.length}, 1fr)`,
-                  gap: '1px',
-                  background: '#e6e8eb',
-                  minWidth: 600,
-                  borderRadius: 8,
-                  overflow: 'hidden',
-                }}
-              >
-                {/* Header row */}
-                <div style={{ background: '#fafbfc' }} className="px-3 py-2.5" />
-                {activeDays.map((d) => (
-                  <div
-                    key={d}
-                    style={{ background: '#fafbfc' }}
-                    className="py-2.5 text-center text-xs font-semibold text-[#14181c]"
-                  >
-                    {d.slice(0, 3)}
-                  </div>
-                ))}
-
-                {/* Period rows */}
-                {periods.map((period) => {
-                  const isBreak = period.periodType !== 'CLASS';
-                  return (
-                    <React.Fragment key={period.id}>
-                      {/* Period label cell */}
-                      <div
-                        style={{ background: isBreak ? '#f6f7f8' : 'white' }}
-                        className="px-3 py-2 text-right"
-                      >
-                        <div className="text-[11px] font-semibold text-[#14181c]">{period.name}</div>
-                        <div className="text-[10px] text-[#8a929b]">
-                          {formatTime(period.startTime)}
-                        </div>
-                      </div>
-
-                      {/* Break row: spans all day columns */}
-                      {isBreak ? (
-                        <div
-                          style={{
-                            background: '#f6f7f8',
-                            gridColumn: `span ${activeDays.length}`,
-                          }}
-                          className="flex items-center justify-center py-2"
-                        >
-                          <span className="text-[11px] font-medium text-[#8a929b] tracking-wider">
-                            {period.periodType}
-                          </span>
-                          <span className="ml-2 text-[10px] text-[#b0b7bf]">
-                            {formatTime(period.startTime)} – {formatTime(period.endTime)}
-                          </span>
-                        </div>
-                      ) : (
-                        /* Class period: one cell per day */
-                        activeDays.map((day) => {
-                          const entry = entryMap.get(day)?.get(period.id);
-                          return (
-                            <div
-                              key={day}
-                              style={{ background: 'white' }}
-                              className="p-1.5"
-                            >
-                              {entry ? (
-                                <div className="rounded-lg bg-[#f0f6ff] border border-[#dbe8f5] px-2 py-1.5 h-full">
-                                  <div className="text-[11px] font-semibold text-[#2b5fa8] leading-tight">
-                                    {entry.subject.name}
-                                  </div>
-                                  {entry.room && (
-                                    <div className="text-[10px] text-[#6b7480] mt-0.5">
-                                      {entry.room.name}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="rounded-lg border border-dashed border-[#e6e8eb] px-2 py-1.5 h-full flex items-center justify-center">
-                                  <span className="text-[10px] text-[#c5c9cf]">—</span>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Grid */}
+      <div className="p-4">
+        {viewMode === 'section' && (
+          <ScheduleMatrix
+            campusId={campusId}
+            scheduleDays={sectionId ? sectionSchedule : undefined}
+            isLoading={secLoading}
+            isError={secError}
+            emptyPrompt="Select a class and section to view the schedule"
+          />
+        )}
+        {viewMode === 'room' && (
+          <ScheduleMatrix
+            campusId={campusId}
+            scheduleDays={roomId ? roomSchedule : undefined}
+            isLoading={roomLoading}
+            isError={roomError}
+            emptyPrompt="Select a room to view its schedule"
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -878,6 +918,69 @@ function BuilderTab({ campusId }: BuilderTabProps) {
   );
 }
 
+// ─── Health page tab ──────────────────────────────────────────────────────────
+
+interface HealthPageTabProps {
+  campusId: string;
+}
+
+function HealthPageTab({ campusId }: HealthPageTabProps) {
+  const { data: timetables = [], isLoading } = useTimetables({ campusId });
+  const [timetableId, setTimetableId] = React.useState('');
+
+  // Auto-select active timetable, fallback to first
+  React.useEffect(() => {
+    if (!timetableId && timetables.length > 0) {
+      const active = timetables.find((t) => t.status === 'ACTIVE') ?? timetables[0];
+      if (active) setTimetableId(active.id);
+    }
+  }, [timetables, timetableId]);
+
+  const selectedTimetable = timetables.find((t) => t.id === timetableId) ?? null;
+
+  const timetableOptions = [
+    { label: isLoading ? 'Loading…' : '— Select timetable —', value: '' },
+    ...timetables.map((t) => ({
+      label: `${t.name} [${t.status}] · ${t.academicYear.name}`,
+      value: t.id,
+    })),
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Timetable picker */}
+      <div className="flex items-center gap-3">
+        <span style={{ fontSize: 12, color: '#8a929b', fontWeight: 500 }}>Timetable</span>
+        <div style={{ position: 'relative' }}>
+          <select
+            value={timetableId}
+            onChange={(e) => setTimetableId(e.target.value)}
+            style={{ ...SELECT_STYLE, minWidth: 280 }}
+          >
+            {timetableOptions.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#8a929b', fontSize: 10 }}>▼</span>
+        </div>
+        {selectedTimetable && (
+          <Badge variant={selectedTimetable.status === 'ACTIVE' ? 'active' : selectedTimetable.status === 'DRAFT' ? 'pending' : 'default'}>
+            {selectedTimetable.status}
+          </Badge>
+        )}
+      </div>
+
+      {!selectedTimetable ? (
+        <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
+          {isLoading ? 'Loading timetables…' : 'No timetable selected'}
+        </div>
+      ) : (
+        <HealthTab timetable={selectedTimetable} />
+      )}
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TimetablePage() {
@@ -903,6 +1006,16 @@ export default function TimetablePage() {
         ) : (
           <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
             Select a campus to use the builder
+          </div>
+        )
+      )}
+
+      {activeTab === 'health' && (
+        campusId ? (
+          <HealthPageTab campusId={campusId} />
+        ) : (
+          <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
+            Select a campus to view health
           </div>
         )
       )}
