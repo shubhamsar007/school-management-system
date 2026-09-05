@@ -25,20 +25,26 @@ import {
   useDeleteRoom,
   useDeletePeriod,
   useDeleteBuilding,
+  useActivateTimetable,
+  useArchiveTimetable,
   type TimetableRoom,
   type TimetablePeriod,
   type TimetableBuilding,
+  type TimetableSummary,
 } from '@/lib/hooks/use-timetable';
 import { WeeklyScheduleGrid } from '@/components/shared/weekly-schedule-grid';
 import { PeriodTypeBadge } from '@/components/shared/period-type-badge';
 import { PeriodModal } from './_components/period-modal';
 import { RoomModal } from './_components/room-modal';
 import { BuildingModal } from './_components/building-modal';
+import { CreateTimetableModal } from './_components/create-timetable-modal';
+import { BuilderGrid } from './_components/builder-grid';
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'timetable', label: 'Timetable View' },
+  { id: 'builder', label: 'Builder' },
+  { id: 'timetable', label: 'Schedule View' },
   { id: 'rooms', label: 'Rooms' },
   { id: 'periods', label: 'Periods' },
 ];
@@ -668,10 +674,214 @@ function PeriodsTab({ campusId }: PeriodsTabProps) {
   );
 }
 
+// ─── Builder tab ─────────────────────────────────────────────────────────────
+
+interface BuilderTabProps {
+  campusId: string;
+}
+
+function BuilderTab({ campusId }: BuilderTabProps) {
+  const toast = useToast();
+  const [timetableId, setTimetableId] = React.useState('');
+  const [classId, setClassId] = React.useState('');
+  const [sectionId, setSectionId] = React.useState('');
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [activateConfirm, setActivateConfirm] = React.useState(false);
+  const [archiveConfirm, setArchiveConfirm] = React.useState(false);
+
+  const { data: timetables = [], isLoading: ttLoading } = useTimetables({ campusId });
+  const activate = useActivateTimetable();
+  const archive = useArchiveTimetable();
+  const { data: classes = [] } = useClasses();
+  const { data: sections = [] } = useSections(classId || null);
+
+  const selectedTimetable = timetables.find((t) => t.id === timetableId) ?? null;
+
+  // Auto-select first DRAFT timetable
+  React.useEffect(() => {
+    if (!timetableId && timetables.length > 0) {
+      const draft = timetables.find((t) => t.status === 'DRAFT') ?? timetables[0];
+      if (draft) setTimetableId(draft.id);
+    }
+  }, [timetables, timetableId]);
+
+  React.useEffect(() => { setSectionId(''); }, [classId]);
+
+  const classOptions = classes.map((c) => ({ label: c.name, value: c.id }));
+  const sectionOptions = sections.map((s) => ({ label: `${s.name} (${s.code})`, value: s.id }));
+
+  const timetableOptions = [
+    { label: ttLoading ? 'Loading…' : '— Select timetable —', value: '' },
+    ...timetables.map((t) => ({
+      label: `${t.name} [${t.status}] · ${t.academicYear.name}`,
+      value: t.id,
+    })),
+  ];
+
+  async function handleActivate() {
+    if (!timetableId) return;
+    try {
+      await activate.mutateAsync(timetableId);
+      toast.success('Timetable activated. Previous active timetable was archived.');
+      setActivateConfirm(false);
+    } catch (e: unknown) {
+      toast.error((e as { message?: string })?.message ?? 'Failed to activate.');
+    }
+  }
+
+  async function handleArchive() {
+    if (!timetableId) return;
+    try {
+      await archive.mutateAsync(timetableId);
+      toast.success('Timetable archived.');
+      setArchiveConfirm(false);
+    } catch (e: unknown) {
+      toast.error((e as { message?: string })?.message ?? 'Failed to archive.');
+    }
+  }
+
+  const isDraft = selectedTimetable?.status === 'DRAFT';
+  const isActive = selectedTimetable?.status === 'ACTIVE';
+
+  return (
+    <>
+      <div className="overflow-hidden rounded-xl border border-[#e6e8eb] bg-white shadow-sm">
+        {/* ── Timetable selector bar ── */}
+        <div
+          className="flex items-center gap-3 flex-wrap border-b border-[#eef0f2] p-3.5"
+          style={{ background: '#fafbfc' }}
+        >
+          <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: 340 }}>
+            <select
+              value={timetableId}
+              onChange={(e) => setTimetableId(e.target.value)}
+              style={{ ...SELECT_STYLE, width: '100%', minWidth: 0 }}
+            >
+              {timetableOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#8a929b', fontSize: 10 }}>▼</span>
+          </div>
+
+          {selectedTimetable && (
+            <Badge variant={
+              selectedTimetable.status === 'ACTIVE' ? 'active' :
+              selectedTimetable.status === 'DRAFT' ? 'pending' : 'default'
+            }>
+              {selectedTimetable.status}
+            </Badge>
+          )}
+
+          <div className="flex-1" />
+
+          <Button variant="secondary" size="sm" onClick={() => setCreateOpen(true)}>
+            + New Draft
+          </Button>
+          {isDraft && (
+            <Button variant="primary" size="sm" onClick={() => setActivateConfirm(true)} disabled={activate.isPending}>
+              Activate
+            </Button>
+          )}
+          {(isDraft || isActive) && (
+            <Button variant="ghost" size="sm" onClick={() => setArchiveConfirm(true)} disabled={archive.isPending}>
+              Archive
+            </Button>
+          )}
+        </div>
+
+        {/* ── Section selector ── */}
+        <div className="flex items-center gap-3 flex-wrap border-b border-[#eef0f2] px-3.5 py-2.5">
+          <span style={{ fontSize: 12, color: '#8a929b', fontWeight: 500 }}>Section</span>
+          <div style={{ position: 'relative' }}>
+            <select
+              value={classId}
+              onChange={(e) => setClassId(e.target.value)}
+              style={{ ...SELECT_STYLE, minWidth: 110 }}
+            >
+              <option value="">Class</option>
+              {classOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#8a929b', fontSize: 10 }}>▼</span>
+          </div>
+          {classId && (
+            <div style={{ position: 'relative' }}>
+              <select
+                value={sectionId}
+                onChange={(e) => setSectionId(e.target.value)}
+                style={{ ...SELECT_STYLE, minWidth: 110 }}
+              >
+                <option value="">Section</option>
+                {sectionOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#8a929b', fontSize: 10 }}>▼</span>
+            </div>
+          )}
+        </div>
+
+        {/* ── Grid ── */}
+        <div className="p-4">
+          {!timetableId ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <p className="text-sm font-medium text-[#4a5260]">No timetable selected</p>
+              <p className="text-xs text-[#8a929b]">Select a timetable above or create a new draft.</p>
+              <Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
+                + Create Draft Timetable
+              </Button>
+            </div>
+          ) : !sectionId ? (
+            <div className="flex items-center justify-center py-16 text-sm text-[#8a929b]">
+              Select a class and section to start building
+            </div>
+          ) : (
+            selectedTimetable && (
+              <BuilderGrid
+                timetable={selectedTimetable}
+                campusId={campusId}
+                classId={classId}
+                sectionId={sectionId}
+                academicYearId={selectedTimetable.academicYearId}
+              />
+            )
+          )}
+        </div>
+      </div>
+
+      <CreateTimetableModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        campusId={campusId}
+        onCreated={(id) => setTimetableId(id)}
+      />
+
+      <ConfirmDialog
+        open={activateConfirm}
+        onClose={() => setActivateConfirm(false)}
+        onConfirm={handleActivate}
+        title="Activate Timetable"
+        description="Activate this timetable? The current active timetable (if any) will be automatically archived."
+        confirmLabel="Activate"
+        variant="primary"
+        loading={activate.isPending}
+      />
+      <ConfirmDialog
+        open={archiveConfirm}
+        onClose={() => setArchiveConfirm(false)}
+        onConfirm={handleArchive}
+        title="Archive Timetable"
+        description="Archive this timetable? It will no longer be used for scheduling or attendance."
+        confirmLabel="Archive"
+        variant="danger"
+        loading={archive.isPending}
+      />
+    </>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TimetablePage() {
-  const [activeTab, setActiveTab] = React.useState('timetable');
+  const [activeTab, setActiveTab] = React.useState('builder');
   const [campusId, setCampusId] = React.useState('');
 
   return (
@@ -686,6 +896,16 @@ export default function TimetablePage() {
       {campusId && <KpiRow campusId={campusId} />}
 
       <Tabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} className="mb-4" />
+
+      {activeTab === 'builder' && (
+        campusId ? (
+          <BuilderTab campusId={campusId} />
+        ) : (
+          <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
+            Select a campus to use the builder
+          </div>
+        )
+      )}
 
       {activeTab === 'timetable' && (
         campusId ? (

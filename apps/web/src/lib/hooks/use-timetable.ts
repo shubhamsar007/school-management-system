@@ -349,3 +349,118 @@ export function useSectionSchedule(
     retry: 1,
   });
 }
+
+// ─── Full Timetable (Builder) ─────────────────────────────────────────────────
+
+export interface TimetableEntryTeacher {
+  id: string;
+  person: { firstName: string; lastName: string };
+}
+
+export interface TimetableFullEntry {
+  id: string;
+  timetableId: string;
+  dayOfWeek: number;
+  classId: string;
+  sectionId: string;
+  subjectId?: string | null;
+  teacherId?: string | null;
+  roomId?: string | null;
+  period: TimetablePeriod;
+  section: { id: string; name: string; code: string };
+  subject?: { id: string; name: string } | null;
+  room?: { id: string; name: string; code: string } | null;
+  teacher?: TimetableEntryTeacher | null;
+}
+
+export interface TimetableFull extends TimetableSummary {
+  entries: TimetableFullEntry[];
+}
+
+export function useTimetableFull(id: string | null) {
+  return useQuery<TimetableFull>({
+    queryKey: ['timetable', 'full', id],
+    queryFn: () => apiClient.get<TimetableFull>(`/timetable/${id}`),
+    enabled: !!id,
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+// ─── Entry Mutations ──────────────────────────────────────────────────────────
+
+interface AddEntryPayload {
+  timetableId: string;
+  dayOfWeek: number;
+  periodId: string;
+  classId: string;
+  sectionId: string;
+  subjectId?: string;
+  teacherId?: string;
+  roomId?: string;
+}
+
+export function useAddEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ timetableId, ...dto }: AddEntryPayload) =>
+      apiClient.post<TimetableFullEntry>(`/timetable/${timetableId}/entries`, dto),
+    onSuccess: (_data, { timetableId }) => {
+      void qc.invalidateQueries({ queryKey: ['timetable', 'full', timetableId] });
+    },
+  });
+}
+
+interface UpdateEntryPayload {
+  timetableId: string;
+  entryId: string;
+  subjectId?: string | null;
+  teacherId?: string | null;
+  roomId?: string | null;
+}
+
+export function useUpdateEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ timetableId, entryId, ...dto }: UpdateEntryPayload) =>
+      apiClient.patch<TimetableFullEntry>(`/timetable/${timetableId}/entries/${entryId}`, dto),
+    onSuccess: (_data, { timetableId }) => {
+      void qc.invalidateQueries({ queryKey: ['timetable', 'full', timetableId] });
+    },
+  });
+}
+
+export function useDeleteEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ timetableId, entryId }: { timetableId: string; entryId: string }) =>
+      apiClient.delete(`/timetable/${timetableId}/entries/${entryId}`),
+    onSuccess: (_data, { timetableId }) => {
+      void qc.invalidateQueries({ queryKey: ['timetable', 'full', timetableId] });
+    },
+  });
+}
+
+export function useMoveEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      timetableId,
+      entryId,
+      dayOfWeek,
+      periodId,
+    }: {
+      timetableId: string;
+      entryId: string;
+      dayOfWeek: number;
+      periodId: string;
+    }) =>
+      apiClient.patch<TimetableFullEntry>(
+        `/timetable/${timetableId}/entries/${entryId}/move`,
+        { dayOfWeek, periodId },
+      ),
+    onSuccess: (_data, { timetableId }) => {
+      void qc.invalidateQueries({ queryKey: ['timetable', 'full', timetableId] });
+    },
+  });
+}

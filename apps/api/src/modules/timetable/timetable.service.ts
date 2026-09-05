@@ -271,6 +271,7 @@ export class TimetableService {
             section: true,
             subject: true,
             room: true,
+            teacher: { select: { id: true, person: { select: { firstName: true, lastName: true } } } },
           },
           orderBy: [{ dayOfWeek: 'asc' }, { period: { periodNumber: 'asc' } }],
         },
@@ -372,6 +373,7 @@ export class TimetableService {
           section: true,
           subject: true,
           room: true,
+          teacher: { select: { id: true, person: { select: { firstName: true, lastName: true } } } },
         },
       });
     } catch (e: unknown) {
@@ -428,6 +430,7 @@ export class TimetableService {
         section: true,
         subject: true,
         room: true,
+        teacher: { select: { id: true, person: { select: { firstName: true, lastName: true } } } },
       },
     });
   }
@@ -442,6 +445,64 @@ export class TimetableService {
     });
     if (!entry) throw new NotFoundException('Timetable entry not found');
     await this.prisma.timetableEntry.delete({ where: { id: entryId } });
+  }
+
+  async moveEntry(
+    organizationId: string,
+    timetableId: string,
+    entryId: string,
+    dto: { dayOfWeek: number; periodId: string },
+  ) {
+    const timetable = await this.getTimetableOrFail(organizationId, timetableId);
+    if (timetable.status !== 'DRAFT') {
+      throw new BadRequestException('Entries can only be moved in DRAFT timetables');
+    }
+
+    const entry = await this.prisma.timetableEntry.findFirst({
+      where: { id: entryId, timetableId },
+    });
+    if (!entry) throw new NotFoundException('Timetable entry not found');
+
+    // Validate target period belongs to same campus
+    const period = await this.getPeriodOrFail(organizationId, dto.periodId);
+    if (period.campusId !== timetable.campusId) {
+      throw new BadRequestException('Target period does not belong to this timetable campus');
+    }
+
+    // Re-run conflict checks for the new slot (exclude this entry)
+    if (entry.teacherId) {
+      await this.checkTeacherConflict(timetableId, dto.dayOfWeek, dto.periodId, entry.teacherId, entryId);
+    }
+    if (entry.roomId) {
+      await this.checkRoomConflict(timetableId, dto.dayOfWeek, dto.periodId, entry.roomId, entryId);
+    }
+
+    try {
+      return await this.prisma.timetableEntry.update({
+        where: { id: entryId },
+        data: { dayOfWeek: dto.dayOfWeek, periodId: dto.periodId },
+        include: {
+          period: true,
+          section: true,
+          subject: true,
+          room: true,
+          teacher: { select: { id: true, person: { select: { firstName: true, lastName: true } } } },
+        },
+      });
+    } catch (e: unknown) {
+      if (
+        typeof e === 'object' &&
+        e !== null &&
+        'code' in e &&
+        (e as { code: string }).code === 'P2002'
+      ) {
+        const day = DAY_NAMES[dto.dayOfWeek] ?? `day ${dto.dayOfWeek}`;
+        throw new ConflictException(
+          `Section already has an entry on ${day} for this period`,
+        );
+      }
+      throw e;
+    }
   }
 
   // ─── Views ────────────────────────────────────────────────────
@@ -470,6 +531,7 @@ export class TimetableService {
         section: true,
         subject: true,
         room: true,
+        teacher: { select: { id: true, person: { select: { firstName: true, lastName: true } } } },
       },
       orderBy: [{ dayOfWeek: 'asc' }, { period: { periodNumber: 'asc' } }],
     });

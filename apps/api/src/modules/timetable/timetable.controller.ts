@@ -20,6 +20,7 @@ import { CreateRoomDto } from './dto/create-room.dto';
 import { CreatePeriodDto } from './dto/create-period.dto';
 import { CreateTimetableDto } from './dto/create-timetable.dto';
 import { CreateTimetableEntryDto, UpdateTimetableEntryDto } from './dto/create-timetable-entry.dto';
+import { MoveTimetableEntryDto } from './dto/move-timetable-entry.dto';
 
 @ApiTags('timetable')
 @ApiBearerAuth()
@@ -259,6 +260,17 @@ export class TimetableController {
     @Param('entryId') entryId: string,
   ) {
     return this.timetableService.deleteEntry(user.organizationId, id, entryId);
+  }
+
+  @ApiOperation({ summary: 'Move an entry to a different day/period (DRAFT only, re-checks conflicts)' })
+  @Patch(':id/entries/:entryId/move')
+  moveEntry(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('entryId') entryId: string,
+    @Body() dto: MoveTimetableEntryDto,
+  ) {
+    return this.timetableService.moveEntry(user.organizationId, id, entryId, dto);
   }
 
   // ─── Views ────────────────────────────────────────────────────
