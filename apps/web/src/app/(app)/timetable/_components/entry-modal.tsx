@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/toast';
 import { ConfirmDialog } from '@/components/ui';
 import { useClassSubjects } from '@/lib/hooks/use-academics';
 import { useTeachers } from '@/lib/hooks/use-teachers';
-import { useRooms, useAddEntry, useUpdateEntry, useDeleteEntry, useMoveEntry } from '@/lib/hooks/use-timetable';
+import { useRooms, useAddEntry, useUpdateEntry, useDeleteEntry, useMoveEntry, useTeacherAvailability } from '@/lib/hooks/use-timetable';
 import type { TimetableFullEntry, TimetablePeriod } from '@/lib/hooks/use-timetable';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -106,6 +106,12 @@ export function EntryModal(props: EntryModalProps) {
   const { data: classSubjects = [] } = useClassSubjects(classId, academicYearId);
   const { data: teachersResp } = useTeachers({ limit: 200, status: 'ACTIVE' });
   const { data: rooms = [] } = useRooms(campusId);
+  const { data: teacherAvailability } = useTeacherAvailability(teacherId || null);
+
+  // Compute the day of week for the current entry
+  const entryDayOfWeek = isEdit ? entry?.dayOfWeek : (props as EntryModalAddProps).dayOfWeek;
+  const selectedTeacherAvail = teacherAvailability?.find((d) => d.dayOfWeek === entryDayOfWeek);
+  const teacherUnavailable = !!teacherId && selectedTeacherAvail !== undefined && !selectedTeacherAvail.isAvailable;
 
   const subjectOptions = [
     { label: '— No subject —', value: '' },
@@ -276,6 +282,19 @@ export function EntryModal(props: EntryModalProps) {
             onChange={(e) => setTeacherId(e.target.value)}
             options={teacherOptions}
           />
+          {teacherUnavailable && (
+            <div
+              className="flex items-center gap-2 rounded-lg px-3 py-2"
+              style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}
+            >
+              <span style={{ fontSize: 11, color: '#c2410c' }}>⚠</span>
+              <span style={{ fontSize: 11, color: '#c2410c', fontWeight: 500 }}>
+                This teacher has marked themselves as unavailable on{' '}
+                {DAY_OPTIONS.find((d) => d.value === String(entryDayOfWeek))?.label ?? 'this day'}.
+                {selectedTeacherAvail?.note ? ` Note: ${selectedTeacherAvail.note}` : ''}
+              </span>
+            </div>
+          )}
           <Select
             label="Room"
             value={roomId}

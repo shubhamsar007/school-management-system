@@ -42,15 +42,19 @@ import { BuildingModal } from './_components/building-modal';
 import { CreateTimetableModal } from './_components/create-timetable-modal';
 import { BuilderGrid } from './_components/builder-grid';
 import { HealthTab } from './_components/health-tab';
+import { RulesTab } from './_components/rules-tab';
+import { SubstitutePanel } from './_components/substitute-panel';
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'builder', label: 'Builder' },
-  { id: 'health', label: 'Health' },
-  { id: 'timetable', label: 'Schedule View' },
-  { id: 'rooms', label: 'Rooms' },
-  { id: 'periods', label: 'Periods' },
+  { id: 'builder',    label: 'Builder' },
+  { id: 'health',     label: 'Health' },
+  { id: 'substitute', label: 'Substitutes' },
+  { id: 'timetable',  label: 'Schedule View' },
+  { id: 'rules',      label: 'Rules' },
+  { id: 'rooms',      label: 'Rooms' },
+  { id: 'periods',    label: 'Periods' },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1026,6 +1030,26 @@ export default function TimetablePage() {
         ) : (
           <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
             Select a campus to view the timetable
+          </div>
+        )
+      )}
+
+      {activeTab === 'substitute' && (
+        campusId ? (
+          <SubstitutePanel campusId={campusId} />
+        ) : (
+          <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
+            Select a campus to use substitute suggestions
+          </div>
+        )
+      )}
+
+      {activeTab === 'rules' && (
+        campusId ? (
+          <RulesTab campusId={campusId} />
+        ) : (
+          <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
+            Select a campus to manage scheduling rules
           </div>
         )
       )}

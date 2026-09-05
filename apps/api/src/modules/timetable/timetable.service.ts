@@ -10,6 +10,8 @@ import { CreateRoomDto } from './dto/create-room.dto';
 import { CreatePeriodDto } from './dto/create-period.dto';
 import { CreateTimetableDto } from './dto/create-timetable.dto';
 import { CreateTimetableEntryDto, UpdateTimetableEntryDto } from './dto/create-timetable-entry.dto';
+import { SetTeacherAvailabilityDto } from './dto/set-teacher-availability.dto';
+import { CreateSchedulingRuleDto } from './dto/create-scheduling-rule.dto';
 
 /** Parse "HH:MM" and return a Date object with only the time portion set */
 function parseTime(hhmm: string): Date {
@@ -752,6 +754,335 @@ export class TimetableService {
         `Room is already booked on ${day} during period "${conflict.period.name}"`,
       );
     }
+  }
+
+  // ─── Teacher Availability ─────────────────────────────────────
+
+  async getTeacherAvailability(organizationId: string, teacherId: string) {
+    // Verify teacher belongs to org
+    const teacher = await this.prisma.employee.findFirst({
+      where: { id: teacherId, organizationId },
+    });
+    if (!teacher) throw new NotFoundException('Teacher not found');
+
+    const records = await this.prisma.teacherAvailability.findMany({
+      where: { employeeId: teacherId },
+      orderBy: { dayOfWeek: 'asc' },
+    });
+
+    // Return full 7-day structure (fill in defaults for missing days)
+    const map = new Map(records.map((r) => [r.dayOfWeek, r]));
+    return Array.from({ length: 7 }, (_, i) => {
+      const day = i + 1;
+      const rec = map.get(day);
+      return {
+        dayOfWeek: day,
+        isAvailable: rec?.isAvailable ?? true,
+        note: rec?.note ?? null,
+        id: rec?.id ?? null,
+      };
+    });
+  }
+
+  async setTeacherAvailability(
+    organizationId: string,
+    teacherId: string,
+    dto: SetTeacherAvailabilityDto,
+  ) {
+    const teacher = await this.prisma.employee.findFirst({
+      where: { id: teacherId, organizationId },
+    });
+    if (!teacher) throw new NotFoundException('Teacher not found');
+
+    await this.prisma.$transaction(
+      dto.availability.map((item) =>
+        this.prisma.teacherAvailability.upsert({
+          where: { employeeId_dayOfWeek: { employeeId: teacherId, dayOfWeek: item.dayOfWeek } },
+          create: {
+            employeeId: teacherId,
+            dayOfWeek: item.dayOfWeek,
+            isAvailable: item.isAvailable,
+            ...(item.note ? { note: item.note } : {}),
+          },
+          update: {
+            isAvailable: item.isAvailable,
+            note: item.note ?? null,
+          },
+        }),
+      ),
+    );
+
+    return this.getTeacherAvailability(organizationId, teacherId);
+  }
+
+  // ─── Scheduling Rules ─────────────────────────────────────────
+
+  async getSchedulingRules(organizationId: string, campusId: string) {
+    await this.verifyCampus(organizationId, campusId);
+    return this.prisma.schedulingRule.findMany({
+      where: { campusId },
+      include: { period: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createSchedulingRule(organizationId: string, dto: CreateSchedulingRuleDto) {
+    await this.verifyCampus(organizationId, dto.campusId);
+    if (dto.periodId) {
+      await this.getPeriodOrFail(organizationId, dto.periodId);
+    }
+    return this.prisma.schedulingRule.create({
+      data: {
+        campusId: dto.campusId,
+        ruleType: dto.ruleType,
+        ...(dto.value !== undefined ? { value: dto.value } : {}),
+        ...(dto.periodId ? { periodId: dto.periodId } : {}),
+        ...(dto.dayOfWeek !== undefined ? { dayOfWeek: dto.dayOfWeek } : {}),
+        ...(dto.description ? { description: dto.description } : {}),
+        isActive: dto.isActive ?? true,
+      },
+      include: { period: true },
+    });
+  }
+
+  async updateSchedulingRule(
+    organizationId: string,
+    id: string,
+    dto: Partial<CreateSchedulingRuleDto>,
+  ) {
+    const rule = await this.getSchedulingRuleOrFail(organizationId, id);
+    return this.prisma.schedulingRule.update({
+      where: { id: rule.id },
+      data: {
+        ...(dto.ruleType ? { ruleType: dto.ruleType } : {}),
+        ...(dto.value !== undefined ? { value: dto.value } : {}),
+        ...(dto.periodId !== undefined ? { periodId: dto.periodId } : {}),
+        ...(dto.dayOfWeek !== undefined ? { dayOfWeek: dto.dayOfWeek } : {}),
+        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+      },
+      include: { period: true },
+    });
+  }
+
+  async deleteSchedulingRule(organizationId: string, id: string) {
+    await this.getSchedulingRuleOrFail(organizationId, id);
+    await this.prisma.schedulingRule.delete({ where: { id } });
+  }
+
+  private async getSchedulingRuleOrFail(organizationId: string, id: string) {
+    const rule = await this.prisma.schedulingRule.findFirst({
+      where: { id },
+      include: { campus: true },
+    });
+    if (!rule || rule.campus.organizationId !== organizationId) {
+      throw new NotFoundException('Scheduling rule not found');
+    }
+    return rule;
+  }
+
+  // ─── Substitute Suggestions ───────────────────────────────────
+
+  /**
+   * Score-based substitute suggestions for a teacher's absence on a given day.
+   * Returns each affected period with a ranked list of candidate teachers + scores.
+   * Does NOT create any DB records — purely read-only computation.
+   */
+  async suggestSubstitutes(
+    organizationId: string,
+    timetableId: string,
+    absentTeacherId: string,
+    dayOfWeek: number,
+    date?: string, // ISO date (YYYY-MM-DD) — if supplied, checks active leaves for that day
+  ) {
+    const timetable = await this.getTimetableOrFail(organizationId, timetableId);
+
+    // 1. Identify affected entries (this teacher's periods on the given day)
+    const affectedEntries = await this.prisma.timetableEntry.findMany({
+      where: { timetableId, teacherId: absentTeacherId, dayOfWeek },
+      include: {
+        period: true,
+        section: true,
+        subject: true,
+      },
+      orderBy: { period: { periodNumber: 'asc' } },
+    });
+
+    if (affectedEntries.length === 0) {
+      return { affectedEntries: [], candidates: [] };
+    }
+
+    // 2. Fetch the absent teacher's details (for department affinity comparison)
+    const absentTeacher = await this.prisma.employee.findFirst({
+      where: { id: absentTeacherId },
+      select: { id: true, departmentId: true },
+    });
+
+    // 3. Fetch all active employees on the same campus
+    const allCandidates = await this.prisma.employee.findMany({
+      where: {
+        campusId: timetable.campusId,
+        employmentStatus: 'ACTIVE',
+        NOT: { id: absentTeacherId },
+      },
+      select: {
+        id: true,
+        departmentId: true,
+        person: { select: { firstName: true, lastName: true } },
+      },
+    });
+
+    const candidateIds = allCandidates.map((c) => c.id);
+    const periodIds = affectedEntries.map((e) => e.periodId);
+
+    // 4. Fetch busy teachers (already scheduled on this day + these periods) in this timetable
+    const busyEntries = await this.prisma.timetableEntry.findMany({
+      where: {
+        timetableId,
+        dayOfWeek,
+        periodId: { in: periodIds },
+        teacherId: { in: candidateIds },
+      },
+      select: { teacherId: true, periodId: true },
+    });
+    const busyMap = new Map<string, Set<string>>(); // teacherId → Set<periodId>
+    for (const e of busyEntries) {
+      if (!e.teacherId) continue;
+      if (!busyMap.has(e.teacherId)) busyMap.set(e.teacherId, new Set());
+      busyMap.get(e.teacherId)!.add(e.periodId);
+    }
+
+    // 5. Fetch teachers on approved leave for the given date
+    const onLeaveIds = new Set<string>();
+    if (date) {
+      const targetDate = new Date(date);
+      const onLeave = await this.prisma.leaveRequest.findMany({
+        where: {
+          organizationId,
+          employeeId: { in: candidateIds },
+          status: 'APPROVED',
+          startDate: { lte: targetDate },
+          endDate: { gte: targetDate },
+        },
+        select: { employeeId: true },
+      });
+      onLeave.forEach((l) => onLeaveIds.add(l.employeeId));
+    }
+
+    // 6. Subject proficiency: teachers who have taught the affected subjects before
+    const subjectIds = [...new Set(affectedEntries.map((e) => e.subjectId).filter(Boolean))];
+    const proficientTeachers = await this.prisma.teacherAssignment.findMany({
+      where: { subjectId: { in: subjectIds as string[] }, teacherId: { in: candidateIds } },
+      select: { teacherId: true, subjectId: true },
+    });
+    const proficientMap = new Map<string, Set<string>>(); // teacherId → Set<subjectId>
+    for (const pa of proficientTeachers) {
+      if (!proficientMap.has(pa.teacherId)) proficientMap.set(pa.teacherId, new Set());
+      proficientMap.get(pa.teacherId)!.add(pa.subjectId);
+    }
+
+    // 7. Workload: count existing timetable periods for each candidate this day
+    const workloadCounts = await this.prisma.timetableEntry.groupBy({
+      by: ['teacherId'],
+      where: { timetableId, dayOfWeek, teacherId: { in: candidateIds } },
+      _count: { id: true },
+    });
+    const workloadMap = new Map<string, number>();
+    for (const w of workloadCounts) {
+      if (w.teacherId) workloadMap.set(w.teacherId, w._count.id);
+    }
+
+    // 8. Fairness: how many times each candidate has been a substitute this academic year
+    // We use SubstitutionAssignment — counts confirmed/suggested records
+    const substituteCounts = await this.prisma.substitutionAssignment.groupBy({
+      by: ['substituteTeacherId'],
+      where: { substituteTeacherId: { in: candidateIds } },
+      _count: { id: true },
+    });
+    const substituteMap = new Map<string, number>();
+    for (const s of substituteCounts) {
+      if (s.substituteTeacherId) substituteMap.set(s.substituteTeacherId, s._count.id);
+    }
+
+    const maxSubstitutions = Math.max(1, ...substituteMap.values());
+    const maxWorkload = Math.max(1, ...workloadMap.values());
+
+    // 9. Score each candidate per affected period
+    type ScoredCandidate = {
+      candidateId: string;
+      name: string;
+      subjectProficiency: number;
+      workloadScore: number;
+      fairnessScore: number;
+      departmentAffinity: number;
+      total: number;
+      disqualifiedReason: string | null;
+    };
+
+    const perPeriodResults = affectedEntries.map((entry) => {
+      const candidates: ScoredCandidate[] = allCandidates.map((c) => {
+        // Disqualification checks
+        if (onLeaveIds.has(c.id)) {
+          return { candidateId: c.id, name: `${c.person.firstName} ${c.person.lastName}`, subjectProficiency: 0, workloadScore: 0, fairnessScore: 0, departmentAffinity: 0, total: 0, disqualifiedReason: 'On approved leave' };
+        }
+        if (busyMap.get(c.id)?.has(entry.periodId)) {
+          return { candidateId: c.id, name: `${c.person.firstName} ${c.person.lastName}`, subjectProficiency: 0, workloadScore: 0, fairnessScore: 0, departmentAffinity: 0, total: 0, disqualifiedReason: 'Already scheduled this period' };
+        }
+
+        // Scores
+        const hasProficiency = entry.subjectId ? (proficientMap.get(c.id)?.has(entry.subjectId) ?? false) : false;
+        const subjectProficiency = hasProficiency ? 40 : 0;
+
+        const currentLoad = workloadMap.get(c.id) ?? 0;
+        const workloadScore = Math.round(30 * (1 - currentLoad / (maxWorkload + 1)));
+
+        const subCount = substituteMap.get(c.id) ?? 0;
+        const fairnessScore = Math.round(20 * (1 - subCount / (maxSubstitutions + 1)));
+
+        const departmentAffinity = (c.departmentId && absentTeacher?.departmentId && c.departmentId === absentTeacher.departmentId) ? 10 : 0;
+
+        const total = subjectProficiency + workloadScore + fairnessScore + departmentAffinity;
+        return {
+          candidateId: c.id,
+          name: `${c.person.firstName} ${c.person.lastName}`,
+          subjectProficiency,
+          workloadScore,
+          fairnessScore,
+          departmentAffinity,
+          total,
+          disqualifiedReason: null,
+        };
+      });
+
+      // Sort: qualified (null disqualified) first by score desc; disqualified at end
+      candidates.sort((a, b) => {
+        if (a.disqualifiedReason && !b.disqualifiedReason) return 1;
+        if (!a.disqualifiedReason && b.disqualifiedReason) return -1;
+        return b.total - a.total;
+      });
+
+      return {
+        entry: {
+          id: entry.id,
+          periodId: entry.periodId,
+          periodName: entry.period.name,
+          periodNumber: entry.period.periodNumber,
+          startTime: String(entry.period.startTime),
+          subjectId: entry.subjectId,
+          subjectName: entry.subject?.name ?? null,
+          sectionId: entry.sectionId,
+          sectionName: entry.section.name,
+        },
+        candidates: candidates.slice(0, 5), // top 5 only
+      };
+    });
+
+    return {
+      dayOfWeek,
+      timetableId,
+      absentTeacherId,
+      periods: perPeriodResults,
+    };
   }
 
   // ─── Helpers ──────────────────────────────────────────────────

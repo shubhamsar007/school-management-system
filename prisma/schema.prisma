@@ -72,7 +72,8 @@ model Campus {
   buildings      Building[]
   employees      Employee[]
   userRoles      UserRole[]
-  calendarEvents AcademicCalendarEvent[]
+  calendarEvents  AcademicCalendarEvent[]
+  schedulingRules SchedulingRule[]
 
   @@unique([organizationId, code])
   @@map("campuses")
@@ -391,6 +392,7 @@ model Employee {
   onboarding         EmployeeOnboarding?
   offboarding        EmployeeOffboarding?
   timetableEntries   TimetableEntry[]
+  availability       TeacherAvailability[]
 
   @@unique([organizationId, employeeNumber])
   @@map("employees")
@@ -835,6 +837,7 @@ model Period {
 
   campus           Campus           @relation(fields: [campusId], references: [id])
   timetableEntries TimetableEntry[]
+  schedulingRules  SchedulingRule[]
 
   @@map("periods")
   @@schema("academics")
@@ -880,6 +883,42 @@ model TimetableEntry {
   // Conflict prevention: one class/section per period per day
   @@unique([timetableId, dayOfWeek, periodId, sectionId])
   @@map("timetable_entries")
+  @@schema("academics")
+}
+
+model TeacherAvailability {
+  id          String   @id @default(uuid())
+  employeeId  String   @map("employee_id")
+  dayOfWeek   Int      @map("day_of_week") @db.SmallInt // 1=Mon … 7=Sun
+  isAvailable Boolean  @default(true) @map("is_available")
+  note        String?  @db.VarChar(300)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, dayOfWeek])
+  @@map("teacher_availability")
+  @@schema("academics")
+}
+
+model SchedulingRule {
+  id          String   @id @default(uuid())
+  campusId    String   @map("campus_id")
+  ruleType    String   @map("rule_type") @db.VarChar(50)
+  // MAX_PERIODS_PER_DAY | MAX_PERIODS_PER_WEEK | BLACKOUT_PERIOD | PREFERRED_PERIOD
+  value       Int?
+  periodId    String?  @map("period_id")
+  dayOfWeek   Int?     @map("day_of_week") @db.SmallInt
+  description String?  @db.VarChar(300)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  campus Campus  @relation(fields: [campusId], references: [id])
+  period Period? @relation(fields: [periodId], references: [id])
+
+  @@map("scheduling_rules")
   @@schema("academics")
 }
 

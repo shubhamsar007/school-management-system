@@ -514,3 +514,158 @@ export function useRoomSchedule(roomId: string | null, timetableId?: string) {
     retry: 1,
   });
 }
+
+// ─── Teacher Availability ─────────────────────────────────────────────────────
+
+export interface TeacherAvailabilityDay {
+  dayOfWeek: number;
+  isAvailable: boolean;
+  note: string | null;
+  id: string | null;
+}
+
+export function useTeacherAvailability(teacherId: string | null) {
+  return useQuery<TeacherAvailabilityDay[]>({
+    queryKey: ['timetable', 'availability', teacherId],
+    queryFn: () =>
+      apiClient.get<TeacherAvailabilityDay[]>(
+        `/timetable/teacher-availability?teacherId=${teacherId}`,
+      ),
+    enabled: !!teacherId,
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+}
+
+export function useSetTeacherAvailability() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      teacherId,
+      availability,
+    }: {
+      teacherId: string;
+      availability: Array<{ dayOfWeek: number; isAvailable: boolean; note?: string }>;
+    }) =>
+      apiClient.put<TeacherAvailabilityDay[]>(
+        `/timetable/teacher-availability/${teacherId}`,
+        { availability },
+      ),
+    onSuccess: (_data, { teacherId }) => {
+      void qc.invalidateQueries({ queryKey: ['timetable', 'availability', teacherId] });
+    },
+  });
+}
+
+// ─── Scheduling Rules ─────────────────────────────────────────────────────────
+
+export interface SchedulingRule {
+  id: string;
+  campusId: string;
+  ruleType: string;
+  value: number | null;
+  periodId: string | null;
+  dayOfWeek: number | null;
+  description: string | null;
+  isActive: boolean;
+  period?: { id: string; name: string; periodNumber: number } | null;
+}
+
+export function useSchedulingRules(campusId: string | null) {
+  return useQuery<SchedulingRule[]>({
+    queryKey: ['timetable', 'rules', campusId],
+    queryFn: () =>
+      apiClient.get<SchedulingRule[]>(`/timetable/rules?campusId=${campusId}`),
+    enabled: !!campusId,
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+}
+
+export function useCreateRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: {
+      campusId: string;
+      ruleType: string;
+      value?: number;
+      periodId?: string;
+      dayOfWeek?: number;
+      description?: string;
+    }) => apiClient.post<SchedulingRule>('/timetable/rules', dto),
+    onSuccess: (_data, dto) => {
+      void qc.invalidateQueries({ queryKey: ['timetable', 'rules', dto.campusId] });
+    },
+  });
+}
+
+export function useDeleteRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: string; campusId: string }) =>
+      apiClient.delete(`/timetable/rules/${id}`),
+    onSuccess: (_data, { campusId }) => {
+      void qc.invalidateQueries({ queryKey: ['timetable', 'rules', campusId] });
+    },
+  });
+}
+
+// ─── Substitute Suggestions ───────────────────────────────────────────────────
+
+export interface SubstituteCandidate {
+  candidateId: string;
+  name: string;
+  subjectProficiency: number;
+  workloadScore: number;
+  fairnessScore: number;
+  departmentAffinity: number;
+  total: number;
+  disqualifiedReason: string | null;
+}
+
+export interface SubstitutePeriodResult {
+  entry: {
+    id: string;
+    periodId: string;
+    periodName: string;
+    periodNumber: number;
+    startTime: string;
+    subjectId: string | null;
+    subjectName: string | null;
+    sectionId: string;
+    sectionName: string;
+  };
+  candidates: SubstituteCandidate[];
+}
+
+export interface SubstituteSuggestionsResult {
+  dayOfWeek: number;
+  timetableId: string;
+  absentTeacherId: string;
+  periods: SubstitutePeriodResult[];
+}
+
+export function useSubstituteSuggestions(params: {
+  timetableId: string | null;
+  teacherId: string | null;
+  dayOfWeek: number | null;
+  date?: string;
+}) {
+  const { timetableId, teacherId, dayOfWeek, date } = params;
+  const enabled = !!timetableId && !!teacherId && !!dayOfWeek;
+
+  const qs = new URLSearchParams();
+  if (timetableId) qs.set('timetableId', timetableId);
+  if (teacherId) qs.set('teacherId', teacherId);
+  if (dayOfWeek) qs.set('dayOfWeek', String(dayOfWeek));
+  if (date) qs.set('date', date);
+
+  return useQuery<SubstituteSuggestionsResult>({
+    queryKey: ['timetable', 'substitute', timetableId, teacherId, dayOfWeek, date],
+    queryFn: () =>
+      apiClient.get<SubstituteSuggestionsResult>(`/timetable/substitute/suggest?${qs.toString()}`),
+    enabled,
+    staleTime: 30_000,
+    retry: 1,
+  });
+}

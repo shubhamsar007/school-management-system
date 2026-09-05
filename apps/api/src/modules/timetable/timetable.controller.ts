@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Body,
@@ -21,6 +22,8 @@ import { CreatePeriodDto } from './dto/create-period.dto';
 import { CreateTimetableDto } from './dto/create-timetable.dto';
 import { CreateTimetableEntryDto, UpdateTimetableEntryDto } from './dto/create-timetable-entry.dto';
 import { MoveTimetableEntryDto } from './dto/move-timetable-entry.dto';
+import { SetTeacherAvailabilityDto } from './dto/set-teacher-availability.dto';
+import { CreateSchedulingRuleDto } from './dto/create-scheduling-rule.dto';
 
 @ApiTags('timetable')
 @ApiBearerAuth()
@@ -294,6 +297,95 @@ export class TimetableController {
   ) {
     return this.timetableService.getSectionSchedule(user.organizationId, sectionId, timetableId);
   }
+
+  // ─── Teacher Availability ─────────────────────────────────────
+
+  @ApiOperation({ summary: "Get a teacher's weekly availability (7 days)" })
+  @ApiQuery({ name: 'teacherId', required: true })
+  @Get('teacher-availability')
+  getTeacherAvailability(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('teacherId') teacherId: string,
+  ) {
+    return this.timetableService.getTeacherAvailability(user.organizationId, teacherId);
+  }
+
+  @ApiOperation({ summary: "Bulk-set a teacher's weekly availability" })
+  @Put('teacher-availability/:teacherId')
+  setTeacherAvailability(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('teacherId') teacherId: string,
+    @Body() dto: SetTeacherAvailabilityDto,
+  ) {
+    return this.timetableService.setTeacherAvailability(user.organizationId, teacherId, dto);
+  }
+
+  // ─── Scheduling Rules ─────────────────────────────────────────
+
+  @ApiOperation({ summary: 'List scheduling rules for a campus' })
+  @ApiQuery({ name: 'campusId', required: true })
+  @Get('rules')
+  getSchedulingRules(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('campusId') campusId: string,
+  ) {
+    return this.timetableService.getSchedulingRules(user.organizationId, campusId);
+  }
+
+  @ApiOperation({ summary: 'Create a scheduling rule' })
+  @Post('rules')
+  createSchedulingRule(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: CreateSchedulingRuleDto,
+  ) {
+    return this.timetableService.createSchedulingRule(user.organizationId, dto);
+  }
+
+  @ApiOperation({ summary: 'Update a scheduling rule' })
+  @Patch('rules/:id')
+  updateSchedulingRule(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateSchedulingRuleDto,
+  ) {
+    return this.timetableService.updateSchedulingRule(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Delete a scheduling rule' })
+  @Delete('rules/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteSchedulingRule(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.timetableService.deleteSchedulingRule(user.organizationId, id);
+  }
+
+  // ─── Substitute Suggestions ───────────────────────────────────
+
+  @ApiOperation({ summary: 'Get ranked substitute suggestions for a teacher absence' })
+  @ApiQuery({ name: 'timetableId', required: true })
+  @ApiQuery({ name: 'teacherId', required: true })
+  @ApiQuery({ name: 'dayOfWeek', required: true, description: '1=Mon … 7=Sun' })
+  @ApiQuery({ name: 'date', required: false, description: 'ISO date (YYYY-MM-DD) to check approved leaves' })
+  @Get('substitute/suggest')
+  suggestSubstitutes(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('timetableId') timetableId: string,
+    @Query('teacherId') teacherId: string,
+    @Query('dayOfWeek') dayOfWeek: string,
+    @Query('date') date?: string,
+  ) {
+    return this.timetableService.suggestSubstitutes(
+      user.organizationId,
+      timetableId,
+      teacherId,
+      parseInt(dayOfWeek, 10),
+      date,
+    );
+  }
+
+  // ─── Views ────────────────────────────────────────────────────
 
   @ApiOperation({ summary: "Get a room's weekly schedule grouped by day" })
   @ApiQuery({ name: 'timetableId', required: false, description: 'Defaults to active timetable' })
