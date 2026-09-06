@@ -26,6 +26,7 @@ import { RejectLeaveRequestDto } from './dto/review-leave-request.dto';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { CreateCorrectionDto } from './dto/create-correction.dto';
 import { RejectCorrectionDto } from './dto/reject-correction.dto';
+import { AllocateLeaveBalancesDto } from './dto/allocate-leave-balances.dto';
 
 @ApiTags('attendance')
 @ApiBearerAuth()
@@ -62,6 +63,16 @@ export class AttendanceController {
     return this.attendanceService.getRoster(user.organizationId, sectionId, academicYearId, date);
   }
 
+  @ApiOperation({ summary: 'Allocate annual leave balances for all active employees' })
+  @Post('leave-balances/allocate')
+  @HttpCode(HttpStatus.OK)
+  allocateLeaveBalances(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: AllocateLeaveBalancesDto,
+  ) {
+    return this.attendanceService.allocateLeaveBalances(user.organizationId, dto);
+  }
+
   @ApiOperation({ summary: 'Get leave balances for an employee' })
   @ApiQuery({ name: 'employeeId', required: true })
   @ApiQuery({ name: 'academicYearId', required: false })
@@ -72,6 +83,32 @@ export class AttendanceController {
     @Query('academicYearId') academicYearId?: string,
   ) {
     return this.attendanceService.getLeaveBalances(user.organizationId, employeeId, academicYearId);
+  }
+
+  // ─── Health Alerts ─────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Get student attendance health alerts' })
+  @ApiQuery({ name: 'campusId', required: false })
+  @ApiQuery({ name: 'academicYearId', required: false })
+  @Get('health/students')
+  getStudentHealthAlerts(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('campusId') campusId?: string,
+    @Query('academicYearId') academicYearId?: string,
+  ) {
+    return this.attendanceService.getStudentHealthAlerts(user.organizationId, campusId, academicYearId);
+  }
+
+  @ApiOperation({ summary: 'Get staff attendance health alerts' })
+  @ApiQuery({ name: 'campusId', required: false })
+  @ApiQuery({ name: 'date', required: false, description: 'YYYY-MM-DD (defaults to today)' })
+  @Get('health/staff')
+  getStaffHealthAlerts(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('campusId') campusId?: string,
+    @Query('date') date?: string,
+  ) {
+    return this.attendanceService.getStaffHealthAlerts(user.organizationId, campusId, date);
   }
 
   // ─── Student Attendance ───────────────────────────────────────

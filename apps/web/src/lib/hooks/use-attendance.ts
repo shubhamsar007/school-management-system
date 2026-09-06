@@ -745,3 +745,75 @@ export function useAttendanceTrends(campusId?: string, months?: number) {
     retry: 1,
   });
 }
+
+// ─── Phase 3 Types ────────────────────────────────────────────────────────────
+
+export interface StudentHealthAlert {
+  studentId: string;
+  studentName: string;
+  rate?: number;
+  count?: number;
+  lastDate?: string;
+}
+
+export interface StaffHealthAlert {
+  employeeId: string;
+  employeeName: string;
+  date?: string;
+  workHours?: number;
+}
+
+export interface HealthAlerts {
+  belowThreshold: StudentHealthAlert[];
+  consecutiveAbsent: StudentHealthAlert[];
+  frequentLate: StudentHealthAlert[];
+}
+
+export interface StaffHealthAlerts {
+  missingCheckout: StaffHealthAlert[];
+  consecutiveAbsent: StaffHealthAlert[];
+  belowHours: StaffHealthAlert[];
+}
+
+// ─── Phase 3 Hooks ────────────────────────────────────────────────────────────
+
+export function useStudentHealthAlerts(campusId?: string, academicYearId?: string) {
+  return useQuery<HealthAlerts>({
+    queryKey: ['attendance', 'health', 'students', campusId, academicYearId],
+    queryFn: () =>
+      apiClient.get<HealthAlerts>(
+        `/attendance/health/students${toQS({
+          ...(campusId ? { campusId } : {}),
+          ...(academicYearId ? { academicYearId } : {}),
+        })}`,
+      ),
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+}
+
+export function useStaffHealthAlerts(campusId?: string, date?: string) {
+  return useQuery<StaffHealthAlerts>({
+    queryKey: ['attendance', 'health', 'staff', campusId, date],
+    queryFn: () =>
+      apiClient.get<StaffHealthAlerts>(
+        `/attendance/health/staff${toQS({
+          ...(campusId ? { campusId } : {}),
+          ...(date ? { date } : {}),
+        })}`,
+      ),
+    staleTime: 60_000,
+    retry: 1,
+  });
+}
+
+export function useAllocateLeaveBalances() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: { academicYearId: string; leaveTypeId?: string; resetExisting?: boolean }) =>
+      apiClient.post<{ count: number }>('/attendance/leave-balances/allocate', dto),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'leave-balances'] });
+    },
+  });
+}

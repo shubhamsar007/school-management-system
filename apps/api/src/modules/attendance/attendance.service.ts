@@ -15,6 +15,7 @@ import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { RejectLeaveRequestDto } from './dto/review-leave-request.dto';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { CreateCorrectionDto } from './dto/create-correction.dto';
+import { AllocateLeaveBalancesDto } from './dto/allocate-leave-balances.dto';
 
 @Injectable()
 export class AttendanceService {
@@ -353,17 +354,90 @@ export class AttendanceService {
       throw new BadRequestException(`Leave request is already ${request.status.toLowerCase()}`);
     }
 
-    return this.prisma.leaveRequest.update({
-      where: { id: requestId },
-      data: {
-        status: 'APPROVED',
-        approvedBy: approverId,
-        approvedAt: new Date(),
-      },
-      include: {
-        leaveType: true,
-        employee: { include: { person: true } },
-      },
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Update request status to APPROVED
+      const updated = await tx.leaveRequest.update({
+        where: { id: requestId },
+        data: {
+          status: 'APPROVED',
+          approvedBy: approverId,
+          approvedAt: new Date(),
+        },
+        include: {
+          leaveType: true,
+          employee: { include: { person: true } },
+        },
+      });
+
+      // 2. Increment leaveBalance.used — find the academic year containing startDate
+      const academicYear = await tx.academicYear.findFirst({
+        where: {
+          organizationId,
+          startDate: { lte: request.startDate },
+          endDate: { gte: request.startDate },
+        },
+      });
+
+      if (academicYear) {
+        await tx.leaveBalance.upsert({
+          where: {
+            employeeId_leaveTypeId_academicYearId: {
+              employeeId: request.employeeId,
+              leaveTypeId: request.leaveTypeId,
+              academicYearId: academicYear.id,
+            },
+          },
+          create: {
+            employeeId: request.employeeId,
+            leaveTypeId: request.leaveTypeId,
+            academicYearId: academicYear.id,
+            allocated: 0,
+            used: request.totalDays,
+          },
+          update: {
+            used: { increment: request.totalDays },
+          },
+        });
+      }
+
+      // 3. Auto-mark attendance ON_LEAVE for each date in the range
+      const employee = await tx.employee.findFirst({
+        where: { id: request.employeeId },
+        select: { campusId: true },
+      });
+
+      const campusId = employee?.campusId;
+      if (campusId) {
+        const start = new Date(request.startDate);
+        const end = new Date(request.endDate);
+        start.setUTCHours(0, 0, 0, 0);
+        end.setUTCHours(0, 0, 0, 0);
+
+        const current = new Date(start);
+        while (current <= end) {
+          const dateSnap = new Date(current);
+          await tx.employeeAttendance.upsert({
+            where: {
+              employeeId_date: { employeeId: request.employeeId, date: dateSnap },
+            },
+            create: {
+              employeeId: request.employeeId,
+              campusId,
+              date: dateSnap,
+              status: 'ON_LEAVE',
+              markedBy: approverId,
+            },
+            update: {
+              status: 'ON_LEAVE',
+              campusId,
+              markedBy: approverId,
+            },
+          });
+          current.setUTCDate(current.getUTCDate() + 1);
+        }
+      }
+
+      return updated;
     });
   }
 
@@ -1047,6 +1121,290 @@ export class AttendanceService {
     }
 
     return result;
+  }
+
+  // ─── Leave Balance Allocation ─────────────────────────────────
+
+  async allocateLeaveBalances(organizationId: string, dto: AllocateLeaveBalancesDto) {
+    // Get all active employees
+    const employees = await this.prisma.employee.findMany({
+      where: { organizationId, employmentStatus: 'ACTIVE', deletedAt: null },
+      select: { id: true },
+    });
+
+    // Get active leave types (or just the one specified)
+    const leaveTypes = await this.prisma.leaveType.findMany({
+      where: {
+        organizationId,
+        status: 'ACTIVE',
+        ...(dto.leaveTypeId ? { id: dto.leaveTypeId } : {}),
+      },
+      select: { id: true, annualLimit: true },
+    });
+
+    let count = 0;
+
+    for (const employee of employees) {
+      for (const leaveType of leaveTypes) {
+        const allocated = leaveType.annualLimit ?? 0;
+
+        await this.prisma.leaveBalance.upsert({
+          where: {
+            employeeId_leaveTypeId_academicYearId: {
+              employeeId: employee.id,
+              leaveTypeId: leaveType.id,
+              academicYearId: dto.academicYearId,
+            },
+          },
+          create: {
+            employeeId: employee.id,
+            leaveTypeId: leaveType.id,
+            academicYearId: dto.academicYearId,
+            allocated,
+            used: 0,
+          },
+          update: {
+            allocated,
+            ...(dto.resetExisting ? { used: 0 } : {}),
+          },
+        });
+        count++;
+      }
+    }
+
+    return { count };
+  }
+
+  // ─── Health Alerts ────────────────────────────────────────────
+
+  async getStudentHealthAlerts(
+    organizationId: string,
+    campusId?: string,
+    academicYearId?: string,
+  ) {
+    const enrollmentWhere: any = {
+      student: { organizationId },
+      status: 'ACTIVE',
+      ...(academicYearId ? { academicYearId } : {}),
+      ...(campusId ? { campusId } : {}),
+    };
+
+    // Fetch enrollments to get the set of studentIds in scope
+    const enrollments = await this.prisma.studentEnrollment.findMany({
+      where: enrollmentWhere,
+      select: { studentId: true, student: { select: { person: { select: { firstName: true, lastName: true } } } } },
+    });
+
+    if (enrollments.length === 0) {
+      return { belowThreshold: [], consecutiveAbsent: [], frequentLate: [] };
+    }
+
+    const studentIds = [...new Set(enrollments.map((e) => e.studentId))];
+
+    // Build a name map
+    const nameMap = new Map<string, string>();
+    for (const e of enrollments) {
+      if (!nameMap.has(e.studentId)) {
+        nameMap.set(e.studentId, `${e.student.person.firstName} ${e.student.person.lastName}`);
+      }
+    }
+
+    // ── belowThreshold: (present+late)/total < 0.75 ──────────────
+    const attendanceGroups = await this.prisma.studentAttendance.groupBy({
+      by: ['studentId', 'status'],
+      _count: { status: true },
+      where: {
+        studentId: { in: studentIds },
+        ...(academicYearId ? { enrollment: { academicYearId } } : {}),
+      },
+    });
+
+    // Group by studentId
+    const byStudentStatus = new Map<string, Record<string, number>>();
+    for (const g of attendanceGroups) {
+      if (!byStudentStatus.has(g.studentId)) byStudentStatus.set(g.studentId, {});
+      byStudentStatus.get(g.studentId)![g.status] = g._count.status;
+    }
+
+    const belowThreshold: Array<{ studentId: string; studentName: string; rate: number }> = [];
+    for (const [studentId, counts] of byStudentStatus) {
+      const present = counts['PRESENT'] ?? 0;
+      const late = counts['LATE'] ?? 0;
+      const total = Object.values(counts).reduce((a, b) => a + b, 0);
+      if (total === 0) continue;
+      const rate = (present + late) / total;
+      if (rate < 0.75) {
+        belowThreshold.push({
+          studentId,
+          studentName: nameMap.get(studentId) ?? studentId,
+          rate: Math.round(rate * 1000) / 10,
+        });
+      }
+    }
+
+    // ── consecutiveAbsent: 3+ consecutive ABSENT in last 5 days ──
+    const now = new Date();
+    now.setUTCHours(0, 0, 0, 0);
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setUTCDate(fiveDaysAgo.getUTCDate() - 4);
+
+    const recentRecords = await this.prisma.studentAttendance.findMany({
+      where: {
+        studentId: { in: studentIds },
+        date: { gte: fiveDaysAgo, lte: now },
+      },
+      select: { studentId: true, date: true, status: true },
+      orderBy: { date: 'asc' },
+    });
+
+    const byStudent = new Map<string, Array<{ date: Date; status: string }>>();
+    for (const r of recentRecords) {
+      if (!byStudent.has(r.studentId)) byStudent.set(r.studentId, []);
+      byStudent.get(r.studentId)!.push({ date: r.date, status: r.status });
+    }
+
+    const consecutiveAbsent: Array<{ studentId: string; studentName: string; count: number; lastDate: string }> = [];
+    for (const [studentId, records] of byStudent) {
+      const sorted = records.sort((a, b) => b.date.getTime() - a.date.getTime());
+      // Check last 3 days
+      const lastThree = sorted.slice(0, 3);
+      if (lastThree.length >= 3 && lastThree.every((r) => r.status === 'ABSENT')) {
+        consecutiveAbsent.push({
+          studentId,
+          studentName: nameMap.get(studentId) ?? studentId,
+          count: lastThree.length,
+          lastDate: sorted[0].date.toISOString().slice(0, 10),
+        });
+      }
+    }
+
+    // ── frequentLate: 5+ LATE records in current calendar month ──
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    startOfMonth.setUTCHours(0, 0, 0, 0);
+
+    const lateGroups = await this.prisma.studentAttendance.groupBy({
+      by: ['studentId'],
+      _count: { studentId: true },
+      where: {
+        studentId: { in: studentIds },
+        status: 'LATE',
+        date: { gte: startOfMonth, lte: now },
+      },
+      having: { studentId: { _count: { gte: 5 } } },
+    });
+
+    const frequentLate = lateGroups.map((g) => ({
+      studentId: g.studentId,
+      studentName: nameMap.get(g.studentId) ?? g.studentId,
+      count: g._count.studentId,
+    }));
+
+    return { belowThreshold, consecutiveAbsent, frequentLate };
+  }
+
+  async getStaffHealthAlerts(
+    organizationId: string,
+    campusId?: string,
+    date?: string,
+  ) {
+    const parsedDate = date ? new Date(date) : new Date();
+    parsedDate.setUTCHours(0, 0, 0, 0);
+
+    const empWhere: any = {
+      employee: { organizationId },
+      date: parsedDate,
+      ...(campusId ? { campusId } : {}),
+    };
+
+    // Fetch employees to build name map
+    const allEmployees = await this.prisma.employee.findMany({
+      where: {
+        organizationId,
+        deletedAt: null,
+        ...(campusId ? { campusId } : {}),
+      },
+      select: {
+        id: true,
+        person: { select: { firstName: true, lastName: true } },
+      },
+    });
+    const empNameMap = new Map<string, string>(
+      allEmployees.map((e) => [e.id, `${e.person.firstName} ${e.person.lastName}`]),
+    );
+    const allEmpIds = allEmployees.map((e) => e.id);
+
+    // ── missingCheckout ───────────────────────────────────────────
+    const missingCheckoutRecords = await this.prisma.employeeAttendance.findMany({
+      where: {
+        ...empWhere,
+        checkInTime: { not: null },
+        checkOutTime: null,
+        status: 'PRESENT',
+      },
+      select: { employeeId: true, date: true },
+    });
+
+    const missingCheckout = missingCheckoutRecords.map((r) => ({
+      employeeId: r.employeeId,
+      employeeName: empNameMap.get(r.employeeId) ?? r.employeeId,
+      date: r.date.toISOString().slice(0, 10),
+    }));
+
+    // ── consecutiveAbsent (last 5 days) ──────────────────────────
+    const now = new Date();
+    now.setUTCHours(0, 0, 0, 0);
+    const fiveDaysAgo = new Date(now);
+    fiveDaysAgo.setUTCDate(fiveDaysAgo.getUTCDate() - 4);
+
+    const recentEmpRecords = await this.prisma.employeeAttendance.findMany({
+      where: {
+        employee: { organizationId },
+        ...(campusId ? { campusId } : {}),
+        employeeId: { in: allEmpIds },
+        date: { gte: fiveDaysAgo, lte: now },
+      },
+      select: { employeeId: true, date: true, status: true },
+      orderBy: { date: 'asc' },
+    });
+
+    const byEmp = new Map<string, Array<{ date: Date; status: string }>>();
+    for (const r of recentEmpRecords) {
+      if (!byEmp.has(r.employeeId)) byEmp.set(r.employeeId, []);
+      byEmp.get(r.employeeId)!.push({ date: r.date, status: r.status });
+    }
+
+    const consecutiveAbsent: Array<{ employeeId: string; employeeName: string; count: number; lastDate: string }> = [];
+    for (const [employeeId, records] of byEmp) {
+      const sorted = records.sort((a, b) => b.date.getTime() - a.date.getTime());
+      const lastThree = sorted.slice(0, 3);
+      if (lastThree.length >= 3 && lastThree.every((r) => r.status === 'ABSENT')) {
+        consecutiveAbsent.push({
+          employeeId,
+          employeeName: empNameMap.get(employeeId) ?? employeeId,
+          count: lastThree.length,
+          lastDate: sorted[0].date.toISOString().slice(0, 10),
+        });
+      }
+    }
+
+    // ── belowHours: workHours < 7.5 today ────────────────────────
+    const belowHoursRecords = await this.prisma.employeeAttendance.findMany({
+      where: {
+        ...empWhere,
+        workHours: { lt: 7.5, not: null },
+        status: { in: ['PRESENT', 'HALF_DAY'] },
+      },
+      select: { employeeId: true, workHours: true, date: true },
+    });
+
+    const belowHours = belowHoursRecords.map((r) => ({
+      employeeId: r.employeeId,
+      employeeName: empNameMap.get(r.employeeId) ?? r.employeeId,
+      date: r.date.toISOString().slice(0, 10),
+      workHours: r.workHours ?? undefined,
+    }));
+
+    return { missingCheckout, consecutiveAbsent, belowHours };
   }
 
   // ─── Private helpers ──────────────────────────────────────────

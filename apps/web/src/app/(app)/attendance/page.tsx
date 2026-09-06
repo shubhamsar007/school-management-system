@@ -38,6 +38,8 @@ import { RejectLeaveModal } from './_components/reject-leave-modal';
 import { SessionsTab } from './_components/sessions-tab';
 import { AnalyticsTab } from './_components/analytics-tab';
 import { CorrectionsTab } from './_components/corrections-tab';
+import { LeaveSetupTab } from './_components/leave-setup-tab';
+import { HealthAlertsPanel } from './_components/health-alerts-panel';
 import { StudentHistoryCalendar } from './_components/student-history-calendar';
 import { Modal } from '@/components/ui/modal';
 
@@ -197,6 +199,7 @@ export default function AttendancePage() {
       label: 'Corrections',
       ...(pendingCorrectionsCount > 0 ? { count: pendingCorrectionsCount } : {}),
     },
+    { id: 'leaveSetup', label: 'Leave Setup' },
   ];
 
   // ── Paginated slices ──────────────────────────────────────────
@@ -659,41 +662,13 @@ export default function AttendancePage() {
       )}
 
       {/* ── Alerts panel ──────────────────────────────────────── */}
-      {(overview?.alerts.pendingLeaveRequests ?? 0) > 0 && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: '12px 16px',
-            background: '#fffbf0',
-            border: '1px solid #f5c842',
-            borderRadius: 8,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-          }}
-        >
-          <span style={{ fontSize: '13px', color: '#7a5c00' }}>
-            <strong>Requires Attention:</strong>{' '}
-            {overview?.alerts.pendingLeaveRequests} leave{' '}
-            {overview?.alerts.pendingLeaveRequests === 1 ? 'request' : 'requests'} pending approval
-          </span>
-          <button
-            onClick={() => setActiveTab('leave')}
-            style={{
-              fontSize: '12px',
-              fontWeight: 500,
-              color: '#2b5fa8',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              textDecoration: 'underline',
-              marginLeft: 4,
-            }}
-          >
-            Review now
-          </button>
-        </div>
-      )}
+      <HealthAlertsPanel
+        campusId={campusId}
+        academicYearId={academicYearId}
+        date={selectedDate}
+        onTabChange={setActiveTab}
+        pendingLeaveRequests={overview?.alerts.pendingLeaveRequests ?? 0}
+      />
 
       {/* ── Tabs + Table ──────────────────────────────────────── */}
       <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} className="mb-4" />
@@ -707,6 +682,9 @@ export default function AttendancePage() {
       )}
       {activeTab === 'corrections' && (
         <CorrectionsTab campusId={campusId} />
+      )}
+      {activeTab === 'leaveSetup' && academicYearId && (
+        <LeaveSetupTab academicYearId={academicYearId} />
       )}
 
       {(activeTab === 'students' || activeTab === 'employees' || activeTab === 'leave') && (
