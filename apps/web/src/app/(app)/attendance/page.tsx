@@ -2,142 +2,808 @@
 
 import * as React from 'react';
 import { PageHeader } from '@/components/layouts/page-header';
-import { Button, Badge, Avatar, KpiCard, Dropdown, Pagination, Tabs, DataTable, ExportButton } from '@/components/ui';
+import {
+  Button,
+  Badge,
+  Avatar,
+  KpiCard,
+  KpiSkeleton,
+  Pagination,
+  Tabs,
+  DataTable,
+  ExportButton,
+} from '@/components/ui';
 import type { ColumnDef } from '@/components/ui';
+import { useToast } from '@/components/ui/toast';
+import {
+  useOrganization,
+  useCampuses,
+  useAcademicYears,
+} from '@/lib/hooks/use-academics';
+import {
+  useAttendanceOverview,
+  useLeaveRequests,
+  useStudentAttendance,
+  useEmployeeAttendanceList,
+  useApproveLeaveRequest,
+  type LeaveRequest,
+  type StudentAttendanceRecord,
+  type EmployeeAttendanceRecord,
+} from '@/lib/hooks/use-attendance';
+import { MarkStudentAttendanceModal } from './_components/mark-student-modal';
+import { MarkEmployeeAttendanceModal } from './_components/mark-employee-modal';
+import { LeaveRequestModal } from './_components/leave-request-modal';
+import { RejectLeaveModal } from './_components/reject-leave-modal';
 
-interface StudentAtt { id: string; name: string; cls: string; admissionNo: string; date: string; status: string; markedBy: string; remarks: string; }
-interface EmployeeAtt { id: string; name: string; designation: string; employeeId: string; date: string; checkIn: string; checkOut: string; status: string; remarks: string; }
-interface LeaveReq { id: string; name: string; designation: string; leaveType: string; from: string; to: string; days: string; reason: string; status: string; }
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const STUDENT_ATT: StudentAtt[] = [
-  { id: '1', name: 'Aarav Mehta', cls: 'Grade 8·B', admissionNo: 'ADM-2024-0117', date: '27 Aug 2025', status: 'PRESENT', markedBy: 'Priya Sharma', remarks: '—' },
-  { id: '2', name: 'Diya Krishnan', cls: 'Grade 8·B', admissionNo: 'ADM-2024-0118', date: '27 Aug 2025', status: 'PRESENT', markedBy: 'Priya Sharma', remarks: '—' },
-  { id: '3', name: 'Ishaan Bose', cls: 'Grade 9·A', admissionNo: 'ADM-2023-0904', date: '27 Aug 2025', status: 'ABSENT', markedBy: 'Ravi Kumar', remarks: 'Medical leave' },
-  { id: '4', name: 'Kavya Nair', cls: 'Grade 6·C', admissionNo: 'ADM-2024-0121', date: '27 Aug 2025', status: 'LATE', markedBy: 'Ananya Das', remarks: 'Arrived 15 min late' },
-  { id: '5', name: 'Manav Sethi', cls: 'Grade 11·A', admissionNo: 'ADM-2022-0455', date: '27 Aug 2025', status: 'PRESENT', markedBy: 'Suresh Menon', remarks: '—' },
-  { id: '6', name: 'Nikhil Rana', cls: 'Grade 12·B', admissionNo: 'ADM-2021-0312', date: '27 Aug 2025', status: 'EXCUSED', markedBy: 'Lakshmi Nair', remarks: 'Sports day' },
-  { id: '7', name: 'Saanvi Deshpande', cls: 'Grade 7·A', admissionNo: 'ADM-2024-0129', date: '27 Aug 2025', status: 'PRESENT', markedBy: 'Deepa Rao', remarks: '—' },
-  { id: '8', name: 'Vihaan Gupta', cls: 'Grade 12·A', admissionNo: 'ADM-2020-0198', date: '27 Aug 2025', status: 'PRESENT', markedBy: 'Suresh Menon', remarks: '—' },
-];
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
-const EMP_ATT: EmployeeAtt[] = [
-  { id: '1', name: 'Priya Sharma', designation: 'Senior Teacher', employeeId: 'EMP-2019-0042', date: '27 Aug 2025', checkIn: '07:55 AM', checkOut: '03:45 PM', status: 'PRESENT', remarks: '—' },
-  { id: '2', name: 'Ravi Kumar', designation: 'Teacher', employeeId: 'EMP-2021-0078', date: '27 Aug 2025', checkIn: '08:02 AM', checkOut: '03:50 PM', status: 'PRESENT', remarks: '—' },
-  { id: '3', name: 'Ananya Das', designation: 'Teacher', employeeId: 'EMP-2020-0055', date: '27 Aug 2025', checkIn: '07:48 AM', checkOut: '03:30 PM', status: 'PRESENT', remarks: '—' },
-  { id: '4', name: 'Suresh Menon', designation: 'Senior Teacher', employeeId: 'EMP-2018-0023', date: '27 Aug 2025', checkIn: '—', checkOut: '—', status: 'ABSENT', remarks: 'No prior notice' },
-  { id: '5', name: 'Lakshmi Nair', designation: 'Teacher', employeeId: 'EMP-2022-0091', date: '27 Aug 2025', checkIn: '08:10 AM', checkOut: '03:45 PM', status: 'PRESENT', remarks: '—' },
-  { id: '6', name: 'Amit Joshi', designation: 'Teacher', employeeId: 'EMP-2023-0104', date: '27 Aug 2025', checkIn: '—', checkOut: '—', status: 'ON_LEAVE', remarks: 'Approved leave' },
-  { id: '7', name: 'Deepa Rao', designation: 'Senior Teacher', employeeId: 'EMP-2017-0011', date: '27 Aug 2025', checkIn: '07:50 AM', checkOut: '12:00 PM', status: 'HALF_DAY', remarks: 'Medical appointment' },
-  { id: '8', name: 'Kiran Bhat', designation: 'Teacher', employeeId: 'EMP-2024-0112', date: '27 Aug 2025', checkIn: '08:05 AM', checkOut: '03:45 PM', status: 'PRESENT', remarks: '—' },
-];
+function formatDate(iso: string): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
 
-const LEAVE_REQS: LeaveReq[] = [
-  { id: '1', name: 'Amit Joshi', designation: 'Teacher', leaveType: 'Sick Leave', from: '25 Aug', to: '29 Aug', days: '5 days', reason: 'Fever and flu', status: 'PENDING' },
-  { id: '2', name: 'Suresh Menon', designation: 'Senior Teacher', leaveType: 'Casual Leave', from: '01 Sep', to: '01 Sep', days: '1 day', reason: 'Personal work', status: 'PENDING' },
-  { id: '3', name: 'Deepa Rao', designation: 'Senior Teacher', leaveType: 'Medical Leave', from: '27 Aug', to: '27 Aug', days: '1 day', reason: 'Medical appointment', status: 'APPROVED' },
-  { id: '4', name: 'Priya Sharma', designation: 'Senior Teacher', leaveType: 'Casual Leave', from: '15 Aug', to: '15 Aug', days: '1 day', reason: 'Independence Day', status: 'APPROVED' },
-  { id: '5', name: 'Ravi Kumar', designation: 'Teacher', leaveType: 'Earned Leave', from: '10 Aug', to: '14 Aug', days: '5 days', reason: 'Family function', status: 'APPROVED' },
-  { id: '6', name: 'Lakshmi Nair', designation: 'Teacher', leaveType: 'Sick Leave', from: '05 Aug', to: '06 Aug', days: '2 days', reason: 'Cold', status: 'APPROVED' },
-  { id: '7', name: 'Ananya Das', designation: 'Teacher', leaveType: 'Casual Leave', from: '02 Aug', to: '02 Aug', days: '1 day', reason: 'Personal', status: 'REJECTED' },
-  { id: '8', name: 'Kiran Bhat', designation: 'Teacher', leaveType: 'Earned Leave', from: '20 Jul', to: '25 Jul', days: '6 days', reason: 'Vacation', status: 'APPROVED' },
-];
+function formatTime(val: string | null | undefined): string {
+  if (!val) return '—';
+  // val may be a full ISO string or HH:MM
+  try {
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    }
+    return val;
+  } catch {
+    return val;
+  }
+}
 
-const STU_STATUS: Record<string, 'active' | 'left' | 'pending' | 'default'> = { PRESENT: 'active', ABSENT: 'left', LATE: 'pending', EXCUSED: 'default' };
-const EMP_STATUS: Record<string, 'active' | 'left' | 'pending' | 'default'> = { PRESENT: 'active', ABSENT: 'left', ON_LEAVE: 'pending', HALF_DAY: 'default' };
-const LV_STATUS: Record<string, 'active' | 'left' | 'pending' | 'default'> = { PENDING: 'pending', APPROVED: 'active', REJECTED: 'left', CANCELLED: 'default' };
+const STU_STATUS: Record<string, 'active' | 'left' | 'pending' | 'default'> = {
+  PRESENT: 'active',
+  ABSENT: 'left',
+  LATE: 'pending',
+  HALF_DAY: 'default',
+  EXCUSED: 'default',
+};
 
-const TABS = [{ id: 'students', label: 'Student Attendance' }, { id: 'employees', label: 'Staff Attendance' }, { id: 'leave', label: 'Leave Requests', count: 4 }];
-const CLASS_OPTIONS = [{ label: 'All Classes', value: 'all' }, { label: 'Grade 6', value: 'Grade 6' }, { label: 'Grade 7', value: 'Grade 7' }, { label: 'Grade 8', value: 'Grade 8' }, { label: 'Grade 9', value: 'Grade 9' }, { label: 'Grade 11', value: 'Grade 11' }, { label: 'Grade 12', value: 'Grade 12' }];
-const STATUS_OPTIONS = [{ label: 'All Statuses', value: 'all' }, { label: 'Present', value: 'PRESENT' }, { label: 'Absent', value: 'ABSENT' }, { label: 'Late', value: 'LATE' }, { label: 'Excused', value: 'EXCUSED' }];
+const EMP_STATUS: Record<string, 'active' | 'left' | 'pending' | 'default'> = {
+  PRESENT: 'active',
+  ABSENT: 'left',
+  ON_LEAVE: 'pending',
+  HALF_DAY: 'default',
+  LATE: 'pending',
+  WORK_FROM_HOME: 'active',
+  HOLIDAY: 'default',
+};
+
+const LV_STATUS: Record<string, 'active' | 'left' | 'pending' | 'default'> = {
+  PENDING: 'pending',
+  APPROVED: 'active',
+  REJECTED: 'left',
+  CANCELLED: 'default',
+};
+
+function statusLabel(status: string): string {
+  return status.replace(/_/g, ' ');
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function AttendancePage() {
+  const toast = useToast();
+
+  // ── Core state ───────────────────────────────────────────────
   const [activeTab, setActiveTab] = React.useState('students');
-  const [classFilter, setClassFilter] = React.useState('all');
-  const [statusFilter, setStatusFilter] = React.useState('all');
-  const [page, setPage] = React.useState(1);
-  const [pageSize, setPageSize] = React.useState(25);
+  const [selectedDate, setSelectedDate] = React.useState(todayISO());
+  const [campusId, setCampusId] = React.useState('');
+  const [academicYearId, setAcademicYearId] = React.useState('');
+  const [leaveStatusFilter, setLeaveStatusFilter] = React.useState('');
 
-  const studentColumns: ColumnDef<StudentAtt>[] = [
-    { id: 'name', header: 'STUDENT', width: 'minmax(160px,1.4fr)', cell: (r) => <div className="flex items-center gap-2.5"><Avatar name={r.name} size="md" /><div><div className="text-sm font-medium">{r.name}</div><div className="text-[11px] text-[#8a929b]">{r.cls}</div></div></div> },
-    { id: 'admissionNo', header: 'ADMISSION NO', width: '130px', cell: (r) => <span className="font-mono text-xs text-[#6b7480]">{r.admissionNo}</span> },
-    { id: 'cls', header: 'CLASS', width: '100px', accessor: 'cls' },
-    { id: 'date', header: 'DATE', width: '100px', accessor: 'date' },
-    { id: 'status', header: 'STATUS', width: '100px', cell: (r) => <Badge variant={STU_STATUS[r.status] ?? 'default'}>{r.status}</Badge> },
-    { id: 'markedBy', header: 'MARKED BY', width: '120px', accessor: 'markedBy' },
-    { id: 'remarks', header: 'REMARKS', width: '150px', cell: (r) => <span className="truncate text-sm text-[#6b7480]">{r.remarks}</span> },
+  // ── Modal state ───────────────────────────────────────────────
+  const [markStudentOpen, setMarkStudentOpen] = React.useState(false);
+  const [markEmployeeOpen, setMarkEmployeeOpen] = React.useState(false);
+  const [leaveRequestOpen, setLeaveRequestOpen] = React.useState(false);
+  const [rejectModal, setRejectModal] = React.useState<{
+    open: boolean;
+    requestId: string;
+    employeeName: string;
+  }>({ open: false, requestId: '', employeeName: '' });
+
+  // ── Pagination ────────────────────────────────────────────────
+  const [stuPage, setStuPage] = React.useState(1);
+  const [stuPageSize, setStuPageSize] = React.useState(25);
+  const [empPage, setEmpPage] = React.useState(1);
+  const [empPageSize, setEmpPageSize] = React.useState(25);
+  const [lvPage, setLvPage] = React.useState(1);
+  const [lvPageSize, setLvPageSize] = React.useState(25);
+
+  // ── Org / campus / academic years ─────────────────────────────
+  const { data: org } = useOrganization();
+  const { data: campuses = [] } = useCampuses(org?.id);
+  const { data: academicYears = [] } = useAcademicYears(org?.id);
+
+  // Auto-select first campus and active/first academic year
+  React.useEffect(() => {
+    const first = campuses[0];
+    if (first && !campusId) setCampusId(first.id);
+  }, [campuses, campusId]);
+
+  React.useEffect(() => {
+    if (academicYears.length > 0 && !academicYearId) {
+      const active = academicYears.find((y) => y.status === 'ACTIVE') ?? academicYears[0];
+      if (active) setAcademicYearId(active.id);
+    }
+  }, [academicYears, academicYearId]);
+
+  // ── Data hooks ────────────────────────────────────────────────
+  const { data: overview, isLoading: overviewLoading } = useAttendanceOverview(
+    campusId || undefined,
+    selectedDate,
+  );
+
+  const { data: leaveRequests = [], isLoading: leaveLoading } = useLeaveRequests(
+    leaveStatusFilter ? { status: leaveStatusFilter } : undefined,
+  );
+
+  const { data: studentAtt = [], isLoading: stuLoading } = useStudentAttendance({
+    date: selectedDate,
+    ...(campusId ? {} : {}), // campus not supported in student attendance filter directly
+  });
+
+  const { data: employeeAtt = [], isLoading: empLoading } = useEmployeeAttendanceList({
+    date: selectedDate,
+    ...(campusId ? { campusId } : {}),
+  });
+
+  const approve = useApproveLeaveRequest();
+
+  // ── Derived ───────────────────────────────────────────────────
+  const pendingLeaveCount = leaveRequests.filter((r) => r.status === 'PENDING').length;
+
+  const tabs = [
+    { id: 'students', label: 'Student Attendance' },
+    { id: 'employees', label: 'Staff Attendance' },
+    {
+      id: 'leave',
+      label: 'Leave Requests',
+      ...(pendingLeaveCount > 0 ? { count: pendingLeaveCount } : {}),
+    },
   ];
 
-  const empColumns: ColumnDef<EmployeeAtt>[] = [
-    { id: 'name', header: 'EMPLOYEE', width: 'minmax(160px,1.4fr)', cell: (r) => <div className="flex items-center gap-2.5"><Avatar name={r.name} size="md" /><div><div className="text-sm font-medium">{r.name}</div><div className="text-[11px] text-[#8a929b]">{r.designation}</div></div></div> },
-    { id: 'employeeId', header: 'EMPLOYEE ID', width: '120px', cell: (r) => <span className="font-mono text-xs text-[#6b7480]">{r.employeeId}</span> },
-    { id: 'date', header: 'DATE', width: '100px', accessor: 'date' },
-    { id: 'checkIn', header: 'CHECK IN', width: '90px', accessor: 'checkIn' },
-    { id: 'checkOut', header: 'CHECK OUT', width: '90px', accessor: 'checkOut' },
-    { id: 'status', header: 'STATUS', width: '110px', cell: (r) => <Badge variant={EMP_STATUS[r.status] ?? 'default'}>{r.status.replace('_', ' ')}</Badge> },
-    { id: 'remarks', header: 'REMARKS', width: '130px', cell: (r) => <span className="truncate text-sm text-[#6b7480]">{r.remarks}</span> },
+  // ── Paginated slices ──────────────────────────────────────────
+  const stuSlice = studentAtt.slice((stuPage - 1) * stuPageSize, stuPage * stuPageSize);
+  const empSlice = employeeAtt.slice((empPage - 1) * empPageSize, empPage * empPageSize);
+  const lvSlice = leaveRequests.slice((lvPage - 1) * lvPageSize, lvPage * lvPageSize);
+
+  // ── Column defs ───────────────────────────────────────────────
+  const studentColumns: ColumnDef<StudentAttendanceRecord>[] = [
+    {
+      id: 'student',
+      header: 'STUDENT',
+      width: 'minmax(180px,1.6fr)',
+      cell: (r) => (
+        <div className="flex items-center gap-2.5">
+          <Avatar
+            name={`${r.student.person.firstName} ${r.student.person.lastName}`}
+            size="md"
+          />
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 500, color: '#14181c' }}>
+              {r.student.person.firstName} {r.student.person.lastName}
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'date',
+      header: 'DATE',
+      width: '110px',
+      cell: (r) => <span style={{ fontSize: '12px', color: '#6b7480' }}>{formatDate(r.date)}</span>,
+    },
+    {
+      id: 'status',
+      header: 'STATUS',
+      width: '110px',
+      cell: (r) => (
+        <Badge variant={STU_STATUS[r.status] ?? 'default'}>{statusLabel(r.status)}</Badge>
+      ),
+    },
+    {
+      id: 'checkIn',
+      header: 'CHECK IN',
+      width: '90px',
+      cell: (r) => (
+        <span style={{ fontSize: '12px', color: '#6b7480' }}>{formatTime(r.checkInTime)}</span>
+      ),
+    },
+    {
+      id: 'remarks',
+      header: 'REMARKS',
+      width: '160px',
+      cell: (r) => (
+        <span style={{ fontSize: '12px', color: '#6b7480' }}>{r.remarks || '—'}</span>
+      ),
+    },
   ];
 
-  const leaveColumns: ColumnDef<LeaveReq>[] = [
-    { id: 'name', header: 'EMPLOYEE', width: 'minmax(160px,1.4fr)', cell: (r) => <div className="flex items-center gap-2.5"><Avatar name={r.name} size="md" /><div><div className="text-sm font-medium">{r.name}</div><div className="text-[11px] text-[#8a929b]">{r.designation}</div></div></div> },
-    { id: 'leaveType', header: 'LEAVE TYPE', width: '110px', accessor: 'leaveType' },
-    { id: 'from', header: 'FROM', width: '90px', accessor: 'from' },
-    { id: 'to', header: 'TO', width: '90px', accessor: 'to' },
-    { id: 'days', header: 'DAYS', width: '70px', align: 'center', accessor: 'days' },
-    { id: 'reason', header: 'REASON', width: '150px', cell: (r) => <span className="truncate text-sm text-[#6b7480]">{r.reason}</span> },
-    { id: 'status', header: 'STATUS', width: '100px', cell: (r) => <Badge variant={LV_STATUS[r.status] ?? 'default'}>{r.status}</Badge> },
-    { id: 'actions', header: 'ACTIONS', width: '100px', align: 'right', cell: (r) => r.status === 'PENDING' ? <div className="flex justify-end gap-1.5 text-xs font-medium"><button className="text-[#146b41]">Approve</button><span className="text-[#d7dce1]">|</span><button className="text-[#b3261e]">Reject</button></div> : <button className="text-xs font-medium text-[#2b5fa8] hover:underline">View</button> },
+  const empColumns: ColumnDef<EmployeeAttendanceRecord>[] = [
+    {
+      id: 'employee',
+      header: 'EMPLOYEE',
+      width: 'minmax(180px,1.6fr)',
+      cell: (r) => (
+        <div className="flex items-center gap-2.5">
+          <Avatar
+            name={`${r.employee.person.firstName} ${r.employee.person.lastName}`}
+            size="md"
+          />
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 500, color: '#14181c' }}>
+              {r.employee.person.firstName} {r.employee.person.lastName}
+            </div>
+            <div style={{ fontSize: '11px', color: '#8a929b' }}>{r.employee.employeeNumber}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'date',
+      header: 'DATE',
+      width: '110px',
+      cell: (r) => <span style={{ fontSize: '12px', color: '#6b7480' }}>{formatDate(r.date)}</span>,
+    },
+    {
+      id: 'status',
+      header: 'STATUS',
+      width: '130px',
+      cell: (r) => (
+        <Badge variant={EMP_STATUS[r.status] ?? 'default'}>{statusLabel(r.status)}</Badge>
+      ),
+    },
+    {
+      id: 'checkIn',
+      header: 'CHECK IN',
+      width: '90px',
+      cell: (r) => (
+        <span style={{ fontSize: '12px', color: '#6b7480' }}>{formatTime(r.checkInTime)}</span>
+      ),
+    },
+    {
+      id: 'checkOut',
+      header: 'CHECK OUT',
+      width: '90px',
+      cell: (r) => (
+        <span style={{ fontSize: '12px', color: '#6b7480' }}>{formatTime(r.checkOutTime)}</span>
+      ),
+    },
+    {
+      id: 'workHours',
+      header: 'HOURS',
+      width: '70px',
+      align: 'center',
+      cell: (r) => (
+        <span style={{ fontSize: '12px', color: '#6b7480' }}>
+          {r.workHours != null ? `${r.workHours}h` : '—'}
+        </span>
+      ),
+    },
+    {
+      id: 'remarks',
+      header: 'REMARKS',
+      width: '130px',
+      cell: (r) => (
+        <span style={{ fontSize: '12px', color: '#6b7480' }}>{r.remarks || '—'}</span>
+      ),
+    },
   ];
 
-  const filteredStudents = STUDENT_ATT.filter((s) => (classFilter === 'all' || s.cls.includes(classFilter)) && (statusFilter === 'all' || s.status === statusFilter));
+  const leaveColumns: ColumnDef<LeaveRequest>[] = [
+    {
+      id: 'employee',
+      header: 'EMPLOYEE',
+      width: 'minmax(160px,1.4fr)',
+      cell: (r) => (
+        <div className="flex items-center gap-2.5">
+          <Avatar
+            name={`${r.employee.person.firstName} ${r.employee.person.lastName}`}
+            size="md"
+          />
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 500, color: '#14181c' }}>
+              {r.employee.person.firstName} {r.employee.person.lastName}
+            </div>
+            <div style={{ fontSize: '11px', color: '#8a929b' }}>{r.employee.employeeNumber}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'leaveType',
+      header: 'LEAVE TYPE',
+      width: '120px',
+      cell: (r) => <span style={{ fontSize: '12px' }}>{r.leaveType.name}</span>,
+    },
+    {
+      id: 'from',
+      header: 'FROM',
+      width: '100px',
+      cell: (r) => (
+        <span style={{ fontSize: '12px', color: '#6b7480' }}>{formatDate(r.startDate)}</span>
+      ),
+    },
+    {
+      id: 'to',
+      header: 'TO',
+      width: '100px',
+      cell: (r) => (
+        <span style={{ fontSize: '12px', color: '#6b7480' }}>{formatDate(r.endDate)}</span>
+      ),
+    },
+    {
+      id: 'days',
+      header: 'DAYS',
+      width: '60px',
+      align: 'center',
+      cell: (r) => <span style={{ fontSize: '12px', fontWeight: 500 }}>{r.totalDays}</span>,
+    },
+    {
+      id: 'reason',
+      header: 'REASON',
+      width: '150px',
+      cell: (r) => (
+        <span style={{ fontSize: '12px', color: '#6b7480' }}>{r.reason || '—'}</span>
+      ),
+    },
+    {
+      id: 'status',
+      header: 'STATUS',
+      width: '100px',
+      cell: (r) => (
+        <Badge variant={LV_STATUS[r.status] ?? 'default'}>{statusLabel(r.status)}</Badge>
+      ),
+    },
+    {
+      id: 'actions',
+      header: 'ACTIONS',
+      width: '120px',
+      align: 'right',
+      cell: (r) =>
+        r.status === 'PENDING' ? (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+            <button
+              style={{ fontSize: '12px', fontWeight: 500, color: '#146b41', cursor: 'pointer', background: 'none', border: 'none' }}
+              onClick={() => {
+                approve.mutate(
+                  { id: r.id },
+                  {
+                    onSuccess: () => toast.success('Leave request approved'),
+                    onError: () => toast.error('Failed to approve leave request'),
+                  },
+                );
+              }}
+            >
+              Approve
+            </button>
+            <span style={{ color: '#d7dce1' }}>|</span>
+            <button
+              style={{ fontSize: '12px', fontWeight: 500, color: '#b3261e', cursor: 'pointer', background: 'none', border: 'none' }}
+              onClick={() =>
+                setRejectModal({
+                  open: true,
+                  requestId: r.id,
+                  employeeName: `${r.employee.person.firstName} ${r.employee.person.lastName}`,
+                })
+              }
+            >
+              Reject
+            </button>
+          </div>
+        ) : (
+          <span style={{ fontSize: '12px', color: '#8a929b' }}>—</span>
+        ),
+    },
+  ];
 
+  // ── Render ────────────────────────────────────────────────────
   return (
     <div>
       <PageHeader
         title="Attendance"
-        subtitle="Student and staff attendance · Aug 2025"
+        subtitle={`Attendance for ${formatDate(selectedDate)}`}
         actions={
-          <div className="flex gap-2">
-            <ExportButton label="Export" data={STUDENT_ATT} filename="attendance" formats={['csv', 'excel']}
-              columns={[{ header: 'Student', accessor: 'name' }, { header: 'Class', accessor: 'cls' }, { header: 'Status', accessor: 'status' }]} />
-            {activeTab !== 'leave' && <Button variant="primary">Mark Attendance</Button>}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              style={{
+                height: 36,
+                border: '1px solid #d7dce1',
+                borderRadius: 6,
+                padding: '0 10px',
+                fontSize: '13px',
+                color: '#14181c',
+              }}
+            />
+            {activeTab === 'students' && (
+              <ExportButton
+                label="Export"
+                data={studentAtt}
+                filename="student-attendance"
+                formats={['csv', 'excel']}
+                columns={[
+                  { header: 'Student', accessor: (r) => `${r.student.person.firstName} ${r.student.person.lastName}` },
+                  { header: 'Status', accessor: 'status' },
+                  { header: 'Date', accessor: 'date' },
+                  { header: 'Remarks', accessor: (r) => r.remarks ?? '' },
+                ]}
+              />
+            )}
+            {activeTab === 'employees' && (
+              <ExportButton
+                label="Export"
+                data={employeeAtt}
+                filename="staff-attendance"
+                formats={['csv', 'excel']}
+                columns={[
+                  { header: 'Employee', accessor: (r) => `${r.employee.person.firstName} ${r.employee.person.lastName}` },
+                  { header: 'Employee No', accessor: (r) => r.employee.employeeNumber },
+                  { header: 'Status', accessor: 'status' },
+                  { header: 'Date', accessor: 'date' },
+                ]}
+              />
+            )}
+            {activeTab === 'leave' && (
+              <ExportButton
+                label="Export"
+                data={leaveRequests}
+                filename="leave-requests"
+                formats={['csv', 'excel']}
+                columns={[
+                  { header: 'Employee', accessor: (r) => `${r.employee.person.firstName} ${r.employee.person.lastName}` },
+                  { header: 'Leave Type', accessor: (r) => r.leaveType.name },
+                  { header: 'From', accessor: 'startDate' },
+                  { header: 'To', accessor: 'endDate' },
+                  { header: 'Days', accessor: 'totalDays' },
+                  { header: 'Status', accessor: 'status' },
+                ]}
+              />
+            )}
+            {activeTab === 'students' && (
+              <Button variant="primary" onClick={() => setMarkStudentOpen(true)}>
+                Mark Attendance
+              </Button>
+            )}
+            {activeTab === 'employees' && (
+              <Button variant="primary" onClick={() => setMarkEmployeeOpen(true)}>
+                Mark Attendance
+              </Button>
+            )}
+            {activeTab === 'leave' && (
+              <Button variant="primary" onClick={() => setLeaveRequestOpen(true)}>
+                New Request
+              </Button>
+            )}
           </div>
         }
       />
 
-      <div className="grid grid-cols-4 gap-4 mb-4">
-        <KpiCard title="TODAY'S RATE" value="91.4%" trend="−0.8%" trendPositive={false} subtitle="vs yesterday" />
-        <KpiCard title="PRESENT TODAY" value="1,140" subtitle="of 1,248" />
-        <KpiCard title="ABSENT TODAY" value="108" trend="8.6%" trendPositive={false} />
-        <KpiCard title="ON LEAVE" value="4" subtitle="staff members" />
+      {/* ── Context selectors ─────────────────────────────────── */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 12,
+          alignItems: 'center',
+          marginBottom: 20,
+          padding: '12px 16px',
+          background: '#fff',
+          border: '1px solid #e6e8eb',
+          borderRadius: 10,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: '12px', color: '#6b7480', fontWeight: 500, whiteSpace: 'nowrap' }}>
+            Academic Year
+          </span>
+          <select
+            value={academicYearId}
+            onChange={(e) => setAcademicYearId(e.target.value)}
+            style={{
+              height: 32,
+              border: '1px solid #d7dce1',
+              borderRadius: 6,
+              padding: '0 8px',
+              fontSize: '13px',
+              color: '#14181c',
+            }}
+          >
+            {academicYears.map((y) => (
+              <option key={y.id} value={y.id}>
+                {y.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: '12px', color: '#6b7480', fontWeight: 500, whiteSpace: 'nowrap' }}>
+            Campus
+          </span>
+          <select
+            value={campusId}
+            onChange={(e) => setCampusId(e.target.value)}
+            style={{
+              height: 32,
+              border: '1px solid #d7dce1',
+              borderRadius: 6,
+              padding: '0 8px',
+              fontSize: '13px',
+              color: '#14181c',
+            }}
+          >
+            <option value="">All Campuses</option>
+            {campuses.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      <Tabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} className="mb-4" />
+      {/* ── KPI Section ───────────────────────────────────────── */}
+      {overviewLoading ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 16 }}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <KpiSkeleton key={i} />
+          ))}
+        </div>
+      ) : (
+        <>
+          {/* Students strip */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: '11px', fontWeight: 600, color: '#6b7480', marginBottom: 8, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              Students
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 16 }}>
+              <KpiCard title="TOTAL" value={String(overview?.students.total ?? 0)} />
+              <KpiCard
+                title="PRESENT"
+                value={String(overview?.students.present ?? 0)}
+                subtitle={`${overview?.students.rate ?? 0}% rate`}
+              />
+              <KpiCard title="ABSENT" value={String(overview?.students.absent ?? 0)} />
+              <KpiCard title="LATE" value={String(overview?.students.late ?? 0)} />
+              <KpiCard title="HALF DAY" value={String(overview?.students.halfDay ?? 0)} />
+              <KpiCard title="EXCUSED" value={String(overview?.students.excused ?? 0)} />
+            </div>
+          </div>
 
-      <div className="overflow-hidden rounded-xl border border-[#e6e8eb] bg-white shadow-sm">
-        <div className="flex items-center gap-2 border-b border-[#eef0f2] p-3.5">
+          {/* Staff strip */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: '11px', fontWeight: 600, color: '#6b7480', marginBottom: 8, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              Staff
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
+              <KpiCard title="TOTAL" value={String(overview?.staff.total ?? 0)} />
+              <KpiCard
+                title="PRESENT"
+                value={String(overview?.staff.present ?? 0)}
+                subtitle={`${overview?.staff.rate ?? 0}% rate`}
+              />
+              <KpiCard title="ABSENT" value={String(overview?.staff.absent ?? 0)} />
+              <KpiCard title="ON LEAVE" value={String(overview?.staff.onLeave ?? 0)} />
+              <KpiCard title="LATE" value={String(overview?.staff.late ?? 0)} />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Alerts panel ──────────────────────────────────────── */}
+      {(overview?.alerts.pendingLeaveRequests ?? 0) > 0 && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: '12px 16px',
+            background: '#fffbf0',
+            border: '1px solid #f5c842',
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <span style={{ fontSize: '13px', color: '#7a5c00' }}>
+            <strong>Requires Attention:</strong>{' '}
+            {overview?.alerts.pendingLeaveRequests} leave{' '}
+            {overview?.alerts.pendingLeaveRequests === 1 ? 'request' : 'requests'} pending approval
+          </span>
+          <button
+            onClick={() => setActiveTab('leave')}
+            style={{
+              fontSize: '12px',
+              fontWeight: 500,
+              color: '#2b5fa8',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              textDecoration: 'underline',
+              marginLeft: 4,
+            }}
+          >
+            Review now
+          </button>
+        </div>
+      )}
+
+      {/* ── Tabs + Table ──────────────────────────────────────── */}
+      <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} className="mb-4" />
+
+      <div
+        style={{
+          overflow: 'hidden',
+          borderRadius: 10,
+          border: '1px solid #e6e8eb',
+          background: '#fff',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+        }}
+      >
+        {/* Tab-specific filters */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            borderBottom: '1px solid #eef0f2',
+            padding: '10px 14px',
+          }}
+        >
+          {activeTab === 'leave' && (
+            <select
+              value={leaveStatusFilter}
+              onChange={(e) => setLeaveStatusFilter(e.target.value)}
+              style={{
+                height: 32,
+                border: '1px solid #d7dce1',
+                borderRadius: 6,
+                padding: '0 8px',
+                fontSize: '13px',
+                color: '#14181c',
+              }}
+            >
+              <option value="">All Statuses</option>
+              <option value="PENDING">Pending</option>
+              <option value="APPROVED">Approved</option>
+              <option value="REJECTED">Rejected</option>
+              <option value="CANCELLED">Cancelled</option>
+            </select>
+          )}
+          <div style={{ flex: 1 }} />
+        </div>
+
+        {/* Tables */}
+        {activeTab === 'students' && (
+          stuLoading ? (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#8a929b', fontSize: '13px' }}>
+              Loading student attendance…
+            </div>
+          ) : stuSlice.length === 0 ? (
+            <div style={{ padding: '48px', textAlign: 'center', color: '#8a929b', fontSize: '13px' }}>
+              No student attendance records for this date.
+              <br />
+              <button
+                style={{ marginTop: 12, fontSize: '12px', color: '#2b5fa8', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                onClick={() => setMarkStudentOpen(true)}
+              >
+                Mark attendance now
+              </button>
+            </div>
+          ) : (
+            <DataTable columns={studentColumns} data={stuSlice} selectable />
+          )
+        )}
+
+        {activeTab === 'employees' && (
+          empLoading ? (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#8a929b', fontSize: '13px' }}>
+              Loading staff attendance…
+            </div>
+          ) : empSlice.length === 0 ? (
+            <div style={{ padding: '48px', textAlign: 'center', color: '#8a929b', fontSize: '13px' }}>
+              No staff attendance records for this date.
+              <br />
+              <button
+                style={{ marginTop: 12, fontSize: '12px', color: '#2b5fa8', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                onClick={() => setMarkEmployeeOpen(true)}
+              >
+                Mark attendance now
+              </button>
+            </div>
+          ) : (
+            <DataTable columns={empColumns} data={empSlice} selectable />
+          )
+        )}
+
+        {activeTab === 'leave' && (
+          leaveLoading ? (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#8a929b', fontSize: '13px' }}>
+              Loading leave requests…
+            </div>
+          ) : lvSlice.length === 0 ? (
+            <div style={{ padding: '48px', textAlign: 'center', color: '#8a929b', fontSize: '13px' }}>
+              No leave requests found.
+            </div>
+          ) : (
+            <DataTable columns={leaveColumns} data={lvSlice} />
+          )
+        )}
+
+        {/* Pagination */}
+        <div style={{ borderTop: '1px solid #eef0f2', padding: '10px 14px' }}>
           {activeTab === 'students' && (
-            <>
-              <input type="date" defaultValue="2025-08-27" className="h-9 rounded-md border border-[#d7dce1] px-3 text-sm text-[#14181c]" />
-              <Dropdown label="Class" value={classFilter} options={CLASS_OPTIONS} onChange={setClassFilter} />
-              <Dropdown label="Status" value={statusFilter} options={STATUS_OPTIONS} onChange={setStatusFilter} />
-            </>
+            <Pagination
+              page={stuPage}
+              pageSize={stuPageSize}
+              total={studentAtt.length}
+              onPageChange={setStuPage}
+              onPageSizeChange={setStuPageSize}
+            />
           )}
           {activeTab === 'employees' && (
-            <input type="date" defaultValue="2025-08-27" className="h-9 rounded-md border border-[#d7dce1] px-3 text-sm text-[#14181c]" />
+            <Pagination
+              page={empPage}
+              pageSize={empPageSize}
+              total={employeeAtt.length}
+              onPageChange={setEmpPage}
+              onPageSizeChange={setEmpPageSize}
+            />
           )}
-          <div className="flex-1" />
-        </div>
-
-        {activeTab === 'students' && <DataTable columns={studentColumns} data={filteredStudents} selectable />}
-        {activeTab === 'employees' && <DataTable columns={empColumns} data={EMP_ATT} selectable />}
-        {activeTab === 'leave' && <DataTable columns={leaveColumns} data={LEAVE_REQS} />}
-
-        <div className="border-t border-[#eef0f2] p-3">
-          <Pagination page={page} pageSize={pageSize}
-            total={activeTab === 'students' ? filteredStudents.length : activeTab === 'employees' ? EMP_ATT.length : LEAVE_REQS.length}
-            onPageChange={setPage} onPageSizeChange={setPageSize} />
+          {activeTab === 'leave' && (
+            <Pagination
+              page={lvPage}
+              pageSize={lvPageSize}
+              total={leaveRequests.length}
+              onPageChange={setLvPage}
+              onPageSizeChange={setLvPageSize}
+            />
+          )}
         </div>
       </div>
+
+      {/* ── Modals ────────────────────────────────────────────── */}
+      <MarkStudentAttendanceModal
+        open={markStudentOpen}
+        onClose={() => setMarkStudentOpen(false)}
+        campusId={campusId}
+        academicYearId={academicYearId}
+        date={selectedDate}
+      />
+
+      <MarkEmployeeAttendanceModal
+        open={markEmployeeOpen}
+        onClose={() => setMarkEmployeeOpen(false)}
+        campusId={campusId}
+        date={selectedDate}
+      />
+
+      <LeaveRequestModal
+        open={leaveRequestOpen}
+        onClose={() => setLeaveRequestOpen(false)}
+      />
+
+      <RejectLeaveModal
+        open={rejectModal.open}
+        onClose={() => setRejectModal({ open: false, requestId: '', employeeName: '' })}
+        requestId={rejectModal.requestId}
+        employeeName={rejectModal.employeeName}
+      />
     </div>
   );
 }

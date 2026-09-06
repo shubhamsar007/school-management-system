@@ -1,0 +1,445 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiClient } from '@/lib/api-client';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface AttendanceOverview {
+  date: string;
+  students: {
+    total: number;
+    marked: number;
+    present: number;
+    absent: number;
+    late: number;
+    halfDay: number;
+    excused: number;
+    rate: number;
+  };
+  staff: {
+    total: number;
+    marked: number;
+    present: number;
+    absent: number;
+    late: number;
+    onLeave: number;
+    wfh: number;
+    halfDay: number;
+    rate: number;
+  };
+  alerts: { pendingLeaveRequests: number };
+}
+
+export interface RosterEntry {
+  enrollmentId: string;
+  studentId: string;
+  rollNumber: string | null;
+  student: {
+    id: string;
+    person: { firstName: string; lastName: string; gender: string | null };
+  };
+  attendance: {
+    id: string;
+    status: string;
+    checkInTime: string | null;
+    checkOutTime: string | null;
+    remarks: string | null;
+  } | null;
+}
+
+export interface LeaveType {
+  id: string;
+  organizationId: string;
+  name: string;
+  code: string;
+  applicableTo: string;
+  annualLimit: number | null;
+  isPaid: boolean;
+  carryForward: boolean;
+  status: string;
+}
+
+export interface LeaveRequest {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  leaveTypeId: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  reason: string | null;
+  status: string;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+  employee: {
+    id: string;
+    employeeNumber: string;
+    person: { firstName: string; lastName: string };
+  };
+  leaveType: { id: string; name: string; code: string };
+}
+
+export interface LeaveBalance {
+  leaveTypeId: string;
+  allocated: number;
+  used: number;
+  pending: number;
+  remaining: number;
+  leaveType: {
+    id: string;
+    name: string;
+    code: string;
+    isPaid: boolean;
+    annualLimit: number | null;
+  };
+}
+
+export interface StudentAttendanceRecord {
+  id: string;
+  studentId: string;
+  enrollmentId: string | null;
+  date: string;
+  status: string;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  remarks: string | null;
+  markedBy: string | null;
+  createdAt: string;
+  student: { id: string; person: { firstName: string; lastName: string } };
+}
+
+export interface EmployeeAttendanceRecord {
+  id: string;
+  employeeId: string;
+  campusId: string;
+  date: string;
+  status: string;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  workHours: number | null;
+  remarks: string | null;
+  markedBy: string | null;
+  employee: {
+    id: string;
+    employeeNumber: string;
+    person: { firstName: string; lastName: string };
+  };
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function toQS(params: Record<string, string | undefined>): string {
+  const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== '');
+  if (!entries.length) return '';
+  return '?' + entries.map(([k, v]) => `${k}=${encodeURIComponent(v as string)}`).join('&');
+}
+
+// ─── Query Hooks ──────────────────────────────────────────────────────────────
+
+export function useAttendanceOverview(campusId?: string, date?: string) {
+  return useQuery<AttendanceOverview>({
+    queryKey: ['attendance', 'overview', campusId, date],
+    queryFn: () =>
+      apiClient.get<AttendanceOverview>(
+        `/attendance/overview${toQS({ ...(campusId ? { campusId } : {}), ...(date ? { date } : {}) })}`,
+      ),
+    staleTime: 60_000,
+    retry: 1,
+  });
+}
+
+export function useAttendanceRoster(sectionId?: string, academicYearId?: string, date?: string) {
+  return useQuery<RosterEntry[]>({
+    queryKey: ['attendance', 'roster', sectionId, academicYearId, date],
+    queryFn: () =>
+      apiClient.get<RosterEntry[]>(
+        `/attendance/roster${toQS({
+          sectionId: sectionId!,
+          academicYearId: academicYearId!,
+          ...(date ? { date } : {}),
+        })}`,
+      ),
+    enabled: !!sectionId && !!academicYearId,
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+export function useLeaveTypes() {
+  return useQuery<LeaveType[]>({
+    queryKey: ['attendance', 'leave-types'],
+    queryFn: () => apiClient.get<LeaveType[]>('/attendance/leave-types'),
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+}
+
+export function useLeaveRequests(filters?: { employeeId?: string; status?: string }) {
+  const qs = toQS({
+    ...(filters?.employeeId ? { employeeId: filters.employeeId } : {}),
+    ...(filters?.status ? { status: filters.status } : {}),
+  });
+  return useQuery<LeaveRequest[]>({
+    queryKey: ['attendance', 'leave-requests', filters],
+    queryFn: () => apiClient.get<LeaveRequest[]>(`/attendance/leave-requests${qs}`),
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+export function useLeaveBalances(employeeId?: string, academicYearId?: string) {
+  return useQuery<LeaveBalance[]>({
+    queryKey: ['attendance', 'leave-balances', employeeId, academicYearId],
+    queryFn: () =>
+      apiClient.get<LeaveBalance[]>(
+        `/attendance/leave-balances${toQS({
+          employeeId: employeeId!,
+          ...(academicYearId ? { academicYearId } : {}),
+        })}`,
+      ),
+    enabled: !!employeeId,
+    staleTime: 60_000,
+    retry: 1,
+  });
+}
+
+export function useStudentAttendance(filters: {
+  studentId?: string;
+  date?: string;
+  from?: string;
+  to?: string;
+}) {
+  return useQuery<StudentAttendanceRecord[]>({
+    queryKey: ['attendance', 'students', filters],
+    queryFn: () =>
+      apiClient.get<StudentAttendanceRecord[]>(
+        `/attendance/students${toQS({
+          ...(filters.studentId ? { studentId: filters.studentId } : {}),
+          ...(filters.date ? { date: filters.date } : {}),
+          ...(filters.from ? { from: filters.from } : {}),
+          ...(filters.to ? { to: filters.to } : {}),
+        })}`,
+      ),
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+export function useEmployeeAttendanceList(filters: {
+  campusId?: string;
+  date?: string;
+  from?: string;
+  to?: string;
+}) {
+  return useQuery<EmployeeAttendanceRecord[]>({
+    queryKey: ['attendance', 'employees', filters],
+    queryFn: () =>
+      apiClient.get<EmployeeAttendanceRecord[]>(
+        `/attendance/employees${toQS({
+          ...(filters.campusId ? { campusId: filters.campusId } : {}),
+          ...(filters.date ? { date: filters.date } : {}),
+          ...(filters.from ? { from: filters.from } : {}),
+          ...(filters.to ? { to: filters.to } : {}),
+        })}`,
+      ),
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+// ─── Mutation Hooks ───────────────────────────────────────────────────────────
+
+export function useMarkStudentAttendance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: {
+      date: string;
+      entries: Array<{
+        studentId: string;
+        enrollmentId: string;
+        status: string;
+        remarks?: string;
+        checkInTime?: string;
+        checkOutTime?: string;
+      }>;
+    }) => apiClient.post('/attendance/students', dto),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'students'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'roster'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'overview'] });
+    },
+  });
+}
+
+export function useMarkEmployeeAttendance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: {
+      employeeId: string;
+      campusId: string;
+      date: string;
+      status: string;
+      checkInTime?: string;
+      checkOutTime?: string;
+      workHours?: number;
+      remarks?: string;
+    }) => apiClient.post('/attendance/employees', dto),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'employees'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'overview'] });
+    },
+  });
+}
+
+export function useUpdateStudentAttendance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      dto,
+    }: {
+      id: string;
+      dto: Partial<{ status: string; checkInTime: string; checkOutTime: string; remarks: string }>;
+    }) => apiClient.patch(`/attendance/students/${id}`, dto),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'students'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'roster'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'overview'] });
+    },
+  });
+}
+
+export function useUpdateEmployeeAttendance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      dto,
+    }: {
+      id: string;
+      dto: Partial<{
+        status: string;
+        checkInTime: string;
+        checkOutTime: string;
+        workHours: number;
+        remarks: string;
+      }>;
+    }) => apiClient.patch(`/attendance/employees/${id}`, dto),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'employees'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'overview'] });
+    },
+  });
+}
+
+export function useApproveLeaveRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) =>
+      apiClient.post(`/attendance/leave-requests/${id}/approve`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'leave-requests'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'overview'] });
+    },
+  });
+}
+
+export function useRejectLeaveRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, rejectionReason }: { id: string; rejectionReason?: string }) =>
+      apiClient.post(`/attendance/leave-requests/${id}/reject`, {
+        ...(rejectionReason !== undefined ? { rejectionReason } : {}),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'leave-requests'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'overview'] });
+    },
+  });
+}
+
+export function useCancelLeaveRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, employeeId }: { id: string; employeeId: string }) =>
+      apiClient.post(`/attendance/leave-requests/${id}/cancel?employeeId=${employeeId}`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'leave-requests'] });
+    },
+  });
+}
+
+export function useCreateLeaveRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      employeeId,
+      dto,
+    }: {
+      employeeId: string;
+      dto: {
+        leaveTypeId: string;
+        startDate: string;
+        endDate: string;
+        totalDays: number;
+        reason?: string;
+      };
+    }) => apiClient.post(`/attendance/leave-requests/${employeeId}`, dto),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'leave-requests'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'leave-balances'] });
+    },
+  });
+}
+
+export function useCreateLeaveType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: {
+      name: string;
+      code: string;
+      applicableTo: string;
+      annualLimit?: number;
+      isPaid?: boolean;
+      carryForward?: boolean;
+    }) => apiClient.post('/attendance/leave-types', dto),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'leave-types'] });
+    },
+  });
+}
+
+export function useUpdateLeaveType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      dto,
+    }: {
+      id: string;
+      dto: Partial<{
+        name: string;
+        code: string;
+        applicableTo: string;
+        annualLimit: number | null;
+        isPaid: boolean;
+        carryForward: boolean;
+        status: string;
+      }>;
+    }) => apiClient.patch(`/attendance/leave-types/${id}`, dto),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'leave-types'] });
+    },
+  });
+}
+
+export function useDeleteLeaveType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/attendance/leave-types/${id}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'leave-types'] });
+    },
+  });
+}

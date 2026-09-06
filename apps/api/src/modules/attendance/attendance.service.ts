@@ -413,7 +413,226 @@ export class AttendanceService {
     });
   }
 
+  // ─── Overview ─────────────────────────────────────────────────
+
+  async getOverview(organizationId: string, campusId?: string, date?: string) {
+    const parsedDate = date ? new Date(date) : new Date();
+    // Normalise to midnight UTC so date-only comparison works
+    parsedDate.setUTCHours(0, 0, 0, 0);
+
+    const dateStr = parsedDate.toISOString().slice(0, 10);
+
+    // ── Students ──────────────────────────────────────────────
+    const studentTotal = await this.prisma.studentEnrollment.count({
+      where: {
+        ...(campusId ? { campusId } : {}),
+        student: { organizationId },
+        status: 'ACTIVE',
+        academicYear: { status: 'ACTIVE' },
+      },
+    });
+
+    const studentGroups = await this.prisma.studentAttendance.groupBy({
+      by: ['status'],
+      _count: { status: true },
+      where: {
+        date: parsedDate,
+        student: { organizationId },
+        ...(campusId
+          ? { enrollment: { campusId } }
+          : {}),
+      },
+    });
+
+    const sCounts = this.toCountMap(studentGroups);
+    const sPresent = sCounts['PRESENT'] ?? 0;
+    const sAbsent = sCounts['ABSENT'] ?? 0;
+    const sLate = sCounts['LATE'] ?? 0;
+    const sHalfDay = sCounts['HALF_DAY'] ?? 0;
+    const sExcused = sCounts['EXCUSED'] ?? 0;
+    const sMarked = sPresent + sAbsent + sLate + sHalfDay + sExcused;
+    const sRate = studentTotal > 0 ? Math.min(100, ((sPresent + sLate) / studentTotal) * 100) : 0;
+
+    // ── Staff ─────────────────────────────────────────────────
+    const staffTotal = await this.prisma.employee.count({
+      where: {
+        organizationId,
+        employmentStatus: 'ACTIVE',
+        deletedAt: null,
+        ...(campusId ? { campusId } : {}),
+      },
+    });
+
+    const staffGroups = await this.prisma.employeeAttendance.groupBy({
+      by: ['status'],
+      _count: { status: true },
+      where: {
+        date: parsedDate,
+        employee: { organizationId },
+        ...(campusId ? { campusId } : {}),
+      },
+    });
+
+    const empCounts = this.toCountMap(staffGroups);
+    const ePresent = empCounts['PRESENT'] ?? 0;
+    const eAbsent = empCounts['ABSENT'] ?? 0;
+    const eLate = empCounts['LATE'] ?? 0;
+    const eOnLeave = empCounts['ON_LEAVE'] ?? 0;
+    const eWfh = empCounts['WORK_FROM_HOME'] ?? 0;
+    const eHalfDay = empCounts['HALF_DAY'] ?? 0;
+    const eMarked = ePresent + eAbsent + eLate + eOnLeave + eWfh + eHalfDay;
+    const eRate = staffTotal > 0 ? Math.min(100, ((ePresent + eLate) / staffTotal) * 100) : 0;
+
+    // ── Alerts ────────────────────────────────────────────────
+    const pendingLeaveRequests = await this.prisma.leaveRequest.count({
+      where: { organizationId, status: 'PENDING' },
+    });
+
+    return {
+      date: dateStr,
+      students: {
+        total: studentTotal,
+        marked: sMarked,
+        present: sPresent,
+        absent: sAbsent,
+        late: sLate,
+        halfDay: sHalfDay,
+        excused: sExcused,
+        rate: Math.round(sRate * 10) / 10,
+      },
+      staff: {
+        total: staffTotal,
+        marked: eMarked,
+        present: ePresent,
+        absent: eAbsent,
+        late: eLate,
+        onLeave: eOnLeave,
+        wfh: eWfh,
+        halfDay: eHalfDay,
+        rate: Math.round(eRate * 10) / 10,
+      },
+      alerts: { pendingLeaveRequests },
+    };
+  }
+
+  // ─── Roster ───────────────────────────────────────────────────
+
+  async getRoster(organizationId: string, sectionId: string, academicYearId: string, date?: string) {
+    const parsedDate = date ? new Date(date) : new Date();
+    parsedDate.setUTCHours(0, 0, 0, 0);
+
+    const enrollments = await this.prisma.studentEnrollment.findMany({
+      where: {
+        sectionId,
+        academicYearId,
+        status: 'ACTIVE',
+        student: { organizationId },
+      },
+      include: {
+        student: { include: { person: true } },
+      },
+      orderBy: [
+        { rollNumber: 'asc' },
+        { student: { person: { firstName: 'asc' } } },
+      ],
+    });
+
+    const studentIds = enrollments.map((e) => e.studentId);
+
+    const attendanceRecords = await this.prisma.studentAttendance.findMany({
+      where: {
+        studentId: { in: studentIds },
+        date: parsedDate,
+      },
+    });
+
+    const attMap = new Map(attendanceRecords.map((a) => [a.studentId, a]));
+
+    return enrollments.map((e) => {
+      const att = attMap.get(e.studentId) ?? null;
+      return {
+        enrollmentId: e.id,
+        studentId: e.studentId,
+        rollNumber: e.rollNumber,
+        student: {
+          id: e.student.id,
+          person: {
+            firstName: e.student.person.firstName,
+            lastName: e.student.person.lastName,
+            gender: e.student.person.gender,
+          },
+        },
+        attendance: att
+          ? {
+              id: att.id,
+              status: att.status,
+              checkInTime: att.checkInTime,
+              checkOutTime: att.checkOutTime,
+              remarks: att.remarks,
+            }
+          : null,
+      };
+    });
+  }
+
+  // ─── Leave Balances ───────────────────────────────────────────
+
+  async getLeaveBalances(organizationId: string, employeeId: string, academicYearId?: string) {
+    // Verify employee belongs to this organization
+    const employee = await this.prisma.employee.findFirst({
+      where: { id: employeeId, organizationId, deletedAt: null },
+    });
+    if (!employee) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    const balances = await this.prisma.leaveBalance.findMany({
+      where: {
+        employeeId,
+        ...(academicYearId ? { academicYearId } : {}),
+      },
+      include: { leaveType: true },
+    });
+
+    // Batch-fetch pending counts per leaveTypeId for this employee
+    const pendingGroups = await this.prisma.leaveRequest.groupBy({
+      by: ['leaveTypeId'],
+      _count: { leaveTypeId: true },
+      where: {
+        employeeId,
+        status: 'PENDING',
+      },
+    });
+
+    const pendingMap = new Map(pendingGroups.map((g) => [g.leaveTypeId, g._count.leaveTypeId]));
+
+    return balances.map((b) => {
+      const pending = pendingMap.get(b.leaveTypeId) ?? 0;
+      const remaining = Math.max(0, b.allocated - b.used - pending);
+      return {
+        leaveTypeId: b.leaveTypeId,
+        allocated: b.allocated,
+        used: b.used,
+        pending,
+        remaining,
+        leaveType: {
+          id: b.leaveType.id,
+          name: b.leaveType.name,
+          code: b.leaveType.code,
+          isPaid: b.leaveType.isPaid,
+          annualLimit: b.leaveType.annualLimit,
+        },
+      };
+    });
+  }
+
   // ─── Private helpers ──────────────────────────────────────────
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private toCountMap(groups: any[]): Record<string, number> {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access
+    return Object.fromEntries(groups.map((g) => [g.status as string, g._count.status as number]));
+  }
 
   private parseTime(timeStr: string): Date {
     // Parse HH:MM into a Date object (date part is arbitrary — Prisma stores as @db.Time)

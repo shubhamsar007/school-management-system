@@ -31,6 +31,46 @@ import { RejectLeaveRequestDto } from './dto/review-leave-request.dto';
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
+  // ─── Overview / Roster / Leave Balances ─────────────────────
+
+  @ApiOperation({ summary: 'Get attendance overview for a date (students + staff KPIs + alerts)' })
+  @ApiQuery({ name: 'campusId', required: false })
+  @ApiQuery({ name: 'date', required: false, description: 'YYYY-MM-DD (defaults to today)' })
+  @Get('overview')
+  getOverview(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('campusId') campusId?: string,
+    @Query('date') date?: string,
+  ) {
+    return this.attendanceService.getOverview(user.organizationId, campusId, date);
+  }
+
+  @ApiOperation({ summary: 'Get student roster with attendance status for a section and date' })
+  @ApiQuery({ name: 'sectionId', required: true })
+  @ApiQuery({ name: 'academicYearId', required: true })
+  @ApiQuery({ name: 'date', required: false, description: 'YYYY-MM-DD (defaults to today)' })
+  @Get('roster')
+  getAttendanceRoster(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('sectionId') sectionId: string,
+    @Query('academicYearId') academicYearId: string,
+    @Query('date') date?: string,
+  ) {
+    return this.attendanceService.getRoster(user.organizationId, sectionId, academicYearId, date);
+  }
+
+  @ApiOperation({ summary: 'Get leave balances for an employee' })
+  @ApiQuery({ name: 'employeeId', required: true })
+  @ApiQuery({ name: 'academicYearId', required: false })
+  @Get('leave-balances')
+  getLeaveBalances(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('employeeId') employeeId: string,
+    @Query('academicYearId') academicYearId?: string,
+  ) {
+    return this.attendanceService.getLeaveBalances(user.organizationId, employeeId, academicYearId);
+  }
+
   // ─── Student Attendance ───────────────────────────────────────
 
   @ApiOperation({ summary: 'Mark attendance for one or more students (upsert by date)' })
