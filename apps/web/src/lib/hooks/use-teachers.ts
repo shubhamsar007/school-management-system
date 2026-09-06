@@ -687,3 +687,181 @@ export function useUpdateOffboardingTask(employeeId: string) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['teachers', employeeId, 'offboarding'] }),
   });
 }
+
+// ─── HR Setup: Department CRUD ────────────────────────────────────────────────
+
+export interface CreateDepartmentPayload {
+  name: string;
+  code: string;
+  description?: string;
+  campusId?: string;
+}
+
+export interface UpdateDepartmentPayload extends Partial<CreateDepartmentPayload> {
+  status?: string;
+}
+
+export function useCreateDepartment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateDepartmentPayload) =>
+      apiClient.post('/teachers/departments', data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['teachers', 'departments'] });
+      qc.invalidateQueries({ queryKey: ['teachers', 'form-options'] });
+    },
+  });
+}
+
+export function useUpdateDepartment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateDepartmentPayload }) =>
+      apiClient.patch(`/teachers/departments/${id}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['teachers', 'departments'] });
+      qc.invalidateQueries({ queryKey: ['teachers', 'form-options'] });
+    },
+  });
+}
+
+export function useDeleteDepartment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/teachers/departments/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['teachers', 'departments'] });
+      qc.invalidateQueries({ queryKey: ['teachers', 'form-options'] });
+    },
+  });
+}
+
+// ─── HR Setup: Designation CRUD ───────────────────────────────────────────────
+
+export interface DesignationItem {
+  id: string;
+  name: string;
+  code: string;
+  description?: string;
+  status: string;
+  employeeCount: number;
+}
+
+export interface CreateDesignationPayload {
+  name: string;
+  code: string;
+  description?: string;
+}
+
+export interface UpdateDesignationPayload extends Partial<CreateDesignationPayload> {
+  status?: string;
+}
+
+export function useDesignations() {
+  return useQuery<DesignationItem[]>({
+    queryKey: ['teachers', 'designations'],
+    queryFn: () => apiClient.get<DesignationItem[]>('/teachers/designations'),
+    staleTime: 120_000,
+    retry: 1,
+  });
+}
+
+export function useCreateDesignation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateDesignationPayload) =>
+      apiClient.post('/teachers/designations', data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['teachers', 'designations'] });
+      qc.invalidateQueries({ queryKey: ['teachers', 'form-options'] });
+    },
+  });
+}
+
+export function useUpdateDesignation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateDesignationPayload }) =>
+      apiClient.patch(`/teachers/designations/${id}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['teachers', 'designations'] });
+      qc.invalidateQueries({ queryKey: ['teachers', 'form-options'] });
+    },
+  });
+}
+
+export function useDeleteDesignation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/teachers/designations/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['teachers', 'designations'] });
+      qc.invalidateQueries({ queryKey: ['teachers', 'form-options'] });
+    },
+  });
+}
+
+// ─── HR Setup: Employee Type CRUD ─────────────────────────────────────────────
+
+export interface EmployeeTypeItem {
+  id: string;
+  name: string;
+  code: string;
+  category: string;
+  status: string;
+  employeeCount: number;
+}
+
+export interface CreateEmployeeTypePayload {
+  name: string;
+  code: string;
+  category: string;
+}
+
+export interface UpdateEmployeeTypePayload extends Partial<CreateEmployeeTypePayload> {
+  status?: string;
+}
+
+export function useEmployeeTypesList() {
+  return useQuery<EmployeeTypeItem[]>({
+    queryKey: ['teachers', 'employee-types-list'],
+    queryFn: () => apiClient.get<EmployeeTypeItem[]>('/teachers/employee-types'),
+    staleTime: 120_000,
+    retry: 1,
+  });
+}
+
+export function useCreateEmployeeType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateEmployeeTypePayload) =>
+      apiClient.post('/teachers/employee-types', data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['teachers', 'employee-types-list'] });
+      qc.invalidateQueries({ queryKey: ['teachers', 'form-options'] });
+    },
+  });
+}
+
+export function useUpdateEmployeeType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateEmployeeTypePayload }) =>
+      apiClient.patch(`/teachers/employee-types/${id}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['teachers', 'employee-types-list'] });
+      qc.invalidateQueries({ queryKey: ['teachers', 'form-options'] });
+    },
+  });
+}
+
+export function useDeleteEmployeeType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/teachers/employee-types/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['teachers', 'employee-types-list'] });
+      qc.invalidateQueries({ queryKey: ['teachers', 'form-options'] });
+    },
+  });
+}

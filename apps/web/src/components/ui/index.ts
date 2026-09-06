@@ -51,3 +51,5 @@ export { StatBar } from './stat-bar';
 
 export { DataTable } from './data-table';
 export type { ColumnDef } from './data-table';
+
+export { SubjectTypeBadge } from './subject-type-badge';

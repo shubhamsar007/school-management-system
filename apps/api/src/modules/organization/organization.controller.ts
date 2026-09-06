@@ -27,6 +27,7 @@ import { CreateCampusDto } from './dto/create-campus.dto';
 import { UpdateCampusDto } from './dto/update-campus.dto';
 import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
 import { UpdateAcademicYearDto } from './dto/update-academic-year.dto';
+import { CopyAcademicYearDto } from './dto/copy-academic-year.dto';
 
 @ApiTags('organization')
 @ApiBearerAuth()
@@ -135,6 +136,16 @@ export class OrganizationController {
     @Body() dto: UpdateAcademicYearDto,
   ) {
     return this.organizationService.updateAcademicYear(id, yearId, dto);
+  }
+
+  @ApiOperation({ summary: 'Copy curriculum/assignments from a source year into this year' })
+  @Post(':id/academic-years/:yearId/copy')
+  copyAcademicYear(
+    @Param('id') id: string,
+    @Param('yearId') yearId: string,
+    @Body() dto: CopyAcademicYearDto,
+  ) {
+    return this.organizationService.copyAcademicYear(id, yearId, dto);
   }
 
   // ─── Settings ─────────────────────────────────────────────────

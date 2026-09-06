@@ -283,7 +283,7 @@ export function BuilderGrid({
               className="flex flex-col items-center justify-center py-2"
             >
               <p style={{ fontSize: 11, fontWeight: 700, color: '#14181c' }}>{DAY_SHORT[i]}</p>
-              <p style={{ fontSize: 10, color: '#8a929b' }}>{DAY_NAMES[i]?.slice(0, 3)}</p>
+              <p style={{ fontSize: 10, color: '#8a929b' }}>{DAY_NAMES[i]}</p>
             </div>
           ))}
 

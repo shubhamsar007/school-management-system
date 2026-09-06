@@ -2753,4 +2753,56 @@ Query key convention:
 23. `OnboardingTab` / `OffboardingTab`
 24. `HistoryTab` — timeline from lifecycle_events + audit_logs
 
-*Plan version: 1.2 — Teachers & Staff module plan added 2026-09-02.*
+*Plan version: 1.3 — HR Setup management added 2026-09-04.*
+
+---
+
+## §22 — HR Setup: Reference Data Management
+
+Admins need to create and manage the reference data that powers employee forms — Departments, Designations, and Employee Types — without touching the database directly.
+
+### Design decisions
+- **Department** = a group (e.g. Teaching, Administration, Support Staff, Library). School can have one "Teaching" department with all subject teachers, or separate departments per subject — admin's choice.
+- **Designation** = a job title (e.g. Hindi Teacher, Principal, Peon, Generator Operator). Free-form, not tied to a department.
+- **EmployeeType** = a contract category (e.g. Full-Time Teaching, Part-Time). Has a `category` field — TEACHING | NON_TEACHING | SUPPORT — used to count teachers vs non-teaching staff in KPI stats.
+
+### Architecture
+
+**Reusable component:** `apps/web/src/components/shared/reference-data-panel.tsx`
+- Generic panel driven entirely by props — knows nothing about departments/designations/employee-types
+- Props: `title`, `items: ReferenceItem[]`, `isLoading`, `fields: FieldConfig[]`, `onAdd`, `onEdit`, `onDelete`, `extraColumns?`
+- Renders a table with Name, Code, extra columns, Employee Count, Status badge, Edit/Delete actions
+- Add/Edit modal driven by `FieldConfig[]` — supports `type: 'text'` and `type: 'select'`
+- Blocks delete if employees are assigned (API throws 400, caught and toasted)
+- Reusable for any future HR reference data (leave types, asset types, etc.)
+
+**Tab location:** "HR Setup" tab on `/teachers` page (4th tab after Departments)
+
+**Backend routes added to `teacher.controller.ts`:**
+| Method | Path | Description |
+|---|---|---|
+| POST | `/v1/teachers/departments` | Create department |
+| PATCH | `/v1/teachers/departments/:id` | Update department |
+| DELETE | `/v1/teachers/departments/:id` | Delete (blocked if employees exist) |
+| GET | `/v1/teachers/designations` | List designations with employee count |
+| POST | `/v1/teachers/designations` | Create designation |
+| PATCH | `/v1/teachers/designations/:id` | Update designation |
+| DELETE | `/v1/teachers/designations/:id` | Delete designation |
+| GET | `/v1/teachers/employee-types` | List employee types with count |
+| POST | `/v1/teachers/employee-types` | Create employee type |
+| PATCH | `/v1/teachers/employee-types/:id` | Update employee type |
+| DELETE | `/v1/teachers/employee-types/:id` | Delete employee type |
+
+**Hooks in `use-teachers.ts`:** `useCreateDepartment`, `useUpdateDepartment`, `useDeleteDepartment`, `useDesignations`, `useCreateDesignation`, `useUpdateDesignation`, `useDeleteDesignation`, `useEmployeeTypesList`, `useCreateEmployeeType`, `useUpdateEmployeeType`, `useDeleteEmployeeType`
+
+### Files
+- `apps/api/src/modules/teacher/dto/create-department.dto.ts` ✅
+- `apps/api/src/modules/teacher/dto/update-department.dto.ts` ✅
+- `apps/api/src/modules/teacher/dto/create-designation.dto.ts` ✅
+- `apps/api/src/modules/teacher/dto/update-designation.dto.ts` ✅
+- `apps/api/src/modules/teacher/dto/create-employee-type.dto.ts` ✅
+- `apps/api/src/modules/teacher/dto/update-employee-type.dto.ts` ✅
+- `apps/web/src/components/shared/reference-data-panel.tsx` ✅ (reusable)
+- `apps/web/src/app/(app)/teachers/_components/hr-setup-tab.tsx` ✅
+- `apps/web/src/lib/hooks/use-teachers.ts` ✅ (hooks added)
+- `apps/web/src/app/(app)/teachers/page.tsx` ✅ (HR Setup tab added)

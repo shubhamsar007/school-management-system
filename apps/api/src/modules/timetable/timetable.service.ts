@@ -1243,7 +1243,15 @@ export class TimetableService {
 
           try {
             await this.prisma.timetableEntry.create({
-              data: { timetableId, dayOfWeek: day, periodId: period.id, classId, sectionId, subjectId, teacherId },
+              data: {
+                timetableId,
+                dayOfWeek: day,
+                periodId: period.id,
+                classId,
+                sectionId,
+                teacherId,
+                ...(subjectId ? { subjectId } : {}),
+              },
             });
             teacherSlots.add(tSlot);
             sectionSlots.add(sSlot);

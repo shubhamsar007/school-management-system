@@ -22,6 +22,12 @@ import { CreateOnboardingDto } from './dto/create-onboarding.dto';
 import { UpdateOnboardingTaskDto } from './dto/update-onboarding-task.dto';
 import { CreateOffboardingDto } from './dto/create-offboarding.dto';
 import { UpdateOffboardingTaskDto } from './dto/update-offboarding-task.dto';
+import { CreateDepartmentDto } from './dto/create-department.dto';
+import { UpdateDepartmentDto } from './dto/update-department.dto';
+import { CreateDesignationDto } from './dto/create-designation.dto';
+import { UpdateDesignationDto } from './dto/update-designation.dto';
+import { CreateEmployeeTypeDto } from './dto/create-employee-type.dto';
+import { UpdateEmployeeTypeDto } from './dto/update-employee-type.dto';
 
 @Injectable()
 export class TeacherService {
@@ -762,6 +768,226 @@ export class TeacherService {
       description: (d as any).description ?? null,
       employeeCount: d._count.employees,
     }));
+  }
+
+  async createDepartment(organizationId: string, dto: CreateDepartmentDto) {
+    const existing = await this.prisma.department.findFirst({
+      where: { organizationId, code: dto.code },
+    });
+    if (existing) {
+      throw new ConflictException(`Department code '${dto.code}' already exists`);
+    }
+    return this.prisma.department.create({
+      data: {
+        organizationId,
+        name: dto.name,
+        code: dto.code,
+        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.campusId !== undefined ? { campusId: dto.campusId } : {}),
+      },
+    });
+  }
+
+  async updateDepartment(
+    organizationId: string,
+    id: string,
+    dto: UpdateDepartmentDto,
+  ) {
+    const department = await this.prisma.department.findFirst({
+      where: { id, organizationId },
+    });
+    if (!department) throw new NotFoundException('Department not found');
+
+    return this.prisma.department.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name } : {}),
+        ...(dto.code !== undefined ? { code: dto.code } : {}),
+        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.campusId !== undefined ? { campusId: dto.campusId } : {}),
+        ...(dto.status !== undefined ? { status: dto.status } : {}),
+      },
+    });
+  }
+
+  async deleteDepartment(organizationId: string, id: string) {
+    const department = await this.prisma.department.findFirst({
+      where: { id, organizationId },
+    });
+    if (!department) throw new NotFoundException('Department not found');
+
+    const employeeCount = await this.prisma.employee.count({
+      where: { departmentId: id, deletedAt: null },
+    });
+    if (employeeCount > 0) {
+      throw new BadRequestException(
+        `Cannot delete department: ${employeeCount} employee(s) are assigned to it`,
+      );
+    }
+
+    await this.prisma.department.delete({ where: { id } });
+  }
+
+  // ─── Designations ─────────────────────────────────────────────
+
+  async getDesignations(organizationId: string) {
+    const designations = await this.prisma.designation.findMany({
+      where: { organizationId },
+      include: {
+        _count: {
+          select: {
+            employees: { where: { deletedAt: null } },
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    return designations.map((d) => ({
+      id: d.id,
+      name: d.name,
+      code: d.code,
+      description: (d as any).description ?? null,
+      status: d.status,
+      employeeCount: d._count.employees,
+    }));
+  }
+
+  async createDesignation(organizationId: string, dto: CreateDesignationDto) {
+    const existing = await this.prisma.designation.findFirst({
+      where: { organizationId, code: dto.code },
+    });
+    if (existing) {
+      throw new ConflictException(`Designation code '${dto.code}' already exists`);
+    }
+    return this.prisma.designation.create({
+      data: {
+        organizationId,
+        name: dto.name,
+        code: dto.code,
+        ...(dto.description !== undefined ? { description: dto.description } : {}),
+      },
+    });
+  }
+
+  async updateDesignation(
+    organizationId: string,
+    id: string,
+    dto: UpdateDesignationDto,
+  ) {
+    const designation = await this.prisma.designation.findFirst({
+      where: { id, organizationId },
+    });
+    if (!designation) throw new NotFoundException('Designation not found');
+
+    return this.prisma.designation.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name } : {}),
+        ...(dto.code !== undefined ? { code: dto.code } : {}),
+        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.status !== undefined ? { status: dto.status } : {}),
+      },
+    });
+  }
+
+  async deleteDesignation(organizationId: string, id: string) {
+    const designation = await this.prisma.designation.findFirst({
+      where: { id, organizationId },
+    });
+    if (!designation) throw new NotFoundException('Designation not found');
+
+    const employeeCount = await this.prisma.employee.count({
+      where: { designationId: id, deletedAt: null },
+    });
+    if (employeeCount > 0) {
+      throw new BadRequestException(
+        `Cannot delete designation: ${employeeCount} employee(s) are assigned to it`,
+      );
+    }
+
+    await this.prisma.designation.delete({ where: { id } });
+  }
+
+  // ─── Employee Types ───────────────────────────────────────────
+
+  async getEmployeeTypes(organizationId: string) {
+    const employeeTypes = await this.prisma.employeeType.findMany({
+      where: { organizationId },
+      include: {
+        _count: {
+          select: {
+            employees: { where: { deletedAt: null } },
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    return employeeTypes.map((et) => ({
+      id: et.id,
+      name: et.name,
+      code: et.code,
+      category: et.category,
+      status: et.status,
+      employeeCount: et._count.employees,
+    }));
+  }
+
+  async createEmployeeType(organizationId: string, dto: CreateEmployeeTypeDto) {
+    const existing = await this.prisma.employeeType.findFirst({
+      where: { organizationId, code: dto.code },
+    });
+    if (existing) {
+      throw new ConflictException(`Employee type code '${dto.code}' already exists`);
+    }
+    return this.prisma.employeeType.create({
+      data: {
+        organizationId,
+        name: dto.name,
+        code: dto.code,
+        category: dto.category,
+      },
+    });
+  }
+
+  async updateEmployeeType(
+    organizationId: string,
+    id: string,
+    dto: UpdateEmployeeTypeDto,
+  ) {
+    const employeeType = await this.prisma.employeeType.findFirst({
+      where: { id, organizationId },
+    });
+    if (!employeeType) throw new NotFoundException('Employee type not found');
+
+    return this.prisma.employeeType.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name } : {}),
+        ...(dto.code !== undefined ? { code: dto.code } : {}),
+        ...(dto.category !== undefined ? { category: dto.category } : {}),
+        ...(dto.status !== undefined ? { status: dto.status } : {}),
+      },
+    });
+  }
+
+  async deleteEmployeeType(organizationId: string, id: string) {
+    const employeeType = await this.prisma.employeeType.findFirst({
+      where: { id, organizationId },
+    });
+    if (!employeeType) throw new NotFoundException('Employee type not found');
+
+    const employeeCount = await this.prisma.employee.count({
+      where: { employeeTypeId: id, deletedAt: null },
+    });
+    if (employeeCount > 0) {
+      throw new BadRequestException(
+        `Cannot delete employee type: ${employeeCount} employee(s) are assigned to it`,
+      );
+    }
+
+    await this.prisma.employeeType.delete({ where: { id } });
   }
 
   // ─── Form Options ─────────────────────────────────────────────

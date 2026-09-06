@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   LayoutDashboard, Bell, Users, GraduationCap, BookOpen, Clock,
   CheckSquare, FileText, UserPlus, DollarSign, CreditCard, Calendar,
-  RefreshCw, Megaphone, FolderOpen, Settings, Shield,
+  RefreshCw, Megaphone, FolderOpen, Settings, Shield, MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -66,9 +66,15 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    group: 'OPERATIONS',
+    group: 'COMMS',
     items: [
       { label: 'Announcements', href: '/announcements', icon: Megaphone },
+      { label: 'PTM Meetings', href: '/ptm', icon: MessageSquare },
+    ],
+  },
+  {
+    group: 'OPERATIONS',
+    items: [
       { label: 'Documents & Files', href: '/documents', icon: FolderOpen },
     ],
   },

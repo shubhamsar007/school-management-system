@@ -2,9 +2,11 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { ChevronDown, Check, Bell, Clock, GraduationCap, AlertCircle } from 'lucide-react';
+import { ChevronDown, Check, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SearchDropdown } from '@/components/ui/search-dropdown';
+import { useCurrentUser } from '@/lib/hooks/use-identity';
+import { useNotifications, useMarkNotificationRead } from '@/lib/hooks/use-comms';
 
 // ─── Term selector ────────────────────────────────────────────────────────────
 
@@ -89,17 +91,30 @@ function TermDropdown() {
 
 // ─── Notifications panel ──────────────────────────────────────────────────────
 
-const SAMPLE_NOTIFICATIONS = [
-  { id: 1, icon: GraduationCap, color: '#dfeaf1', fg: '#4e6a7d', title: 'New admission request', sub: 'Ananya Sharma — Class 8B', time: '10 min ago' },
-  { id: 2, icon: AlertCircle,   color: '#fce7f3', fg: '#9d174d', title: 'Fee due overdue',        sub: '3 students in Class 10A',    time: '1 hr ago'  },
-  { id: 3, icon: Clock,         color: '#fef3c7', fg: '#92400e', title: 'Term 2 closes in 18 days', sub: '4 report cards pending',  time: '2 hr ago'  },
-  { id: 4, icon: GraduationCap, color: '#dcfce7', fg: '#166534', title: 'Student transferred',    sub: 'Rahul Verma → North Campus', time: 'Yesterday' },
-];
+function formatRelativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'Yesterday';
+  return `${days} days ago`;
+}
 
 function NotificationsPanel() {
   const [open, setOpen] = React.useState(false);
-  const [count, setCount] = React.useState(SAMPLE_NOTIFICATIONS.length);
   const ref = React.useRef<HTMLDivElement>(null);
+
+  const { data: currentUser } = useCurrentUser();
+  const { data: notifications = [] } = useNotifications(
+    currentUser?.id ? { recipientUserId: currentUser.id } : undefined,
+  );
+  const markRead = useMarkNotificationRead();
+
+  const unread = notifications.filter((n) => !n.readAt).length;
+  const preview = notifications.slice(0, 5);
 
   React.useEffect(() => {
     function handle(e: MouseEvent) {
@@ -109,15 +124,14 @@ function NotificationsPanel() {
     return () => document.removeEventListener('mousedown', handle);
   }, [open]);
 
-  function handleOpen() {
-    setOpen((o) => !o);
-    if (!open) setCount(0); // mark all read when panel opens
+  function handleClickNotification(id: string, alreadyRead: boolean) {
+    if (!alreadyRead) void markRead.mutateAsync(id);
   }
 
   return (
     <div ref={ref} className="relative flex-shrink-0">
       <button
-        onClick={handleOpen}
+        onClick={() => setOpen((o) => !o)}
         className="flex items-center justify-center transition-colors"
         style={{
           width: 28, height: 28,
@@ -129,7 +143,7 @@ function NotificationsPanel() {
         <Bell size={13} style={{ color: '#6f746e' }} />
       </button>
 
-      {count > 0 && (
+      {unread > 0 && (
         <span
           className="absolute flex items-center justify-center text-white font-bold pointer-events-none"
           style={{
@@ -138,7 +152,7 @@ function NotificationsPanel() {
             background: '#b3563a', border: '1.5px solid #faf8f2',
           }}
         >
-          {count}
+          {unread > 99 ? '99+' : unread}
         </span>
       )}
 
@@ -154,38 +168,60 @@ function NotificationsPanel() {
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px 8px', borderBottom: '1px solid #f0f2f4' }}>
             <p style={{ fontSize: 13, fontWeight: 600, color: '#14181c' }}>Notifications</p>
-            <p style={{ fontSize: 11, color: '#8a929b' }}>All caught up</p>
+            {unread > 0 ? (
+              <span style={{ fontSize: 11, color: '#b3563a', fontWeight: 600 }}>{unread} unread</span>
+            ) : (
+              <p style={{ fontSize: 11, color: '#8a929b' }}>All caught up</p>
+            )}
           </div>
 
-          {SAMPLE_NOTIFICATIONS.map((n) => (
-            <button
-              key={n.id}
-              type="button"
-              style={{
-                display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%',
-                padding: '10px 14px', background: 'none', border: 'none',
-                borderBottom: '1px solid #f5f6f7', cursor: 'pointer', textAlign: 'left',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#fafbfc'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
-            >
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: n.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <n.icon size={14} style={{ color: n.fg }} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 13, fontWeight: 500, color: '#14181c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {n.title}
-                </p>
-                <p style={{ fontSize: 11, color: '#8a929b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {n.sub}
-                </p>
-              </div>
-              <p style={{ fontSize: 10, color: '#c4c9cf', flexShrink: 0, paddingTop: 2 }}>{n.time}</p>
-            </button>
-          ))}
+          {preview.length === 0 ? (
+            <div style={{ padding: '24px 14px', textAlign: 'center' }}>
+              <p style={{ fontSize: 13, color: '#8a929b' }}>No notifications yet</p>
+            </div>
+          ) : (
+            preview.map((n) => {
+              const isUnread = !n.readAt;
+              return (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => handleClickNotification(n.id, !isUnread)}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%',
+                    padding: '10px 14px',
+                    background: isUnread ? '#fdfaf6' : 'none',
+                    border: 'none',
+                    borderBottom: '1px solid #f5f6f7', cursor: 'pointer', textAlign: 'left',
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#fafbfc'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = isUnread ? '#fdfaf6' : 'none'; }}
+                >
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: isUnread ? '#b3563a' : 'transparent', flexShrink: 0, marginTop: 5 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: isUnread ? 600 : 400, color: '#14181c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {n.title}
+                    </p>
+                    <p style={{ fontSize: 11, color: '#8a929b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {n.message}
+                    </p>
+                  </div>
+                  <p style={{ fontSize: 10, color: '#c4c9cf', flexShrink: 0, paddingTop: 2 }}>
+                    {formatRelativeTime(n.createdAt)}
+                  </p>
+                </button>
+              );
+            })
+          )}
 
-          <div style={{ padding: '8px 14px', textAlign: 'center' }}>
-            <p style={{ fontSize: 12, color: '#8a929b' }}>Full notification center coming soon</p>
+          <div style={{ padding: '8px 14px', textAlign: 'center', borderTop: '1px solid #f0f2f4' }}>
+            <Link
+              href="/notifications"
+              onClick={() => setOpen(false)}
+              style={{ fontSize: 12, color: '#2b5fa8', fontWeight: 500 }}
+            >
+              View all notifications →
+            </Link>
           </div>
         </div>
       )}

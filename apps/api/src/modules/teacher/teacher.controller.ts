@@ -36,6 +36,12 @@ import { CreateOnboardingDto } from './dto/create-onboarding.dto';
 import { UpdateOnboardingTaskDto } from './dto/update-onboarding-task.dto';
 import { CreateOffboardingDto } from './dto/create-offboarding.dto';
 import { UpdateOffboardingTaskDto } from './dto/update-offboarding-task.dto';
+import { CreateDepartmentDto } from './dto/create-department.dto';
+import { UpdateDepartmentDto } from './dto/update-department.dto';
+import { CreateDesignationDto } from './dto/create-designation.dto';
+import { UpdateDesignationDto } from './dto/update-designation.dto';
+import { CreateEmployeeTypeDto } from './dto/create-employee-type.dto';
+import { UpdateEmployeeTypeDto } from './dto/update-employee-type.dto';
 
 @ApiTags('teachers')
 @ApiBearerAuth()
@@ -58,6 +64,109 @@ export class TeacherController {
   @Get('departments')
   getDepartments(@CurrentUser() user: CurrentUserPayload) {
     return this.teacherService.getDepartments(user.organizationId);
+  }
+
+  @ApiOperation({ summary: 'Create a department' })
+  @Post('departments')
+  createDepartment(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: CreateDepartmentDto,
+  ) {
+    return this.teacherService.createDepartment(user.organizationId, dto);
+  }
+
+  @ApiOperation({ summary: 'Update a department' })
+  @Patch('departments/:id')
+  updateDepartment(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateDepartmentDto,
+  ) {
+    return this.teacherService.updateDepartment(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Delete a department' })
+  @Delete('departments/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteDepartment(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.teacherService.deleteDepartment(user.organizationId, id);
+  }
+
+  // ─── Designations ─────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'List designations with employee headcounts' })
+  @Get('designations')
+  getDesignations(@CurrentUser() user: CurrentUserPayload) {
+    return this.teacherService.getDesignations(user.organizationId);
+  }
+
+  @ApiOperation({ summary: 'Create a designation' })
+  @Post('designations')
+  createDesignation(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: CreateDesignationDto,
+  ) {
+    return this.teacherService.createDesignation(user.organizationId, dto);
+  }
+
+  @ApiOperation({ summary: 'Update a designation' })
+  @Patch('designations/:id')
+  updateDesignation(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateDesignationDto,
+  ) {
+    return this.teacherService.updateDesignation(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Delete a designation' })
+  @Delete('designations/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteDesignation(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.teacherService.deleteDesignation(user.organizationId, id);
+  }
+
+  // ─── Employee Types ───────────────────────────────────────────
+
+  @ApiOperation({ summary: 'List employee types with employee headcounts' })
+  @Get('employee-types')
+  getEmployeeTypes(@CurrentUser() user: CurrentUserPayload) {
+    return this.teacherService.getEmployeeTypes(user.organizationId);
+  }
+
+  @ApiOperation({ summary: 'Create an employee type' })
+  @Post('employee-types')
+  createEmployeeType(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: CreateEmployeeTypeDto,
+  ) {
+    return this.teacherService.createEmployeeType(user.organizationId, dto);
+  }
+
+  @ApiOperation({ summary: 'Update an employee type' })
+  @Patch('employee-types/:id')
+  updateEmployeeType(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateEmployeeTypeDto,
+  ) {
+    return this.teacherService.updateEmployeeType(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Delete an employee type' })
+  @Delete('employee-types/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteEmployeeType(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.teacherService.deleteEmployeeType(user.organizationId, id);
   }
 
   // ─── Form Options ─────────────────────────────────────────────

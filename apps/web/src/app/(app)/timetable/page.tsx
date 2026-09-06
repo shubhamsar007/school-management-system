@@ -36,7 +36,6 @@ import {
   type TimetableBuilding,
   type TimetableSummary,
 } from '@/lib/hooks/use-timetable';
-import { WeeklyScheduleGrid } from '@/components/shared/weekly-schedule-grid';
 import { PeriodTypeBadge } from '@/components/shared/period-type-badge';
 import { PeriodModal } from './_components/period-modal';
 import { RoomModal } from './_components/room-modal';
@@ -93,8 +92,11 @@ const SELECT_STYLE: React.CSSProperties = {
   border: '1px solid #e0ddd5',
   borderRadius: 7,
   appearance: 'none',
+  WebkitAppearance: 'none',
+  MozAppearance: 'none',
   cursor: 'pointer',
   outline: 'none',
+  boxShadow: 'none',
   minWidth: 140,
 };
 
@@ -104,8 +106,9 @@ interface ContextBarProps {
 }
 
 function ContextBar({ campusId, onCampusChange }: ContextBarProps) {
-  const { data: org } = useOrganization();
-  const { data: campuses = [], isLoading } = useCampuses(org?.id);
+  const { data: org, isLoading: orgLoading } = useOrganization();
+  const { data: campuses = [], isLoading: campusLoading } = useCampuses(org?.id);
+  const isLoading = orgLoading || campusLoading;
 
   React.useEffect(() => {
     if (campuses.length > 0 && !campusId) {
@@ -123,14 +126,24 @@ function ContextBar({ campusId, onCampusChange }: ContextBarProps) {
         <select
           value={campusId}
           onChange={(e) => onCampusChange(e.target.value)}
-          style={SELECT_STYLE}
-          disabled={isLoading}
+          style={{
+            ...SELECT_STYLE,
+            color: !campusId ? '#8a929b' : '#2c322f',
+            opacity: isLoading ? 0.6 : 1,
+          }}
+          disabled={isLoading || campuses.length === 0}
         >
-          {campuses.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
+          {isLoading ? (
+            <option value="">Loading campuses…</option>
+          ) : campuses.length === 0 ? (
+            <option value="">No campuses found</option>
+          ) : (
+            campuses.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))
+          )}
         </select>
         <span
           style={{
@@ -146,6 +159,9 @@ function ContextBar({ campusId, onCampusChange }: ContextBarProps) {
           ▼
         </span>
       </div>
+      {isLoading && (
+        <span style={{ fontSize: 11, color: '#b0b7bf' }}>Loading…</span>
+      )}
     </div>
   );
 }
@@ -233,6 +249,8 @@ function ScheduleMatrix({
     return DAY_ORDER.filter((d) => daysWithEntries.has(d));
   }, [scheduleDays]);
 
+  if (isLoading) return <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">Loading schedule…</div>;
+  if (isError) return <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">No active timetable found for this campus. Activate a timetable first.</div>;
   if (!scheduleDays) {
     return (
       <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">
@@ -240,8 +258,6 @@ function ScheduleMatrix({
       </div>
     );
   }
-  if (isLoading) return <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">Loading schedule…</div>;
-  if (isError) return <div className="flex items-center justify-center py-20 text-sm text-[#8a929b]">No active timetable found for this campus.</div>;
 
   return (
     <div className="overflow-x-auto">
@@ -1112,6 +1128,11 @@ export default function TimetablePage() {
   const [activeTab, setActiveTab] = React.useState('builder');
   const [campusId, setCampusId] = React.useState('');
 
+  // Show skeleton KPIs while campus is resolving so the page doesn't look empty
+  const { data: org, isLoading: orgLoading } = useOrganization();
+  const { isLoading: campusLoading } = useCampuses(org?.id);
+  const kpiLoading = orgLoading || campusLoading;
+
   return (
     <div>
       <PageHeader
@@ -1121,7 +1142,13 @@ export default function TimetablePage() {
 
       <ContextBar campusId={campusId} onCampusChange={setCampusId} />
 
-      {campusId && <KpiRow campusId={campusId} />}
+      {kpiLoading ? (
+        <div className="grid grid-cols-4 gap-4 mb-4">
+          {Array.from({ length: 4 }).map((_, i) => <KpiSkeleton key={i} />)}
+        </div>
+      ) : campusId ? (
+        <KpiRow campusId={campusId} />
+      ) : null}
 
       <Tabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} className="mb-4" />
 

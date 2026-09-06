@@ -11,6 +11,7 @@ import { CreateCampusDto } from './dto/create-campus.dto';
 import { UpdateCampusDto } from './dto/update-campus.dto';
 import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
 import { UpdateAcademicYearDto } from './dto/update-academic-year.dto';
+import { CopyAcademicYearDto } from './dto/copy-academic-year.dto';
 
 @Injectable()
 export class OrganizationService {
@@ -252,6 +253,99 @@ export class OrganizationService {
         ...(dto.isCurrent !== undefined ? { isCurrent: dto.isCurrent } : {}),
       },
     });
+  }
+
+  async copyAcademicYear(organizationId: string, targetYearId: string, dto: CopyAcademicYearDto) {
+    const [targetYear, sourceYear] = await Promise.all([
+      this.findAcademicYear(organizationId, targetYearId),
+      this.findAcademicYear(organizationId, dto.sourceYearId),
+    ]);
+
+    const copyCurriculum = dto.copyCurriculum !== false; // default true
+    const copyTeacherAssignments = dto.copyTeacherAssignments === true;
+
+    let curriculumCopied = 0;
+    let assignmentsCopied = 0;
+
+    if (copyCurriculum) {
+      const classSubjects = await this.prisma.classSubject.findMany({
+        where: { academicYearId: sourceYear.id, class: { organizationId } },
+      });
+
+      if (classSubjects.length > 0) {
+        // Skip any that already exist in the target year
+        const existing = await this.prisma.classSubject.findMany({
+          where: { academicYearId: targetYear.id },
+          select: { classId: true, subjectId: true },
+        });
+        const existingKeys = new Set(existing.map((e) => `${e.classId}:${e.subjectId}`));
+
+        const toCreate = classSubjects.filter(
+          (cs) => !existingKeys.has(`${cs.classId}:${cs.subjectId}`),
+        );
+
+        if (toCreate.length > 0) {
+          await this.prisma.classSubject.createMany({
+            data: toCreate.map((cs) => ({
+              academicYearId: targetYear.id,
+              classId: cs.classId,
+              subjectId: cs.subjectId,
+              isOptional: cs.isOptional,
+              maxMarks: cs.maxMarks,
+              passingMarks: cs.passingMarks,
+              weightage: cs.weightage,
+              status: 'ACTIVE',
+            })),
+          });
+          curriculumCopied = toCreate.length;
+        }
+      }
+    }
+
+    if (copyTeacherAssignments) {
+      const assignments = await this.prisma.teacherAssignment.findMany({
+        where: { academicYearId: sourceYear.id, class: { organizationId } },
+      });
+
+      if (assignments.length > 0) {
+        const existing = await this.prisma.teacherAssignment.findMany({
+          where: { academicYearId: targetYear.id },
+          select: { teacherId: true, classId: true, subjectId: true, sectionId: true },
+        });
+        const existingKeys = new Set(
+          existing.map((e) => `${e.teacherId}:${e.classId}:${e.subjectId}:${e.sectionId}`),
+        );
+
+        const toCreate = assignments.filter(
+          (a) => !existingKeys.has(`${a.teacherId}:${a.classId}:${a.subjectId}:${a.sectionId}`),
+        );
+
+        if (toCreate.length > 0) {
+          await this.prisma.teacherAssignment.createMany({
+            data: toCreate.map((a) => ({
+              academicYearId: targetYear.id,
+              teacherId: a.teacherId,
+              classId: a.classId,
+              sectionId: a.sectionId,
+              subjectId: a.subjectId,
+              isClassTeacher: a.isClassTeacher,
+              startDate: targetYear.startDate,
+              endDate: targetYear.endDate,
+              status: 'ACTIVE',
+            })),
+          });
+          assignmentsCopied = toCreate.length;
+        }
+      }
+    }
+
+    return {
+      targetYearId: targetYear.id,
+      targetYearName: targetYear.name,
+      sourceYearName: sourceYear.name,
+      curriculumCopied,
+      assignmentsCopied,
+    };
   }
 
   // ─── Settings ────────────────────────────────────────────────

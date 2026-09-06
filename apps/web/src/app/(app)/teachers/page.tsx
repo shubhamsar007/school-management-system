@@ -8,16 +8,18 @@ import { useTeacherStats } from '@/lib/hooks/use-teachers';
 import { OverviewTab } from './_components/overview-tab';
 import { DirectoryTab } from './_components/directory-tab';
 import { DepartmentsTab } from './_components/departments-tab';
+import { HrSetupTab } from './_components/hr-setup-tab';
 import { AddEmployeeModal } from './_components/add-employee-modal';
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
 
-type TabId = 'overview' | 'directory' | 'departments';
+type TabId = 'overview' | 'directory' | 'departments' | 'setup';
 
 const TABS = [
   { id: 'overview',    label: 'Overview' },
   { id: 'directory',   label: 'Directory' },
   { id: 'departments', label: 'Departments' },
+  { id: 'setup',       label: 'HR Setup' },
 ];
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -65,6 +67,7 @@ export default function TeachersPage() {
       {activeTab === 'overview'    && <OverviewTab />}
       {activeTab === 'directory'   && <DirectoryTab />}
       {activeTab === 'departments' && <DepartmentsTab />}
+      {activeTab === 'setup'       && <HrSetupTab />}
 
       <AddEmployeeModal open={addOpen} onClose={() => setAddOpen(false)} />
     </>

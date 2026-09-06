@@ -2,6 +2,9 @@
   "name": "school-management-system",
   "version": "0.0.1",
   "private": true,
+  "prisma": {
+    "seed": "packages/database/node_modules/.bin/tsx prisma/seed/index.ts"
+  },
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
