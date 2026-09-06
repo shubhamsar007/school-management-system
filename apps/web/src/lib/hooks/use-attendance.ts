@@ -443,3 +443,305 @@ export function useDeleteLeaveType() {
     },
   });
 }
+
+// ─── Phase 2 Types ────────────────────────────────────────────────────────────
+
+export interface AttendanceSession {
+  id: string;
+  organizationId: string;
+  campusId: string;
+  sectionId: string;
+  academicYearId: string;
+  date: string;
+  status: string;
+  submittedAt: string | null;
+  submittedBy: string | null;
+  lockedAt: string | null;
+  lockedBy: string | null;
+  createdBy: string;
+  createdAt: string;
+  section?: { id: string; name: string; academicClass: { id: string; name: string } };
+}
+
+export interface AttendanceCorrection {
+  id: string;
+  organizationId: string;
+  sessionId: string | null;
+  attendanceId: string;
+  attendanceType: string;
+  originalStatus: string;
+  requestedStatus: string;
+  reason: string;
+  requestedBy: string;
+  requestedAt: string;
+  status: string;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+}
+
+export interface StudentHistorySummary {
+  present: number;
+  absent: number;
+  late: number;
+  halfDay: number;
+  excused: number;
+  rate: number;
+}
+
+export interface StudentHistoryRecord {
+  id: string;
+  date: string;
+  status: string;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  remarks: string | null;
+}
+
+export interface StudentHistory {
+  records: StudentHistoryRecord[];
+  summary: StudentHistorySummary;
+  month: number;
+  year: number;
+}
+
+export interface SectionStudentSummary {
+  studentId: string;
+  enrollmentId: string;
+  rollNumber: string | null;
+  student: { id: string; person: { firstName: string; lastName: string } };
+  present: number;
+  absent: number;
+  late: number;
+  halfDay: number;
+  excused: number;
+  totalDays: number;
+  rate: number;
+}
+
+export interface ClassSectionSummary {
+  sectionId: string;
+  sectionName: string;
+  className: string;
+  level: number | null;
+  studentCount: number;
+  present: number;
+  absent: number;
+  late: number;
+  rate: number;
+}
+
+export interface AttendanceTrend {
+  month: number;
+  year: number;
+  label: string;
+  present: number;
+  absent: number;
+  late: number;
+  total: number;
+  rate: number;
+}
+
+// ─── Session Hooks ────────────────────────────────────────────────────────────
+
+export function useAttendanceSessions(filters?: {
+  sectionId?: string;
+  date?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+}) {
+  const qs = toQS({
+    ...(filters?.sectionId ? { sectionId: filters.sectionId } : {}),
+    ...(filters?.date ? { date: filters.date } : {}),
+    ...(filters?.status ? { status: filters.status } : {}),
+    ...(filters?.from ? { from: filters.from } : {}),
+    ...(filters?.to ? { to: filters.to } : {}),
+  });
+  return useQuery<AttendanceSession[]>({
+    queryKey: ['attendance', 'sessions', filters],
+    queryFn: () => apiClient.get<AttendanceSession[]>(`/attendance/sessions${qs}`),
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+export function useAttendanceSession(id: string | null) {
+  return useQuery<AttendanceSession>({
+    queryKey: ['attendance', 'sessions', id],
+    queryFn: () => apiClient.get<AttendanceSession>(`/attendance/sessions/${id}`),
+    enabled: !!id,
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+export function useCreateSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: {
+      campusId: string;
+      sectionId: string;
+      academicYearId: string;
+      date: string;
+    }) => apiClient.post<AttendanceSession>('/attendance/sessions', dto),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'sessions'] });
+    },
+  });
+}
+
+export function useSubmitSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiClient.post<AttendanceSession>(`/attendance/sessions/${id}/submit`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'sessions'] });
+    },
+  });
+}
+
+export function useLockSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiClient.post<AttendanceSession>(`/attendance/sessions/${id}/lock`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'sessions'] });
+    },
+  });
+}
+
+// ─── Correction Hooks ─────────────────────────────────────────────────────────
+
+export function useAttendanceCorrections(filters?: {
+  status?: string;
+  attendanceType?: string;
+  sessionId?: string;
+}) {
+  const qs = toQS({
+    ...(filters?.status ? { status: filters.status } : {}),
+    ...(filters?.attendanceType ? { attendanceType: filters.attendanceType } : {}),
+    ...(filters?.sessionId ? { sessionId: filters.sessionId } : {}),
+  });
+  return useQuery<AttendanceCorrection[]>({
+    queryKey: ['attendance', 'corrections', filters],
+    queryFn: () => apiClient.get<AttendanceCorrection[]>(`/attendance/corrections${qs}`),
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+export function useCreateCorrection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: {
+      attendanceId: string;
+      attendanceType: string;
+      originalStatus: string;
+      requestedStatus: string;
+      reason: string;
+      sessionId?: string;
+    }) => apiClient.post<AttendanceCorrection>('/attendance/corrections', dto),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'corrections'] });
+    },
+  });
+}
+
+export function useApproveCorrection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiClient.post<AttendanceCorrection>(`/attendance/corrections/${id}/approve`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'corrections'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'students'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'employees'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'overview'] });
+    },
+  });
+}
+
+export function useRejectCorrection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, rejectionReason }: { id: string; rejectionReason?: string }) =>
+      apiClient.post<AttendanceCorrection>(`/attendance/corrections/${id}/reject`, {
+        ...(rejectionReason !== undefined ? { rejectionReason } : {}),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'corrections'] });
+    },
+  });
+}
+
+// ─── Analytics Hooks ──────────────────────────────────────────────────────────
+
+export function useStudentHistory(studentId: string | null, year: number, month: number) {
+  return useQuery<StudentHistory>({
+    queryKey: ['attendance', 'analytics', 'student', studentId, year, month],
+    queryFn: () =>
+      apiClient.get<StudentHistory>(
+        `/attendance/analytics/student/${studentId}${toQS({ year: String(year), month: String(month) })}`,
+      ),
+    enabled: !!studentId && year > 0 && month > 0,
+    staleTime: 60_000,
+    retry: 1,
+  });
+}
+
+export function useSectionAttendanceSummary(
+  sectionId: string | null,
+  academicYearId: string | null,
+  from?: string,
+  to?: string,
+) {
+  return useQuery<SectionStudentSummary[]>({
+    queryKey: ['attendance', 'analytics', 'section', sectionId, academicYearId, from, to],
+    queryFn: () =>
+      apiClient.get<SectionStudentSummary[]>(
+        `/attendance/analytics/sections/${sectionId}${toQS({
+          academicYearId: academicYearId!,
+          ...(from ? { from } : {}),
+          ...(to ? { to } : {}),
+        })}`,
+      ),
+    enabled: !!sectionId && !!academicYearId,
+    staleTime: 60_000,
+    retry: 1,
+  });
+}
+
+export function useClassAttendanceSummaries(academicYearId: string | null, campusId?: string) {
+  return useQuery<ClassSectionSummary[]>({
+    queryKey: ['attendance', 'analytics', 'classes', academicYearId, campusId],
+    queryFn: () =>
+      apiClient.get<ClassSectionSummary[]>(
+        `/attendance/analytics/classes${toQS({
+          academicYearId: academicYearId!,
+          ...(campusId ? { campusId } : {}),
+        })}`,
+      ),
+    enabled: !!academicYearId,
+    staleTime: 60_000,
+    retry: 1,
+  });
+}
+
+export function useAttendanceTrends(campusId?: string, months?: number) {
+  return useQuery<AttendanceTrend[]>({
+    queryKey: ['attendance', 'analytics', 'trends', campusId, months],
+    queryFn: () =>
+      apiClient.get<AttendanceTrend[]>(
+        `/attendance/analytics/trends${toQS({
+          ...(campusId ? { campusId } : {}),
+          ...(months !== undefined ? { months: String(months) } : {}),
+        })}`,
+      ),
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+}

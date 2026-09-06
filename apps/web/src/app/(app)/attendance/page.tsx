@@ -26,6 +26,7 @@ import {
   useStudentAttendance,
   useEmployeeAttendanceList,
   useApproveLeaveRequest,
+  useAttendanceCorrections,
   type LeaveRequest,
   type StudentAttendanceRecord,
   type EmployeeAttendanceRecord,
@@ -34,6 +35,11 @@ import { MarkStudentAttendanceModal } from './_components/mark-student-modal';
 import { MarkEmployeeAttendanceModal } from './_components/mark-employee-modal';
 import { LeaveRequestModal } from './_components/leave-request-modal';
 import { RejectLeaveModal } from './_components/reject-leave-modal';
+import { SessionsTab } from './_components/sessions-tab';
+import { AnalyticsTab } from './_components/analytics-tab';
+import { CorrectionsTab } from './_components/corrections-tab';
+import { StudentHistoryCalendar } from './_components/student-history-calendar';
+import { Modal } from '@/components/ui/modal';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -114,6 +120,13 @@ export default function AttendancePage() {
     requestId: string;
     employeeName: string;
   }>({ open: false, requestId: '', employeeName: '' });
+  const [historyModal, setHistoryModal] = React.useState<{
+    open: boolean;
+    studentId: string;
+    studentName: string;
+  }>({ open: false, studentId: '', studentName: '' });
+  const [historyYear, setHistoryYear] = React.useState(() => new Date().getFullYear());
+  const [historyMonth, setHistoryMonth] = React.useState(() => new Date().getMonth() + 1);
 
   // ── Pagination ────────────────────────────────────────────────
   const [stuPage, setStuPage] = React.useState(1);
@@ -163,8 +176,11 @@ export default function AttendancePage() {
 
   const approve = useApproveLeaveRequest();
 
+  const { data: pendingCorrections = [] } = useAttendanceCorrections({ status: 'PENDING' });
+
   // ── Derived ───────────────────────────────────────────────────
   const pendingLeaveCount = leaveRequests.filter((r) => r.status === 'PENDING').length;
+  const pendingCorrectionsCount = pendingCorrections.length;
 
   const tabs = [
     { id: 'students', label: 'Student Attendance' },
@@ -173,6 +189,13 @@ export default function AttendancePage() {
       id: 'leave',
       label: 'Leave Requests',
       ...(pendingLeaveCount > 0 ? { count: pendingLeaveCount } : {}),
+    },
+    { id: 'sessions', label: 'Sessions' },
+    { id: 'analytics', label: 'Analytics' },
+    {
+      id: 'corrections',
+      label: 'Corrections',
+      ...(pendingCorrectionsCount > 0 ? { count: pendingCorrectionsCount } : {}),
     },
   ];
 
@@ -229,6 +252,35 @@ export default function AttendancePage() {
       width: '160px',
       cell: (r) => (
         <span style={{ fontSize: '12px', color: '#6b7480' }}>{r.remarks || '—'}</span>
+      ),
+    },
+    {
+      id: 'history',
+      header: '',
+      width: '100px',
+      align: 'right',
+      cell: (r) => (
+        <button
+          onClick={() => {
+            setHistoryModal({
+              open: true,
+              studentId: r.studentId,
+              studentName: `${r.student.person.firstName} ${r.student.person.lastName}`,
+            });
+            setHistoryYear(new Date().getFullYear());
+            setHistoryMonth(new Date().getMonth() + 1);
+          }}
+          style={{
+            fontSize: '12px',
+            fontWeight: 500,
+            color: '#2b5fa8',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          View History
+        </button>
       ),
     },
   ];
@@ -646,6 +698,18 @@ export default function AttendancePage() {
       {/* ── Tabs + Table ──────────────────────────────────────── */}
       <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} className="mb-4" />
 
+      {/* ── New tab panels (rendered outside the shared table container) ── */}
+      {activeTab === 'sessions' && campusId && academicYearId && (
+        <SessionsTab campusId={campusId} academicYearId={academicYearId} />
+      )}
+      {activeTab === 'analytics' && campusId && academicYearId && (
+        <AnalyticsTab campusId={campusId} academicYearId={academicYearId} />
+      )}
+      {activeTab === 'corrections' && (
+        <CorrectionsTab campusId={campusId} />
+      )}
+
+      {(activeTab === 'students' || activeTab === 'employees' || activeTab === 'leave') && (
       <div
         style={{
           overflow: 'hidden',
@@ -776,6 +840,7 @@ export default function AttendancePage() {
           )}
         </div>
       </div>
+      )}
 
       {/* ── Modals ────────────────────────────────────────────── */}
       <MarkStudentAttendanceModal
@@ -804,6 +869,26 @@ export default function AttendancePage() {
         requestId={rejectModal.requestId}
         employeeName={rejectModal.employeeName}
       />
+
+      {/* Student history calendar modal */}
+      <Modal
+        open={historyModal.open}
+        onClose={() => setHistoryModal({ open: false, studentId: '', studentName: '' })}
+        title={`Attendance History — ${historyModal.studentName}`}
+        size="md"
+      >
+        {historyModal.studentId && (
+          <StudentHistoryCalendar
+            studentId={historyModal.studentId}
+            year={historyYear}
+            month={historyMonth}
+            onMonthChange={(y, m) => {
+              setHistoryYear(y);
+              setHistoryMonth(m);
+            }}
+          />
+        )}
+      </Modal>
     </div>
   );
 }

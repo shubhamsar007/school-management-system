@@ -23,6 +23,9 @@ import { CreateLeaveTypeDto } from './dto/create-leave-type.dto';
 import { UpdateLeaveTypeDto } from './dto/update-leave-type.dto';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { RejectLeaveRequestDto } from './dto/review-leave-request.dto';
+import { CreateSessionDto } from './dto/create-session.dto';
+import { CreateCorrectionDto } from './dto/create-correction.dto';
+import { RejectCorrectionDto } from './dto/reject-correction.dto';
 
 @ApiTags('attendance')
 @ApiBearerAuth()
@@ -264,5 +267,196 @@ export class AttendanceController {
     @Query('employeeId') employeeId: string,
   ) {
     return this.attendanceService.cancelLeaveRequest(user.organizationId, id, employeeId);
+  }
+
+  // ─── Sessions ──────────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Create or get existing attendance session for a section+date' })
+  @Post('sessions')
+  createSession(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: CreateSessionDto,
+  ) {
+    return this.attendanceService.createSession(user.organizationId, user.userId, dto);
+  }
+
+  @ApiOperation({ summary: 'List attendance sessions with optional filters' })
+  @ApiQuery({ name: 'sectionId', required: false })
+  @ApiQuery({ name: 'campusId', required: false })
+  @ApiQuery({ name: 'date', required: false, description: 'YYYY-MM-DD' })
+  @ApiQuery({ name: 'status', required: false, description: 'OPEN | SUBMITTED | LOCKED' })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  @Get('sessions')
+  findSessions(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('sectionId') sectionId?: string,
+    @Query('campusId') campusId?: string,
+    @Query('date') date?: string,
+    @Query('status') status?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.attendanceService.findSessions(user.organizationId, {
+      ...(sectionId ? { sectionId } : {}),
+      ...(campusId ? { campusId } : {}),
+      ...(date ? { date } : {}),
+      ...(status ? { status } : {}),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+    });
+  }
+
+  @ApiOperation({ summary: 'Get a single attendance session by ID' })
+  @Get('sessions/:id')
+  findSession(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.attendanceService.findSession(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Submit an attendance session' })
+  @Post('sessions/:id/submit')
+  @HttpCode(HttpStatus.OK)
+  submitSession(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.attendanceService.submitSession(user.organizationId, id, user.userId);
+  }
+
+  @ApiOperation({ summary: 'Lock an attendance session' })
+  @Post('sessions/:id/lock')
+  @HttpCode(HttpStatus.OK)
+  lockSession(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.attendanceService.lockSession(user.organizationId, id, user.userId);
+  }
+
+  // ─── Corrections ───────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Create an attendance correction request' })
+  @Post('corrections')
+  createCorrection(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: CreateCorrectionDto,
+  ) {
+    return this.attendanceService.createCorrection(user.organizationId, user.userId, dto);
+  }
+
+  @ApiOperation({ summary: 'List attendance correction requests' })
+  @ApiQuery({ name: 'status', required: false, description: 'PENDING | APPROVED | REJECTED' })
+  @ApiQuery({ name: 'attendanceType', required: false, description: 'STUDENT | EMPLOYEE' })
+  @ApiQuery({ name: 'sessionId', required: false })
+  @Get('corrections')
+  findCorrections(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('status') status?: string,
+    @Query('attendanceType') attendanceType?: string,
+    @Query('sessionId') sessionId?: string,
+  ) {
+    return this.attendanceService.findCorrections(user.organizationId, {
+      ...(status ? { status } : {}),
+      ...(attendanceType ? { attendanceType } : {}),
+      ...(sessionId ? { sessionId } : {}),
+    });
+  }
+
+  @ApiOperation({ summary: 'Approve a correction request and update attendance' })
+  @Post('corrections/:id/approve')
+  @HttpCode(HttpStatus.OK)
+  approveCorrection(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.attendanceService.approveCorrection(user.organizationId, id, user.userId);
+  }
+
+  @ApiOperation({ summary: 'Reject a correction request' })
+  @Post('corrections/:id/reject')
+  @HttpCode(HttpStatus.OK)
+  rejectCorrection(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: RejectCorrectionDto,
+  ) {
+    return this.attendanceService.rejectCorrection(
+      user.organizationId,
+      id,
+      user.userId,
+      dto.rejectionReason,
+    );
+  }
+
+  // ─── Analytics ─────────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Get monthly attendance history for a student' })
+  @ApiQuery({ name: 'year', required: true })
+  @ApiQuery({ name: 'month', required: true, description: '1–12' })
+  @Get('analytics/student/:studentId')
+  getStudentHistory(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('studentId') studentId: string,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ) {
+    return this.attendanceService.getStudentHistory(
+      user.organizationId,
+      studentId,
+      parseInt(year, 10),
+      parseInt(month, 10),
+    );
+  }
+
+  @ApiOperation({ summary: 'Get attendance summary for all students in a section' })
+  @ApiQuery({ name: 'academicYearId', required: true })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  @Get('analytics/sections/:sectionId')
+  getSectionSummary(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('sectionId') sectionId: string,
+    @Query('academicYearId') academicYearId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.attendanceService.getSectionSummary(
+      user.organizationId,
+      sectionId,
+      academicYearId,
+      from,
+      to,
+    );
+  }
+
+  @ApiOperation({ summary: 'Get attendance summary per class/section for current month' })
+  @ApiQuery({ name: 'academicYearId', required: true })
+  @ApiQuery({ name: 'campusId', required: false })
+  @Get('analytics/classes')
+  getClassSummaries(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('academicYearId') academicYearId: string,
+    @Query('campusId') campusId?: string,
+  ) {
+    return this.attendanceService.getClassSummaries(user.organizationId, academicYearId, campusId);
+  }
+
+  @ApiOperation({ summary: 'Get attendance trend data for past N months' })
+  @ApiQuery({ name: 'campusId', required: false })
+  @ApiQuery({ name: 'months', required: false, description: 'Number of months (default 6)' })
+  @Get('analytics/trends')
+  getAttendanceTrends(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('campusId') campusId?: string,
+    @Query('months') months?: string,
+  ) {
+    return this.attendanceService.getAttendanceTrends(
+      user.organizationId,
+      campusId,
+      months ? parseInt(months, 10) : 6,
+    );
   }
 }

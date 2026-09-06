@@ -13,6 +13,8 @@ import { CreateLeaveTypeDto } from './dto/create-leave-type.dto';
 import { UpdateLeaveTypeDto } from './dto/update-leave-type.dto';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { RejectLeaveRequestDto } from './dto/review-leave-request.dto';
+import { CreateSessionDto } from './dto/create-session.dto';
+import { CreateCorrectionDto } from './dto/create-correction.dto';
 
 @Injectable()
 export class AttendanceService {
@@ -624,6 +626,427 @@ export class AttendanceService {
         },
       };
     });
+  }
+
+  // ─── Sessions ─────────────────────────────────────────────────
+
+  async createSession(organizationId: string, userId: string, dto: CreateSessionDto) {
+    const date = new Date(dto.date);
+    date.setUTCHours(0, 0, 0, 0);
+
+    return this.prisma.attendanceSession.upsert({
+      where: {
+        sectionId_academicYearId_date: {
+          sectionId: dto.sectionId,
+          academicYearId: dto.academicYearId,
+          date,
+        },
+      },
+      create: {
+        organizationId,
+        campusId: dto.campusId,
+        sectionId: dto.sectionId,
+        academicYearId: dto.academicYearId,
+        date,
+        status: 'OPEN',
+        createdBy: userId,
+      },
+      update: {},
+      include: {
+        section: { include: { academicClass: true } },
+      },
+    });
+  }
+
+  async findSessions(
+    organizationId: string,
+    filters: { sectionId?: string; campusId?: string; date?: string; status?: string; from?: string; to?: string },
+  ) {
+    const where: any = { organizationId };
+    if (filters.sectionId) where.sectionId = filters.sectionId;
+    if (filters.campusId) where.campusId = filters.campusId;
+    if (filters.status) where.status = filters.status;
+    if (filters.date) {
+      const d = new Date(filters.date);
+      d.setUTCHours(0, 0, 0, 0);
+      where.date = d;
+    } else if (filters.from || filters.to) {
+      where.date = {
+        ...(filters.from ? { gte: new Date(filters.from) } : {}),
+        ...(filters.to ? { lte: new Date(filters.to) } : {}),
+      };
+    }
+
+    return this.prisma.attendanceSession.findMany({
+      where,
+      include: {
+        section: { include: { academicClass: true } },
+        _count: { select: { corrections: true } },
+      },
+      orderBy: [{ date: 'desc' }],
+    });
+  }
+
+  async findSession(organizationId: string, id: string) {
+    const session = await this.prisma.attendanceSession.findFirst({
+      where: { id, organizationId },
+      include: {
+        section: { include: { academicClass: true } },
+        _count: { select: { corrections: true } },
+      },
+    });
+    if (!session) throw new NotFoundException('Attendance session not found');
+    return session;
+  }
+
+  async submitSession(organizationId: string, id: string, userId: string) {
+    const session = await this.findSession(organizationId, id);
+    if (session.status !== 'OPEN') {
+      throw new BadRequestException(`Session is already ${session.status.toLowerCase()}`);
+    }
+    return this.prisma.attendanceSession.update({
+      where: { id },
+      data: { status: 'SUBMITTED', submittedAt: new Date(), submittedBy: userId },
+      include: { section: { include: { academicClass: true } } },
+    });
+  }
+
+  async lockSession(organizationId: string, id: string, userId: string) {
+    const session = await this.findSession(organizationId, id);
+    if (session.status !== 'SUBMITTED' && session.status !== 'OPEN') {
+      throw new BadRequestException(`Session is already ${session.status.toLowerCase()}`);
+    }
+    return this.prisma.attendanceSession.update({
+      where: { id },
+      data: { status: 'LOCKED', lockedAt: new Date(), lockedBy: userId },
+      include: { section: { include: { academicClass: true } } },
+    });
+  }
+
+  // ─── Corrections ──────────────────────────────────────────────
+
+  async createCorrection(organizationId: string, userId: string, dto: CreateCorrectionDto) {
+    const existing = await this.prisma.attendanceCorrection.findFirst({
+      where: { attendanceId: dto.attendanceId, status: 'PENDING' },
+    });
+    if (existing) {
+      throw new ConflictException('A pending correction already exists for this attendance record');
+    }
+
+    return this.prisma.attendanceCorrection.create({
+      data: {
+        organizationId,
+        attendanceId: dto.attendanceId,
+        attendanceType: dto.attendanceType,
+        originalStatus: dto.originalStatus,
+        requestedStatus: dto.requestedStatus,
+        reason: dto.reason,
+        requestedBy: userId,
+        ...(dto.sessionId !== undefined ? { sessionId: dto.sessionId } : {}),
+      },
+    });
+  }
+
+  async findCorrections(
+    organizationId: string,
+    filters: { status?: string; attendanceType?: string; sessionId?: string },
+  ) {
+    return this.prisma.attendanceCorrection.findMany({
+      where: {
+        organizationId,
+        ...(filters.status ? { status: filters.status } : {}),
+        ...(filters.attendanceType ? { attendanceType: filters.attendanceType } : {}),
+        ...(filters.sessionId ? { sessionId: filters.sessionId } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async approveCorrection(organizationId: string, correctionId: string, reviewerId: string) {
+    const correction = await this.prisma.attendanceCorrection.findFirst({
+      where: { id: correctionId, organizationId },
+    });
+    if (!correction) throw new NotFoundException('Correction not found');
+    if (correction.status !== 'PENDING') {
+      throw new BadRequestException(`Correction is already ${correction.status.toLowerCase()}`);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.attendanceCorrection.update({
+        where: { id: correctionId },
+        data: { status: 'APPROVED', reviewedBy: reviewerId, reviewedAt: new Date() },
+      });
+
+      if (correction.attendanceType === 'STUDENT') {
+        await tx.studentAttendance.update({
+          where: { id: correction.attendanceId },
+          data: { status: correction.requestedStatus, markedBy: reviewerId },
+        });
+      } else if (correction.attendanceType === 'EMPLOYEE') {
+        await tx.employeeAttendance.update({
+          where: { id: correction.attendanceId },
+          data: { status: correction.requestedStatus, markedBy: reviewerId },
+        });
+      }
+
+      return updated;
+    });
+  }
+
+  async rejectCorrection(
+    organizationId: string,
+    correctionId: string,
+    reviewerId: string,
+    rejectionReason?: string,
+  ) {
+    const correction = await this.prisma.attendanceCorrection.findFirst({
+      where: { id: correctionId, organizationId },
+    });
+    if (!correction) throw new NotFoundException('Correction not found');
+    if (correction.status !== 'PENDING') {
+      throw new BadRequestException(`Correction is already ${correction.status.toLowerCase()}`);
+    }
+
+    return this.prisma.attendanceCorrection.update({
+      where: { id: correctionId },
+      data: {
+        status: 'REJECTED',
+        reviewedBy: reviewerId,
+        reviewedAt: new Date(),
+        ...(rejectionReason !== undefined ? { rejectionReason } : {}),
+      },
+    });
+  }
+
+  // ─── Analytics ────────────────────────────────────────────────
+
+  async getStudentHistory(organizationId: string, studentId: string, year: number, month: number) {
+    const student = await this.prisma.student.findFirst({
+      where: { id: studentId, organizationId },
+      include: {
+        enrollments: {
+          where: { status: 'ACTIVE' },
+          include: { class: true, section: true },
+          take: 1,
+        },
+      },
+    });
+    if (!student) throw new NotFoundException('Student not found');
+
+    const startOfMonth = new Date(year, month - 1, 1);
+    const endOfMonth = new Date(year, month, 0, 23, 59, 59);
+
+    const records = await this.prisma.studentAttendance.findMany({
+      where: {
+        studentId,
+        date: { gte: startOfMonth, lte: endOfMonth },
+      },
+      orderBy: { date: 'asc' },
+    });
+
+    const present = records.filter((r) => r.status === 'PRESENT').length;
+    const absent = records.filter((r) => r.status === 'ABSENT').length;
+    const late = records.filter((r) => r.status === 'LATE').length;
+    const halfDay = records.filter((r) => r.status === 'HALF_DAY').length;
+    const excused = records.filter((r) => r.status === 'EXCUSED').length;
+    const totalDays = records.length;
+    const rate = totalDays > 0 ? Math.round(((present + late) / totalDays) * 1000) / 10 : 0;
+
+    return {
+      records: records.map((r) => ({
+        id: r.id,
+        date: r.date.toISOString().slice(0, 10),
+        status: r.status,
+        checkInTime: r.checkInTime ? r.checkInTime.toISOString() : null,
+        checkOutTime: r.checkOutTime ? r.checkOutTime.toISOString() : null,
+        remarks: r.remarks,
+      })),
+      summary: { present, absent, late, halfDay, excused, rate },
+      month,
+      year,
+    };
+  }
+
+  async getSectionSummary(
+    organizationId: string,
+    sectionId: string,
+    academicYearId: string,
+    from?: string,
+    to?: string,
+  ) {
+    const enrollments = await this.prisma.studentEnrollment.findMany({
+      where: {
+        sectionId,
+        academicYearId,
+        status: 'ACTIVE',
+        student: { organizationId },
+      },
+      include: {
+        student: { include: { person: true } },
+      },
+      orderBy: [
+        { rollNumber: 'asc' },
+        { student: { person: { firstName: 'asc' } } },
+      ],
+    });
+
+    if (enrollments.length === 0) return [];
+
+    const studentIds = enrollments.map((e) => e.studentId);
+
+    const dateFilter: any = {};
+    if (from || to) {
+      dateFilter.date = {
+        ...(from ? { gte: new Date(from) } : {}),
+        ...(to ? { lte: new Date(to) } : {}),
+      };
+    }
+
+    const records = await this.prisma.studentAttendance.findMany({
+      where: {
+        studentId: { in: studentIds },
+        ...dateFilter,
+      },
+    });
+
+    const byStudent = new Map<string, typeof records>();
+    for (const r of records) {
+      if (!byStudent.has(r.studentId)) byStudent.set(r.studentId, []);
+      byStudent.get(r.studentId)!.push(r);
+    }
+
+    return enrollments.map((e) => {
+      const recs = byStudent.get(e.studentId) ?? [];
+      const present = recs.filter((r) => r.status === 'PRESENT').length;
+      const absent = recs.filter((r) => r.status === 'ABSENT').length;
+      const late = recs.filter((r) => r.status === 'LATE').length;
+      const halfDay = recs.filter((r) => r.status === 'HALF_DAY').length;
+      const excused = recs.filter((r) => r.status === 'EXCUSED').length;
+      const totalDays = recs.length;
+      const rate = totalDays > 0 ? Math.round(((present + late) / totalDays) * 1000) / 10 : 0;
+
+      return {
+        studentId: e.studentId,
+        enrollmentId: e.id,
+        rollNumber: e.rollNumber,
+        student: {
+          id: e.student.id,
+          person: {
+            firstName: e.student.person.firstName,
+            lastName: e.student.person.lastName,
+          },
+        },
+        present,
+        absent,
+        late,
+        halfDay,
+        excused,
+        totalDays,
+        rate,
+      };
+    });
+  }
+
+  async getClassSummaries(organizationId: string, academicYearId: string, campusId?: string) {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    const sections = await this.prisma.section.findMany({
+      where: {
+        academicClass: { organizationId },
+        ...(campusId ? { campusId } : {}),
+      },
+      include: { academicClass: true },
+      orderBy: [{ academicClass: { level: 'asc' } }, { name: 'asc' }],
+    });
+
+    const results = await Promise.all(
+      sections.map(async (sec) => {
+        const studentCount = await this.prisma.studentEnrollment.count({
+          where: {
+            sectionId: sec.id,
+            academicYearId,
+            status: 'ACTIVE',
+            student: { organizationId },
+          },
+        });
+
+        const groups = await this.prisma.studentAttendance.groupBy({
+          by: ['status'],
+          _count: { status: true },
+          where: {
+            enrollment: { sectionId: sec.id, academicYearId },
+            student: { organizationId },
+            date: { gte: startOfMonth, lte: endOfMonth },
+          },
+        });
+
+        const counts = this.toCountMap(groups);
+        const present = counts['PRESENT'] ?? 0;
+        const absent = counts['ABSENT'] ?? 0;
+        const late = counts['LATE'] ?? 0;
+        const total = present + absent + late + (counts['HALF_DAY'] ?? 0) + (counts['EXCUSED'] ?? 0);
+        const rate = total > 0 ? Math.round(((present + late) / total) * 1000) / 10 : 0;
+
+        return {
+          sectionId: sec.id,
+          sectionName: sec.name,
+          className: sec.academicClass.name,
+          level: sec.academicClass.level ?? null,
+          studentCount,
+          present,
+          absent,
+          late,
+          rate,
+        };
+      }),
+    );
+
+    return results;
+  }
+
+  async getAttendanceTrends(organizationId: string, campusId?: string, months = 6) {
+    const now = new Date();
+    const result = [];
+
+    for (let i = months - 1; i >= 0; i--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+      const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59);
+
+      const groups = await this.prisma.studentAttendance.groupBy({
+        by: ['status'],
+        _count: { status: true },
+        where: {
+          student: { organizationId },
+          date: { gte: startOfMonth, lte: endOfMonth },
+          ...(campusId ? { enrollment: { campusId } } : {}),
+        },
+      });
+
+      const counts = this.toCountMap(groups);
+      const present = counts['PRESENT'] ?? 0;
+      const absent = counts['ABSENT'] ?? 0;
+      const late = counts['LATE'] ?? 0;
+      const total = present + absent + late + (counts['HALF_DAY'] ?? 0) + (counts['EXCUSED'] ?? 0);
+      const rate = total > 0 ? Math.round(((present + late) / total) * 1000) / 10 : 0;
+
+      const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+      result.push({
+        month: date.getMonth() + 1,
+        year: date.getFullYear(),
+        label: `${MONTH_LABELS[date.getMonth()]} ${date.getFullYear()}`,
+        present,
+        absent,
+        late,
+        total,
+        rate,
+      });
+    }
+
+    return result;
   }
 
   // ─── Private helpers ──────────────────────────────────────────

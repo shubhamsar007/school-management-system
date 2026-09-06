@@ -718,9 +718,10 @@ model Section {
 
   campus         Campus        @relation(fields: [campusId], references: [id])
   academicClass  AcademicClass @relation(fields: [academicClassId], references: [id])
-  teacherAssignments TeacherAssignment[]
-  studentEnrollments StudentEnrollment[]
-  timetableEntries   TimetableEntry[]
+  teacherAssignments  TeacherAssignment[]
+  studentEnrollments  StudentEnrollment[]
+  timetableEntries    TimetableEntry[]
+  attendanceSessions  AttendanceSession[]
 
   @@unique([campusId, academicClassId, code])
   @@map("sections")
@@ -1279,6 +1280,54 @@ model SubstitutionCandidateScore {
   substitutionRequest SubstitutionRequest @relation(fields: [substitutionRequestId], references: [id])
 
   @@map("substitution_candidate_scores")
+  @@schema("attendance")
+}
+
+model AttendanceSession {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  campusId       String    @map("campus_id")
+  sectionId      String    @map("section_id")
+  academicYearId String    @map("academic_year_id")
+  date           DateTime  @db.Date
+  status         String    @default("OPEN") @db.VarChar(20)
+  submittedAt    DateTime? @map("submitted_at")
+  submittedBy    String?   @map("submitted_by")
+  lockedAt       DateTime? @map("locked_at")
+  lockedBy       String?   @map("locked_by")
+  createdBy      String    @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  corrections AttendanceCorrection[]
+  section     Section @relation(fields: [sectionId], references: [id])
+
+  @@unique([sectionId, academicYearId, date])
+  @@map("attendance_sessions")
+  @@schema("attendance")
+}
+
+model AttendanceCorrection {
+  id              String    @id @default(uuid())
+  organizationId  String    @map("organization_id")
+  sessionId       String?   @map("session_id")
+  attendanceId    String    @map("attendance_id")
+  attendanceType  String    @map("attendance_type") @db.VarChar(20)
+  originalStatus  String    @map("original_status") @db.VarChar(20)
+  requestedStatus String    @map("requested_status") @db.VarChar(20)
+  reason          String
+  requestedBy     String    @map("requested_by")
+  requestedAt     DateTime  @default(now()) @map("requested_at")
+  status          String    @default("PENDING") @db.VarChar(20)
+  reviewedBy      String?   @map("reviewed_by")
+  reviewedAt      DateTime? @map("reviewed_at")
+  rejectionReason String?   @map("rejection_reason")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  session AttendanceSession? @relation(fields: [sessionId], references: [id])
+
+  @@map("attendance_corrections")
   @@schema("attendance")
 }
 
