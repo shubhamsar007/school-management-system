@@ -29,6 +29,8 @@ import {
   useDeleteBuilding,
   useActivateTimetable,
   useArchiveTimetable,
+  useCopyTimetable,
+  useAutoGenerate,
   type TimetableRoom,
   type TimetablePeriod,
   type TimetableBuilding,
@@ -733,9 +735,19 @@ function BuilderTab({ campusId }: BuilderTabProps) {
   const [activateConfirm, setActivateConfirm] = React.useState(false);
   const [archiveConfirm, setArchiveConfirm] = React.useState(false);
 
+  // Copy timetable state
+  const [copyOpen, setCopyOpen] = React.useState(false);
+  const [copyName, setCopyName] = React.useState('');
+
+  // Auto-generate state
+  const [autoOpen, setAutoOpen] = React.useState(false);
+  const [periodsPerWeek, setPeriodsPerWeek] = React.useState('5');
+
   const { data: timetables = [], isLoading: ttLoading } = useTimetables({ campusId });
   const activate = useActivateTimetable();
   const archive = useArchiveTimetable();
+  const copyTimetable = useCopyTimetable();
+  const autoGenerate = useAutoGenerate();
   const { data: classes = [] } = useClasses();
   const { data: sections = [] } = useSections(classId || null);
 
@@ -750,6 +762,13 @@ function BuilderTab({ campusId }: BuilderTabProps) {
   }, [timetables, timetableId]);
 
   React.useEffect(() => { setSectionId(''); }, [classId]);
+
+  // Reset copy name when opening
+  React.useEffect(() => {
+    if (copyOpen && selectedTimetable) {
+      setCopyName(`${selectedTimetable.name} (Copy)`);
+    }
+  }, [copyOpen, selectedTimetable]);
 
   const classOptions = classes.map((c) => ({ label: c.name, value: c.id }));
   const sectionOptions = sections.map((s) => ({ label: `${s.name} (${s.code})`, value: s.id }));
@@ -781,6 +800,34 @@ function BuilderTab({ campusId }: BuilderTabProps) {
       setArchiveConfirm(false);
     } catch (e: unknown) {
       toast.error((e as { message?: string })?.message ?? 'Failed to archive.');
+    }
+  }
+
+  async function handleCopy() {
+    if (!timetableId || !copyName.trim()) return;
+    try {
+      const result = await copyTimetable.mutateAsync({ id: timetableId, name: copyName.trim() });
+      toast.success(`Duplicated as "${result.name}" with ${result.copiedEntries} entries.`);
+      setTimetableId(result.id);
+      setCopyOpen(false);
+    } catch (e: unknown) {
+      toast.error((e as { message?: string })?.message ?? 'Failed to duplicate timetable.');
+    }
+  }
+
+  async function handleAutoGenerate() {
+    if (!timetableId) return;
+    const ppw = parseInt(periodsPerWeek, 10);
+    if (!ppw || ppw < 1 || ppw > 10) {
+      toast.error('Periods per week must be between 1 and 10.');
+      return;
+    }
+    try {
+      const result = await autoGenerate.mutateAsync({ id: timetableId, periodsPerWeek: ppw });
+      toast.success(`Auto-generated ${result.created} entries from ${result.assignments} assignments. ${result.skipped} slots skipped.`);
+      setAutoOpen(false);
+    } catch (e: unknown) {
+      toast.error((e as { message?: string })?.message ?? 'Auto-generation failed.');
     }
   }
 
@@ -822,6 +869,16 @@ function BuilderTab({ campusId }: BuilderTabProps) {
           <Button variant="secondary" size="sm" onClick={() => setCreateOpen(true)}>
             + New Draft
           </Button>
+          {selectedTimetable && (
+            <Button variant="secondary" size="sm" onClick={() => { setCopyOpen((v) => !v); setAutoOpen(false); }} disabled={copyTimetable.isPending}>
+              Duplicate
+            </Button>
+          )}
+          {isDraft && (
+            <Button variant="secondary" size="sm" onClick={() => { setAutoOpen((v) => !v); setCopyOpen(false); }} disabled={autoGenerate.isPending}>
+              Auto-Generate
+            </Button>
+          )}
           {isDraft && (
             <Button variant="primary" size="sm" onClick={() => setActivateConfirm(true)} disabled={activate.isPending}>
               Activate
@@ -833,6 +890,70 @@ function BuilderTab({ campusId }: BuilderTabProps) {
             </Button>
           )}
         </div>
+
+        {/* ── Duplicate panel ── */}
+        {copyOpen && (
+          <div
+            className="flex items-center gap-3 flex-wrap border-b border-[#eef0f2] px-3.5 py-2.5"
+            style={{ background: '#fffbeb' }}
+          >
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#92400e' }}>Duplicate as</span>
+            <input
+              type="text"
+              value={copyName}
+              onChange={(e) => setCopyName(e.target.value)}
+              placeholder="New timetable name"
+              style={{
+                ...SELECT_STYLE,
+                minWidth: 220,
+                height: 30,
+                padding: '0 10px',
+                appearance: 'auto',
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleCopy(); }}
+            />
+            <Button variant="primary" size="sm" onClick={handleCopy} disabled={!copyName.trim() || copyTimetable.isPending}>
+              {copyTimetable.isPending ? 'Creating…' : 'Create Copy'}
+            </Button>
+            <button
+              style={{ fontSize: 11, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer' }}
+              onClick={() => setCopyOpen(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {/* ── Auto-generate panel ── */}
+        {autoOpen && isDraft && (
+          <div
+            className="flex items-center gap-3 flex-wrap border-b border-[#eef0f2] px-3.5 py-2.5"
+            style={{ background: '#f0fdf4' }}
+          >
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#166534' }}>Auto-Generate</span>
+            <span style={{ fontSize: 11, color: '#4b5563' }}>Periods per week per assignment</span>
+            <input
+              type="number"
+              min={1}
+              max={10}
+              value={periodsPerWeek}
+              onChange={(e) => setPeriodsPerWeek(e.target.value)}
+              style={{ ...SELECT_STYLE, minWidth: 70, width: 70, padding: '0 10px', appearance: 'auto' }}
+            />
+            <Button variant="primary" size="sm" onClick={handleAutoGenerate} disabled={autoGenerate.isPending}>
+              {autoGenerate.isPending ? 'Generating…' : 'Generate'}
+            </Button>
+            <button
+              style={{ fontSize: 11, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer' }}
+              onClick={() => setAutoOpen(false)}
+            >
+              Cancel
+            </button>
+            <span style={{ fontSize: 10, color: '#6b7280', marginLeft: 4 }}>
+              Uses teacher assignments · respects availability & scheduling rules
+            </span>
+          </div>
+        )}
 
         {/* ── Section selector ── */}
         <div className="flex items-center gap-3 flex-wrap border-b border-[#eef0f2] px-3.5 py-2.5">

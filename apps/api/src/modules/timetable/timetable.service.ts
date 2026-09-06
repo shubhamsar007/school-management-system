@@ -1085,6 +1085,187 @@ export class TimetableService {
     };
   }
 
+  // ─── Copy Timetable ───────────────────────────────────────────
+
+  async copyTimetable(organizationId: string, sourceId: string, newName: string) {
+    const source = await this.getTimetableOrFail(organizationId, sourceId);
+
+    const newTimetable = await this.prisma.timetable.create({
+      data: {
+        organizationId,
+        campusId: source.campusId,
+        academicYearId: source.academicYearId,
+        name: newName,
+        effectiveFrom: source.effectiveFrom,
+        ...(source.effectiveTo ? { effectiveTo: source.effectiveTo } : {}),
+        status: 'DRAFT',
+      },
+      include: { academicYear: true },
+    });
+
+    const entries = await this.prisma.timetableEntry.findMany({
+      where: { timetableId: sourceId },
+      select: {
+        dayOfWeek: true,
+        periodId: true,
+        classId: true,
+        sectionId: true,
+        subjectId: true,
+        teacherId: true,
+        roomId: true,
+      },
+    });
+
+    if (entries.length > 0) {
+      await this.prisma.timetableEntry.createMany({
+        data: entries.map((e) => ({
+          timetableId: newTimetable.id,
+          dayOfWeek: e.dayOfWeek,
+          periodId: e.periodId,
+          classId: e.classId,
+          sectionId: e.sectionId,
+          ...(e.subjectId ? { subjectId: e.subjectId } : {}),
+          ...(e.teacherId ? { teacherId: e.teacherId } : {}),
+          ...(e.roomId ? { roomId: e.roomId } : {}),
+        })),
+      });
+    }
+
+    return { ...newTimetable, copiedEntries: entries.length };
+  }
+
+  // ─── Auto-Generate ────────────────────────────────────────────
+
+  /**
+   * Greedy auto-fill: for each TeacherAssignment in this academic year,
+   * schedule `periodsPerWeek` CLASS-period slots respecting TeacherAvailability
+   * and SchedulingRule constraints (MAX_PERIODS_PER_DAY, BLACKOUT_PERIOD).
+   * Skips slots that are already occupied.
+   */
+  async autoGenerate(
+    organizationId: string,
+    timetableId: string,
+    periodsPerWeek: number,
+  ) {
+    const timetable = await this.getTimetableOrFail(organizationId, timetableId);
+    if (timetable.status !== 'DRAFT') {
+      throw new BadRequestException('Auto-generate only works on DRAFT timetables');
+    }
+
+    // 1. Teacher assignments for this academic year on this campus
+    const assignments = await this.prisma.teacherAssignment.findMany({
+      where: {
+        academicYearId: timetable.academicYearId,
+        status: 'ACTIVE',
+        teacher: { campusId: timetable.campusId },
+      },
+      select: { teacherId: true, classId: true, sectionId: true, subjectId: true },
+    });
+
+    if (assignments.length === 0) {
+      return { created: 0, skipped: 0, assignments: 0 };
+    }
+
+    // 2. CLASS periods on this campus (ordered by period number)
+    const periods = await this.prisma.period.findMany({
+      where: { campusId: timetable.campusId, periodType: 'CLASS' },
+      orderBy: { periodNumber: 'asc' },
+    });
+    if (periods.length === 0) return { created: 0, skipped: 0, assignments: assignments.length };
+
+    // 3. Teacher unavailability map: teacherId → Set<dayOfWeek>
+    const availabilityRecords = await this.prisma.teacherAvailability.findMany({
+      where: { isAvailable: false, employee: { campusId: timetable.campusId } },
+      select: { employeeId: true, dayOfWeek: true },
+    });
+    const unavailMap = new Map<string, Set<number>>();
+    for (const r of availabilityRecords) {
+      if (!unavailMap.has(r.employeeId)) unavailMap.set(r.employeeId, new Set());
+      unavailMap.get(r.employeeId)!.add(r.dayOfWeek);
+    }
+
+    // 4. Scheduling rules
+    const rules = await this.prisma.schedulingRule.findMany({
+      where: { campusId: timetable.campusId, isActive: true },
+    });
+    const maxPerDay =
+      rules.find((r) => r.ruleType === 'MAX_PERIODS_PER_DAY')?.value ?? 8;
+    // Blackout: `${periodId}|${dayOfWeek}` keys for prohibited slots
+    const blackout = new Set<string>();
+    for (const r of rules.filter((r) => r.ruleType === 'BLACKOUT_PERIOD' && r.periodId)) {
+      if (r.dayOfWeek) {
+        blackout.add(`${r.periodId}|${r.dayOfWeek}`);
+      } else {
+        for (let d = 1; d <= 7; d++) blackout.add(`${r.periodId}|${d}`);
+      }
+    }
+
+    // 5. Existing entries → occupied slot sets + teacher-day load
+    const existing = await this.prisma.timetableEntry.findMany({
+      where: { timetableId },
+      select: { sectionId: true, dayOfWeek: true, periodId: true, teacherId: true },
+    });
+    const teacherSlots = new Set<string>(); // `${teacherId}|${day}|${periodId}`
+    const sectionSlots = new Set<string>(); // `${sectionId}|${day}|${periodId}`
+    const teacherDayLoad = new Map<string, number>(); // `${teacherId}|${day}` → count
+
+    for (const e of existing) {
+      if (e.teacherId) {
+        teacherSlots.add(`${e.teacherId}|${e.dayOfWeek}|${e.periodId}`);
+        const k = `${e.teacherId}|${e.dayOfWeek}`;
+        teacherDayLoad.set(k, (teacherDayLoad.get(k) ?? 0) + 1);
+      }
+      sectionSlots.add(`${e.sectionId}|${e.dayOfWeek}|${e.periodId}`);
+    }
+
+    const weekDays = [1, 2, 3, 4, 5]; // Mon–Fri
+    let created = 0;
+    let skipped = 0;
+
+    // 6. Greedy scheduling
+    for (const { teacherId, classId, sectionId, subjectId } of assignments) {
+      const unavailable = unavailMap.get(teacherId) ?? new Set<number>();
+      let scheduled = 0;
+
+      outer: for (const day of weekDays) {
+        if (unavailable.has(day)) continue;
+
+        for (const period of periods) {
+          if (scheduled >= periodsPerWeek) break outer;
+          if (blackout.has(`${period.id}|${day}`)) continue;
+
+          const tSlot = `${teacherId}|${day}|${period.id}`;
+          const sSlot = `${sectionId}|${day}|${period.id}`;
+          const loadKey = `${teacherId}|${day}`;
+          if (teacherSlots.has(tSlot)) continue;
+          if (sectionSlots.has(sSlot)) continue;
+          if ((teacherDayLoad.get(loadKey) ?? 0) >= maxPerDay) continue;
+
+          try {
+            await this.prisma.timetableEntry.create({
+              data: { timetableId, dayOfWeek: day, periodId: period.id, classId, sectionId, subjectId, teacherId },
+            });
+            teacherSlots.add(tSlot);
+            sectionSlots.add(sSlot);
+            teacherDayLoad.set(loadKey, (teacherDayLoad.get(loadKey) ?? 0) + 1);
+            scheduled++;
+            created++;
+          } catch {
+            // Unique constraint (section already has entry here) — skip
+            skipped++;
+          }
+        }
+      }
+
+      // Count unplaced slots as skipped
+      if (scheduled < periodsPerWeek) {
+        skipped += periodsPerWeek - scheduled;
+      }
+    }
+
+    return { created, skipped, assignments: assignments.length };
+  }
+
   // ─── Helpers ──────────────────────────────────────────────────
 
   private groupByDay<T extends { dayOfWeek: number }>(entries: T[]) {

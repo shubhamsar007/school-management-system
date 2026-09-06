@@ -3,8 +3,9 @@
 import * as React from 'react';
 import { Plus } from 'lucide-react';
 import { periodTypeColor } from '@/components/shared/period-type-badge';
-import { usePeriods, useTimetableFull } from '@/lib/hooks/use-timetable';
+import { usePeriods, useTimetableFull, useMoveEntry } from '@/lib/hooks/use-timetable';
 import type { TimetableFullEntry, TimetablePeriod, TimetableSummary } from '@/lib/hooks/use-timetable';
+import { useToast } from '@/components/ui/toast';
 import { EntryModal } from './entry-modal';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -32,20 +33,31 @@ function formatTime(t: string): string {
 interface FilledCellProps {
   entry: TimetableFullEntry;
   editable: boolean;
+  isDragging: boolean;
   onClick: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
 }
 
-function FilledCell({ entry, editable, onClick }: FilledCellProps) {
+function FilledCell({ entry, editable, isDragging, onClick, onDragStart, onDragEnd }: FilledCellProps) {
   return (
     <button
       disabled={!editable}
       onClick={editable ? onClick : undefined}
+      draggable={editable}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        onDragStart();
+      }}
+      onDragEnd={onDragEnd}
       className="w-full h-full text-left rounded-lg px-2 py-1.5 transition-all"
       style={{
         background: '#eef4fb',
         border: '1.5px solid #c5d9ee',
-        cursor: editable ? 'pointer' : 'default',
+        cursor: editable ? (isDragging ? 'grabbing' : 'grab') : 'default',
         minHeight: 64,
+        opacity: isDragging ? 0.4 : 1,
+        transition: 'opacity 0.15s',
       }}
     >
       {entry.subject ? (
@@ -65,9 +77,9 @@ function FilledCell({ entry, editable, onClick }: FilledCellProps) {
       {entry.room && (
         <p style={{ fontSize: 10, color: '#64748b', marginTop: 1 }}>{entry.room.name}</p>
       )}
-      {editable && (
+      {editable && !isDragging && (
         <p style={{ fontSize: 9, color: '#93c5fd', marginTop: 3, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          click to edit
+          drag or click to edit
         </p>
       )}
     </button>
@@ -76,10 +88,11 @@ function FilledCell({ entry, editable, onClick }: FilledCellProps) {
 
 interface EmptyCellProps {
   editable: boolean;
+  isDropTarget: boolean;
   onClick: () => void;
 }
 
-function EmptyCell({ editable, onClick }: EmptyCellProps) {
+function EmptyCell({ editable, isDropTarget, onClick }: EmptyCellProps) {
   if (!editable) {
     return (
       <div
@@ -93,14 +106,26 @@ function EmptyCell({ editable, onClick }: EmptyCellProps) {
   return (
     <button
       onClick={onClick}
-      className="w-full h-full rounded-lg flex flex-col items-center justify-center gap-1 transition-all hover:bg-[#f0f6ff] group"
-      style={{ minHeight: 64, border: '1px dashed #c5d9ee', cursor: 'pointer' }}
+      className="w-full h-full rounded-lg flex flex-col items-center justify-center gap-1 transition-all group"
+      style={{
+        minHeight: 64,
+        border: isDropTarget ? '2px dashed #2b5fa8' : '1px dashed #c5d9ee',
+        background: isDropTarget ? '#f0f6ff' : 'transparent',
+        cursor: 'pointer',
+        transition: 'all 0.1s',
+      }}
     >
-      <Plus size={14} className="text-[#93c5fd] group-hover:text-[#2b5fa8]" />
-      <span style={{ fontSize: 9, color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '0.06em' }}
-        className="group-hover:text-[#2b5fa8]"
+      <Plus size={14} className={isDropTarget ? 'text-[#2b5fa8]' : 'text-[#93c5fd] group-hover:text-[#2b5fa8]'} />
+      <span
+        style={{
+          fontSize: 9,
+          color: isDropTarget ? '#2b5fa8' : '#93c5fd',
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+        }}
+        className={isDropTarget ? '' : 'group-hover:text-[#2b5fa8]'}
       >
-        Add
+        {isDropTarget ? 'Drop here' : 'Add'}
       </span>
     </button>
   );
@@ -155,8 +180,10 @@ export function BuilderGrid({
   sectionId,
   academicYearId,
 }: BuilderGridProps) {
+  const toast = useToast();
   const { data: periods = [], isLoading: periodsLoading } = usePeriods(campusId);
   const { data: fullTimetable, isLoading: ttLoading } = useTimetableFull(timetable.id);
+  const moveEntry = useMoveEntry();
 
   const isEditable = timetable.status === 'DRAFT';
 
@@ -164,6 +191,10 @@ export function BuilderGrid({
   type AddTarget = { dayOfWeek: number; period: TimetablePeriod };
   const [addTarget, setAddTarget] = React.useState<AddTarget | null>(null);
   const [editEntry, setEditEntry] = React.useState<TimetableFullEntry | null>(null);
+
+  // DnD state
+  const [dragEntry, setDragEntry] = React.useState<TimetableFullEntry | null>(null);
+  const [dropTarget, setDropTarget] = React.useState<{ dayOfWeek: number; periodId: string } | null>(null);
 
   // Build entry lookup: dayOfWeek → periodId → entry
   const entryMap = React.useMemo(() => {
@@ -179,10 +210,34 @@ export function BuilderGrid({
 
   // Determine which days have at least one entry (show all 5 by default)
   const visibleDays = React.useMemo(() => {
-    // Always show Mon–Fri. Show Sat only if entries exist on Sat.
     const hasSat = [...entryMap.keys()].includes(6);
     return hasSat ? [1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5];
   }, [entryMap]);
+
+  // Handle drop on a cell
+  async function handleDrop(dayOfWeek: number, periodId: string) {
+    if (!dragEntry) return;
+    setDropTarget(null);
+
+    // Same slot — no-op
+    if (dragEntry.dayOfWeek === dayOfWeek && dragEntry.period.id === periodId) {
+      setDragEntry(null);
+      return;
+    }
+
+    try {
+      await moveEntry.mutateAsync({
+        timetableId: timetable.id,
+        entryId: dragEntry.id,
+        dayOfWeek,
+        periodId,
+      });
+    } catch (err: unknown) {
+      toast.error((err as { message?: string })?.message ?? 'Failed to move entry.');
+    } finally {
+      setDragEntry(null);
+    }
+  }
 
   if (periodsLoading || ttLoading) {
     return (
@@ -272,17 +327,56 @@ export function BuilderGrid({
                   /* One cell per day */
                   visibleDays.map((dayNum) => {
                     const entry = entryMap.get(dayNum)?.get(period.id);
+                    const isThisDragging = !!dragEntry && entry?.id === dragEntry.id;
+                    const isThisDropTarget =
+                      !!dropTarget &&
+                      dropTarget.dayOfWeek === dayNum &&
+                      dropTarget.periodId === period.id;
+                    const canDrop = isEditable && !!dragEntry && !entry;
+
                     return (
-                      <div key={dayNum} style={{ background: 'white', padding: 4 }}>
+                      <div
+                        key={dayNum}
+                        style={{
+                          background: isThisDropTarget ? '#f0f6ff' : 'white',
+                          padding: 4,
+                          transition: 'background 0.1s',
+                        }}
+                        onDragOver={(e) => {
+                          if (canDrop || isThisDragging) {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                            if (!isThisDragging) {
+                              setDropTarget({ dayOfWeek: dayNum, periodId: period.id });
+                            }
+                          }
+                        }}
+                        onDragLeave={(e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                            setDropTarget(null);
+                          }
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (canDrop) void handleDrop(dayNum, period.id);
+                        }}
+                      >
                         {entry ? (
                           <FilledCell
                             entry={entry}
                             editable={isEditable}
+                            isDragging={isThisDragging}
                             onClick={() => setEditEntry(entry)}
+                            onDragStart={() => setDragEntry(entry)}
+                            onDragEnd={() => {
+                              setDragEntry(null);
+                              setDropTarget(null);
+                            }}
                           />
                         ) : (
                           <EmptyCell
                             editable={isEditable}
+                            isDropTarget={isThisDropTarget}
                             onClick={() => setAddTarget({ dayOfWeek: dayNum, period })}
                           />
                         )}
@@ -296,7 +390,14 @@ export function BuilderGrid({
         </div>
       </div>
 
-      {/* Editable hint */}
+      {/* Drag hint */}
+      {isEditable && (
+        <p className="mt-2 text-center text-xs text-[#b0b7bf]">
+          Drag entries to move them to a different slot
+        </p>
+      )}
+
+      {/* Editable hint for non-draft */}
       {!isEditable && (
         <p className="mt-3 text-center text-xs text-[#8a929b]">
           This timetable is {timetable.status.toLowerCase()} — editing is only available on DRAFT timetables.

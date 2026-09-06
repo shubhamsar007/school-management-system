@@ -335,6 +335,35 @@ export function useDeleteTimetable() {
   });
 }
 
+export function useCopyTimetable() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      apiClient.post<TimetableSummary & { copiedEntries: number }>(`/timetable/${id}/copy`, { name }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['timetable', 'list'] });
+    },
+  });
+}
+
+export interface AutoGenerateResult {
+  created: number;
+  skipped: number;
+  assignments: number;
+}
+
+export function useAutoGenerate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, periodsPerWeek }: { id: string; periodsPerWeek: number }) =>
+      apiClient.post<AutoGenerateResult>(`/timetable/${id}/auto-generate`, { periodsPerWeek }),
+    onSuccess: (_data, { id }) => {
+      void qc.invalidateQueries({ queryKey: ['timetable', 'full', id] });
+      void qc.invalidateQueries({ queryKey: ['timetable', 'conflicts', id] });
+    },
+  });
+}
+
 // ─── Schedule Views ───────────────────────────────────────────────────────────
 
 export function useSectionSchedule(

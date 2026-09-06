@@ -230,6 +230,26 @@ export class TimetableController {
     return this.timetableService.getConflicts(user.organizationId, id);
   }
 
+  @ApiOperation({ summary: 'Copy a timetable to a new DRAFT with all entries' })
+  @Post(':id/copy')
+  copyTimetable(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body('name') name: string,
+  ) {
+    return this.timetableService.copyTimetable(user.organizationId, id, name);
+  }
+
+  @ApiOperation({ summary: 'Auto-generate entries for a DRAFT timetable from teacher assignments' })
+  @Post(':id/auto-generate')
+  autoGenerate(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body('periodsPerWeek') periodsPerWeek: number,
+  ) {
+    return this.timetableService.autoGenerate(user.organizationId, id, periodsPerWeek ?? 5);
+  }
+
   @ApiOperation({ summary: 'Delete a DRAFT timetable' })
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
