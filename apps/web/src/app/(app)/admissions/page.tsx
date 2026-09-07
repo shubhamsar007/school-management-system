@@ -1,129 +1,446 @@
 'use client';
 
 import * as React from 'react';
-import { PageHeader } from '@/components/layouts/page-header';
-import { Button, Badge, Avatar, KpiCard, SearchBar, Dropdown, Pagination, Tabs, DataTable, ExportButton } from '@/components/ui';
+import { useRouter } from 'next/navigation';
+import {
+  PageHeader, Button, Badge, Avatar, KpiCard, SearchBar, Dropdown,
+  Pagination, Tabs, DataTable, ExportButton, Spinner, EmptyState,
+} from '@/components/ui';
 import type { ColumnDef } from '@/components/ui';
+import {
+  useEnquiries, useApplications, useAdmissionStats,
+  useReviewApplication, useApproveApplication,
+  type Enquiry, type Application,
+} from '@/lib/hooks/use-admissions';
+import { AddEnquiryModal } from './_components/add-enquiry-modal';
 
-interface Enquiry { id: string; applicant: string; parent: string; grade: string; contact: string; source: string; date: string; status: string; }
-interface Application { id: string; name: string; appNo: string; grade: string; submitted: string; docsComplete: number; docsTotal: number; status: string; }
+// ─── Enum maps ────────────────────────────────────────────────────────────────
 
-const ENQUIRIES: Enquiry[] = [
-  { id: '1', applicant: 'Riya Verma', parent: 'Meena Verma', grade: 'Grade 5', contact: '+91 98101 22334', source: 'ONLINE', date: '24 Aug 2025', status: 'NEW' },
-  { id: '2', applicant: 'Aryan Kapoor', parent: 'Sanjay Kapoor', grade: 'Grade 8', contact: '+91 99210 44556', source: 'WALK_IN', date: '22 Aug 2025', status: 'CONTACTED' },
-  { id: '3', applicant: 'Anvi Patel', parent: 'Rahul Patel', grade: 'Grade 3', contact: '+91 98330 66778', source: 'REFERRAL', date: '20 Aug 2025', status: 'SCHEDULED' },
-  { id: '4', applicant: 'Sid Malhotra', parent: 'Priti Malhotra', grade: 'Grade 6', contact: '+91 97440 88990', source: 'ONLINE', date: '18 Aug 2025', status: 'ADMITTED' },
-  { id: '5', applicant: 'Zoya Khan', parent: 'Imran Khan', grade: 'Grade 9', contact: '+91 96550 11223', source: 'PHONE', date: '15 Aug 2025', status: 'REJECTED' },
-  { id: '6', applicant: 'Kabir Singh', parent: 'Harjit Singh', grade: 'Grade 1', contact: '+91 95660 33445', source: 'WALK_IN', date: '12 Aug 2025', status: 'ADMITTED' },
-  { id: '7', applicant: 'Mira Joshi', parent: 'Deepak Joshi', grade: 'Grade 7', contact: '+91 94770 55667', source: 'ONLINE', date: '10 Aug 2025', status: 'WITHDRAWN' },
-  { id: '8', applicant: 'Dev Sharma', parent: 'Anil Sharma', grade: 'Grade 11', contact: '+91 93880 77889', source: 'REFERRAL', date: '08 Aug 2025', status: 'CONTACTED' },
+const ENQ_STATUS_VARIANT: Record<string, 'active' | 'pending' | 'default' | 'graduated' | 'left'> = {
+  NEW: 'pending',
+  CONTACTED: 'default',
+  VISITED: 'active',
+  APPLIED: 'active',
+  CONVERTED: 'graduated',
+  DROPPED: 'left',
+};
+
+const ENQ_STATUS_LABEL: Record<string, string> = {
+  NEW: 'New',
+  CONTACTED: 'Contacted',
+  VISITED: 'Visited',
+  APPLIED: 'Applied',
+  CONVERTED: 'Converted',
+  DROPPED: 'Dropped',
+};
+
+const SRC_VARIANT: Record<string, 'active' | 'graduated' | 'default'> = {
+  WALK_IN: 'default',
+  PHONE: 'default',
+  WEBSITE: 'graduated',
+  REFERRAL: 'active',
+  SOCIAL_MEDIA: 'graduated',
+  ADVERTISEMENT: 'default',
+  OTHER: 'default',
+};
+
+const SRC_LABEL: Record<string, string> = {
+  WALK_IN: 'Walk-in',
+  PHONE: 'Phone',
+  WEBSITE: 'Website',
+  REFERRAL: 'Referral',
+  SOCIAL_MEDIA: 'Social',
+  ADVERTISEMENT: 'Ad',
+  OTHER: 'Other',
+};
+
+const APP_STATUS_VARIANT: Record<string, 'active' | 'pending' | 'default' | 'graduated' | 'left'> = {
+  DRAFT: 'default',
+  SUBMITTED: 'pending',
+  UNDER_REVIEW: 'active',
+  APPROVED: 'graduated',
+  REJECTED: 'left',
+};
+
+// ─── Filter options ───────────────────────────────────────────────────────────
+
+const ENQ_STATUS_OPTIONS = [
+  { label: 'All Statuses', value: 'all' },
+  { label: 'New', value: 'NEW' },
+  { label: 'Contacted', value: 'CONTACTED' },
+  { label: 'Visited', value: 'VISITED' },
+  { label: 'Applied', value: 'APPLIED' },
+  { label: 'Converted', value: 'CONVERTED' },
+  { label: 'Dropped', value: 'DROPPED' },
 ];
 
-const APPLICATIONS: Application[] = [
-  { id: '1', name: 'Riya Verma', appNo: 'APP-2025-0048', grade: 'Grade 5', submitted: '25 Aug 2025', docsComplete: 3, docsTotal: 5, status: 'SUBMITTED' },
-  { id: '2', name: 'Aryan Kapoor', appNo: 'APP-2025-0047', grade: 'Grade 8', submitted: '23 Aug 2025', docsComplete: 5, docsTotal: 5, status: 'UNDER_REVIEW' },
-  { id: '3', name: 'Anvi Patel', appNo: 'APP-2025-0046', grade: 'Grade 3', submitted: '21 Aug 2025', docsComplete: 5, docsTotal: 5, status: 'INTERVIEW_SCHEDULED' },
-  { id: '4', name: 'Sid Malhotra', appNo: 'APP-2025-0040', grade: 'Grade 6', submitted: '19 Aug 2025', docsComplete: 5, docsTotal: 5, status: 'ADMITTED' },
-  { id: '5', name: 'Kabir Singh', appNo: 'APP-2025-0038', grade: 'Grade 1', submitted: '13 Aug 2025', docsComplete: 5, docsTotal: 5, status: 'ADMITTED' },
-  { id: '6', name: 'Dev Sharma', appNo: 'APP-2025-0035', grade: 'Grade 11', submitted: '09 Aug 2025', docsComplete: 4, docsTotal: 5, status: 'UNDER_REVIEW' },
-  { id: '7', name: 'Priya Mehta', appNo: 'APP-2025-0032', grade: 'Grade 4', submitted: '07 Aug 2025', docsComplete: 5, docsTotal: 5, status: 'ADMITTED' },
-  { id: '8', name: 'Raj Pillai', appNo: 'APP-2025-0029', grade: 'Grade 7', submitted: '04 Aug 2025', docsComplete: 2, docsTotal: 5, status: 'SUBMITTED' },
+const SOURCE_OPTIONS = [
+  { label: 'All Sources', value: 'all' },
+  { label: 'Walk-in', value: 'WALK_IN' },
+  { label: 'Phone', value: 'PHONE' },
+  { label: 'Website', value: 'WEBSITE' },
+  { label: 'Referral', value: 'REFERRAL' },
+  { label: 'Social Media', value: 'SOCIAL_MEDIA' },
+  { label: 'Advertisement', value: 'ADVERTISEMENT' },
 ];
 
-const ENQ_STATUS: Record<string, 'active' | 'pending' | 'default' | 'graduated' | 'left'> = { NEW: 'pending', CONTACTED: 'default', SCHEDULED: 'active', ADMITTED: 'graduated', REJECTED: 'left', WITHDRAWN: 'left' };
-const SRC_BADGE: Record<string, 'active' | 'graduated' | 'default'> = { WALK_IN: 'default', ONLINE: 'graduated', REFERRAL: 'active', PHONE: 'default' };
-const APP_STATUS: Record<string, 'active' | 'pending' | 'default' | 'graduated' | 'left'> = { SUBMITTED: 'pending', UNDER_REVIEW: 'default', INTERVIEW_SCHEDULED: 'active', ADMITTED: 'graduated', REJECTED: 'left' };
+const APP_STATUS_OPTIONS = [
+  { label: 'All Statuses', value: 'all' },
+  { label: 'Draft', value: 'DRAFT' },
+  { label: 'Submitted', value: 'SUBMITTED' },
+  { label: 'Under Review', value: 'UNDER_REVIEW' },
+  { label: 'Approved', value: 'APPROVED' },
+  { label: 'Rejected', value: 'REJECTED' },
+];
 
-const TABS = [{ id: 'enquiries', label: 'Enquiries', count: 48 }, { id: 'applications', label: 'Applications', count: 32 }];
-const STATUS_OPTIONS = [{ label: 'All Statuses', value: 'all' }, { label: 'New', value: 'NEW' }, { label: 'Contacted', value: 'CONTACTED' }, { label: 'Scheduled', value: 'SCHEDULED' }, { label: 'Admitted', value: 'ADMITTED' }, { label: 'Rejected', value: 'REJECTED' }];
-const SOURCE_OPTIONS = [{ label: 'All Sources', value: 'all' }, { label: 'Walk-in', value: 'WALK_IN' }, { label: 'Online', value: 'ONLINE' }, { label: 'Referral', value: 'REFERRAL' }, { label: 'Phone', value: 'PHONE' }];
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 25;
 
 export default function AdmissionsPage() {
+  const router = useRouter();
+
   const [activeTab, setActiveTab] = React.useState('enquiries');
   const [search, setSearch] = React.useState('');
+  const [debouncedSearch, setDebouncedSearch] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState('all');
   const [sourceFilter, setSourceFilter] = React.useState('all');
+  const [appStatusFilter, setAppStatusFilter] = React.useState('all');
   const [page, setPage] = React.useState(1);
-  const [pageSize, setPageSize] = React.useState(25);
+  const [showAddEnquiry, setShowAddEnquiry] = React.useState(false);
   const [selected, setSelected] = React.useState<Enquiry[]>([]);
+
+  // Debounce search
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Reset page on filter change
+  React.useEffect(() => { setPage(1); }, [statusFilter, sourceFilter, appStatusFilter, activeTab]);
+
+  const { data: stats } = useAdmissionStats();
+
+  const { data: enquiryData, isLoading: enqLoading } = useEnquiries({
+    status: statusFilter !== 'all' ? statusFilter : undefined,
+    search: debouncedSearch || undefined,
+    page,
+    limit: PAGE_SIZE,
+  });
+
+  const { data: appData, isLoading: appLoading } = useApplications({
+    status: appStatusFilter !== 'all' ? appStatusFilter : undefined,
+    search: debouncedSearch || undefined,
+    page,
+    limit: PAGE_SIZE,
+  });
+
+  const reviewApp = useReviewApplication();
+  const approveApp = useApproveApplication();
+
+  // Filter enquiries by source client-side (not in API since source filter isn't supported server-side for list)
+  const enquiries = React.useMemo(() => {
+    const rows = enquiryData?.data ?? [];
+    if (sourceFilter === 'all') return rows;
+    return rows.filter((e) => e.source === sourceFilter);
+  }, [enquiryData, sourceFilter]);
+
+  const applications = appData?.data ?? [];
+
+  const enquiryTotal = sourceFilter !== 'all'
+    ? enquiries.length
+    : (enquiryData?.meta.total ?? 0);
+  const appTotal = appData?.meta.total ?? 0;
+
+  const TABS = [
+    { id: 'enquiries', label: 'Enquiries', count: stats?.enquiries.total ?? enquiryData?.meta.total },
+    { id: 'applications', label: 'Applications', count: stats?.applications.total ?? appData?.meta.total },
+  ];
+
+  // ─── Columns ──────────────────────────────────────────────────
 
   const enquiryColumns: ColumnDef<Enquiry>[] = [
     {
-      id: 'applicant', header: 'APPLICANT', width: 'minmax(160px,1.4fr)',
+      id: 'applicant',
+      header: 'APPLICANT',
+      width: 'minmax(160px,1.4fr)',
       cell: (r) => (
         <div>
-          <div className="text-sm font-medium text-[#14181c]">{r.applicant}</div>
-          <div className="text-[11px] text-[#8a929b]">{r.parent}</div>
+          <div className="text-sm font-medium text-[#14181c]">{r.studentName}</div>
+          <div className="text-[11px] text-[#8a929b]">{r.parentName ?? '—'}</div>
         </div>
       ),
     },
-    { id: 'grade', header: 'GRADE APPLIED', width: '110px', accessor: 'grade' },
-    { id: 'contact', header: 'CONTACT', width: '140px', cell: (r) => <span className="text-sm text-[#6b7480]">{r.contact}</span> },
-    { id: 'source', header: 'SOURCE', width: '100px', cell: (r) => <Badge variant={SRC_BADGE[r.source] ?? 'default'}>{r.source.replace('_', '-')}</Badge> },
-    { id: 'date', header: 'ENQUIRY DATE', width: '110px', accessor: 'date' },
-    { id: 'status', header: 'STATUS', width: '110px', cell: (r) => <Badge variant={ENQ_STATUS[r.status] ?? 'default'}>{r.status}</Badge> },
-    { id: 'actions', header: 'ACTIONS', width: '110px', align: 'right', cell: () => <div className="flex justify-end gap-1.5 text-xs font-medium text-[#2b5fa8]"><button>View</button><span className="text-[#d7dce1]">|</span><button>Follow Up</button></div> },
+    {
+      id: 'grade',
+      header: 'CLASS INTERESTED',
+      width: '130px',
+      cell: (r) => (
+        <span className="text-sm text-[#6b7480]">
+          {r.classInterested?.name ?? '—'}
+        </span>
+      ),
+    },
+    {
+      id: 'contact',
+      header: 'CONTACT',
+      width: '140px',
+      cell: (r) => <span className="text-sm text-[#6b7480]">{r.phone}</span>,
+    },
+    {
+      id: 'source',
+      header: 'SOURCE',
+      width: '100px',
+      cell: (r) => (
+        <Badge variant={SRC_VARIANT[r.source] ?? 'default'}>
+          {SRC_LABEL[r.source] ?? r.source}
+        </Badge>
+      ),
+    },
+    {
+      id: 'date',
+      header: 'ENQUIRY DATE',
+      width: '110px',
+      cell: (r) => (
+        <span className="text-sm text-[#6b7480]">
+          {new Date(r.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+        </span>
+      ),
+    },
+    {
+      id: 'apps',
+      header: 'APPS',
+      width: '60px',
+      align: 'center',
+      cell: (r) => (
+        <span className="text-sm text-[#6b7480]">{r._count.applications}</span>
+      ),
+    },
+    {
+      id: 'status',
+      header: 'STATUS',
+      width: '110px',
+      cell: (r) => (
+        <Badge variant={ENQ_STATUS_VARIANT[r.status] ?? 'default'}>
+          {ENQ_STATUS_LABEL[r.status] ?? r.status}
+        </Badge>
+      ),
+    },
+    {
+      id: 'actions',
+      header: 'ACTIONS',
+      width: '110px',
+      align: 'right',
+      cell: (r) => (
+        <div className="flex justify-end gap-1.5 text-xs font-medium text-[#2b5fa8]">
+          <button onClick={() => router.push(`/admissions/enquiries/${r.id}`)}>View</button>
+        </div>
+      ),
+    },
   ];
 
   const appColumns: ColumnDef<Application>[] = [
-    { id: 'name', header: 'APPLICANT', width: 'minmax(140px,1.4fr)', cell: (r) => <div className="flex items-center gap-2.5"><Avatar name={r.name} size="md" /><span className="text-sm font-medium">{r.name}</span></div> },
-    { id: 'appNo', header: 'APP NO', width: '130px', cell: (r) => <span className="font-mono text-xs text-[#6b7480]">{r.appNo}</span> },
-    { id: 'grade', header: 'GRADE', width: '90px', accessor: 'grade' },
-    { id: 'submitted', header: 'SUBMITTED', width: '100px', accessor: 'submitted' },
     {
-      id: 'docs', header: 'DOCUMENTS', width: '110px', align: 'center',
+      id: 'name',
+      header: 'APPLICANT',
+      width: 'minmax(140px,1.4fr)',
       cell: (r) => {
-        const complete = r.docsComplete === r.docsTotal;
-        return <span style={{ color: complete ? '#146b41' : '#8a5a00' }} className="text-sm font-medium">{r.docsComplete} of {r.docsTotal}</span>;
+        const name = r.enquiry?.studentName ?? r.applicationNumber;
+        return (
+          <div className="flex items-center gap-2.5">
+            <Avatar name={name} size="md" />
+            <div>
+              <div className="text-sm font-medium text-[#14181c]">{name}</div>
+              {r.enquiry?.parentName && (
+                <div className="text-[11px] text-[#8a929b]">{r.enquiry.parentName}</div>
+              )}
+            </div>
+          </div>
+        );
       },
     },
-    { id: 'status', header: 'STATUS', width: '140px', cell: (r) => <Badge variant={APP_STATUS[r.status] ?? 'default'}>{r.status.replace(/_/g, ' ')}</Badge> },
-    { id: 'actions', header: 'ACTIONS', width: '130px', align: 'right', cell: () => <div className="flex justify-end gap-1.5 text-xs font-medium text-[#2b5fa8]"><button>Review</button><span className="text-[#d7dce1]">|</span><button>Accept</button></div> },
+    {
+      id: 'appNo',
+      header: 'APP NO',
+      width: '140px',
+      cell: (r) => <span className="font-mono text-xs text-[#6b7480]">{r.applicationNumber}</span>,
+    },
+    {
+      id: 'grade',
+      header: 'CLASS',
+      width: '100px',
+      cell: (r) => <span className="text-sm text-[#6b7480]">{r.class?.name ?? '—'}</span>,
+    },
+    {
+      id: 'submitted',
+      header: 'SUBMITTED',
+      width: '100px',
+      cell: (r) => (
+        <span className="text-sm text-[#6b7480]">
+          {r.submittedAt
+            ? new Date(r.submittedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+            : '—'}
+        </span>
+      ),
+    },
+    {
+      id: 'docs',
+      header: 'DOCS',
+      width: '70px',
+      align: 'center',
+      cell: (r) => (
+        <span className="text-sm font-medium" style={{ color: r._count.documents > 0 ? '#146b41' : '#8a929b' }}>
+          {r._count.documents}
+        </span>
+      ),
+    },
+    {
+      id: 'status',
+      header: 'STATUS',
+      width: '130px',
+      cell: (r) => (
+        <Badge variant={APP_STATUS_VARIANT[r.status] ?? 'default'}>
+          {r.status.replace(/_/g, ' ')}
+        </Badge>
+      ),
+    },
+    {
+      id: 'actions',
+      header: 'ACTIONS',
+      width: '160px',
+      align: 'right',
+      cell: (r) => (
+        <div className="flex justify-end gap-1.5 text-xs font-medium text-[#2b5fa8]">
+          <button onClick={() => router.push(`/admissions/applications/${r.id}`)}>
+            Review
+          </button>
+          {r.status === 'SUBMITTED' && (
+            <>
+              <span className="text-[#d7dce1]">|</span>
+              <button
+                onClick={() => reviewApp.mutate(r.id)}
+                disabled={reviewApp.isPending}
+              >
+                Start Review
+              </button>
+            </>
+          )}
+          {(r.status === 'SUBMITTED' || r.status === 'UNDER_REVIEW') && (
+            <>
+              <span className="text-[#d7dce1]">|</span>
+              <button
+                onClick={() => approveApp.mutate(r.id)}
+                disabled={approveApp.isPending}
+                className="text-[#146b41]"
+              >
+                Approve
+              </button>
+            </>
+          )}
+        </div>
+      ),
+    },
   ];
 
-  const filteredEnquiries = ENQUIRIES.filter((e) =>
-    (statusFilter === 'all' || e.status === statusFilter) &&
-    (sourceFilter === 'all' || e.source === sourceFilter) &&
-    (!search || e.applicant.toLowerCase().includes(search.toLowerCase()))
-  );
+  // ─── KPI values ───────────────────────────────────────────────
+
+  const totalEnquiries = stats?.enquiries.total ?? enquiryData?.meta.total ?? 0;
+  const totalApplications = stats?.applications.total ?? appData?.meta.total ?? 0;
+  const approved = stats?.applications.byStatus['APPROVED'] ?? 0;
+  const pendingReview = stats?.applications.pendingReview ?? 0;
+  const conversionRate = totalEnquiries > 0
+    ? ((approved / totalEnquiries) * 100).toFixed(0)
+    : '0';
+
+  const isLoading = activeTab === 'enquiries' ? enqLoading : appLoading;
 
   return (
     <div>
       <PageHeader
         title="Admissions Pipeline"
-        subtitle="Enquiries, applications, and enrolments · 2024–25"
+        subtitle="Enquiries, applications, and enrolments"
         actions={
           <div className="flex gap-2">
-            <ExportButton label="Export" data={ENQUIRIES} filename="admissions" formats={['csv', 'excel']}
-              columns={[{ header: 'Applicant', accessor: 'applicant' }, { header: 'Grade', accessor: 'grade' }, { header: 'Status', accessor: 'status' }]} />
-            <Button variant="primary">+ Add Enquiry</Button>
+            <ExportButton
+              label="Export"
+              data={(activeTab === 'enquiries' ? enquiries : applications) as unknown[]}
+              filename={activeTab}
+              formats={['csv', 'excel']}
+              columns={[
+                { header: 'Name', accessor: (r: unknown) => {
+                  const row = r as Enquiry & Application;
+                  return row.studentName ?? row.enquiry?.studentName ?? row.applicationNumber ?? '';
+                }},
+              ]}
+            />
+            <Button variant="primary" onClick={() => setShowAddEnquiry(true)}>
+              + Add Enquiry
+            </Button>
           </div>
         }
       />
 
+      {/* KPI cards */}
       <div className="grid grid-cols-4 gap-4 mb-4">
-        <KpiCard title="TOTAL ENQUIRIES" value="48" subtitle="this term" />
-        <KpiCard title="APPLICATIONS" value="32" trend="+4" trendPositive subtitle="this week" />
-        <KpiCard title="ADMITTED" value="24" trend="75%" trendPositive subtitle="conversion" />
-        <KpiCard title="PENDING REVIEW" value="12" trend="3 urgent" trendPositive={false} />
+        <KpiCard title="TOTAL ENQUIRIES" value={String(totalEnquiries)} subtitle="this term" />
+        <KpiCard title="APPLICATIONS" value={String(totalApplications)} subtitle="submitted" />
+        <KpiCard
+          title="APPROVED"
+          value={String(approved)}
+          trend={`${conversionRate}%`}
+          trendPositive
+          subtitle="conversion"
+        />
+        <KpiCard
+          title="PENDING REVIEW"
+          value={String(pendingReview)}
+          trendPositive={false}
+          subtitle="need action"
+        />
       </div>
 
-      <Tabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} className="mb-4" />
+      <Tabs tabs={TABS} activeTab={activeTab} onChange={(t) => { setActiveTab(t); setSearch(''); setPage(1); }} className="mb-4" />
 
       <div className="overflow-hidden rounded-xl border border-[#e6e8eb] bg-white shadow-sm">
+        {/* Toolbar */}
         <div className="flex items-center gap-2 border-b border-[#eef0f2] p-3.5">
-          <SearchBar placeholder="Search applicant…" value={search} onChange={setSearch} className="w-64" />
+          <SearchBar
+            placeholder={activeTab === 'enquiries' ? 'Search applicant…' : 'Search app no…'}
+            value={search}
+            onChange={setSearch}
+            className="w-64"
+          />
           {activeTab === 'enquiries' && (
             <>
-              <Dropdown label="Status" value={statusFilter} options={STATUS_OPTIONS} onChange={setStatusFilter} />
-              <Dropdown label="Source" value={sourceFilter} options={SOURCE_OPTIONS} onChange={setSourceFilter} />
+              <Dropdown
+                label="Status"
+                value={statusFilter}
+                options={ENQ_STATUS_OPTIONS}
+                onChange={setStatusFilter}
+              />
+              <Dropdown
+                label="Source"
+                value={sourceFilter}
+                options={SOURCE_OPTIONS}
+                onChange={setSourceFilter}
+              />
             </>
           )}
+          {activeTab === 'applications' && (
+            <Dropdown
+              label="Status"
+              value={appStatusFilter}
+              options={APP_STATUS_OPTIONS}
+              onChange={setAppStatusFilter}
+            />
+          )}
           <div className="flex-1" />
-          <ExportButton label="Export" data={(activeTab === 'enquiries' ? filteredEnquiries : APPLICATIONS) as unknown[]} filename={activeTab} formats={['csv', 'excel']}
-            columns={[{ header: 'Name', accessor: (r: unknown) => String((r as { applicant?: string; name?: string }).applicant ?? (r as { name?: string }).name ?? '') }]} />
         </div>
 
+        {/* Bulk bar */}
         {selected.length > 0 && (
           <div className="flex items-center gap-3 border-b border-[#e2ebf6] bg-[#f3f7fc] px-4 py-2.5 text-sm">
             <span className="font-medium">{selected.length} selected</span>
@@ -132,15 +449,45 @@ export default function AdmissionsPage() {
           </div>
         )}
 
-        {activeTab === 'enquiries' && <DataTable columns={enquiryColumns} data={filteredEnquiries} selectable onSelectionChange={setSelected} />}
-        {activeTab === 'applications' && <DataTable columns={appColumns} data={APPLICATIONS} />}
+        {/* Table */}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Spinner />
+          </div>
+        ) : activeTab === 'enquiries' ? (
+          enquiries.length === 0 ? (
+            <EmptyState
+              title="No enquiries found"
+              description={debouncedSearch || statusFilter !== 'all' ? 'Try adjusting your filters.' : 'Add your first enquiry to get started.'}
+              action={<Button variant="primary" onClick={() => setShowAddEnquiry(true)}>+ Add Enquiry</Button>}
+            />
+          ) : (
+            <DataTable columns={enquiryColumns} data={enquiries} selectable onSelectionChange={setSelected} />
+          )
+        ) : applications.length === 0 ? (
+          <EmptyState
+            title="No applications found"
+            description={debouncedSearch || appStatusFilter !== 'all' ? 'Try adjusting your filters.' : 'Applications will appear here once enquiries are converted.'}
+          />
+        ) : (
+          <DataTable columns={appColumns} data={applications} />
+        )}
 
-        <div className="border-t border-[#eef0f2] p-3">
-          <Pagination page={page} pageSize={pageSize}
-            total={activeTab === 'enquiries' ? filteredEnquiries.length : APPLICATIONS.length}
-            onPageChange={setPage} onPageSizeChange={setPageSize} />
-        </div>
+        {/* Pagination */}
+        {!isLoading && (
+          <div className="border-t border-[#eef0f2] p-3">
+            <Pagination
+              page={page}
+              pageSize={PAGE_SIZE}
+              total={activeTab === 'enquiries' ? enquiryTotal : appTotal}
+              onPageChange={setPage}
+              onPageSizeChange={() => {}}
+            />
+          </div>
+        )}
       </div>
+
+      <AddEnquiryModal open={showAddEnquiry} onClose={() => setShowAddEnquiry(false)} />
     </div>
   );
 }

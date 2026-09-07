@@ -15,6 +15,41 @@ import { AddDocumentDto, VerifyDocumentDto } from './dto/add-document.dto';
 export class AdmissionsService {
   constructor(private prisma: PrismaService) {}
 
+  // ─── Stats ────────────────────────────────────────────────────
+
+  async getStats(organizationId: string) {
+    const [enquiryGroups, applicationGroups] = await Promise.all([
+      this.prisma.admissionEnquiry.groupBy({
+        by: ['status'],
+        where: { organizationId },
+        _count: { id: true },
+      }),
+      this.prisma.admissionApplication.groupBy({
+        by: ['status'],
+        where: { organizationId },
+        _count: { id: true },
+      }),
+    ]);
+
+    const enqMap: Record<string, number> = {};
+    for (const r of enquiryGroups) enqMap[r.status] = r._count.id;
+
+    const appMap: Record<string, number> = {};
+    for (const r of applicationGroups) appMap[r.status] = r._count.id;
+
+    return {
+      enquiries: {
+        total: Object.values(enqMap).reduce((a, b) => a + b, 0),
+        byStatus: enqMap,
+      },
+      applications: {
+        total: Object.values(appMap).reduce((a, b) => a + b, 0),
+        byStatus: appMap,
+        pendingReview: (appMap['SUBMITTED'] ?? 0) + (appMap['UNDER_REVIEW'] ?? 0),
+      },
+    };
+  }
+
   // ─── Enquiries ────────────────────────────────────────────────
 
   async createEnquiry(organizationId: string, dto: CreateEnquiryDto) {
@@ -59,20 +94,66 @@ export class AdmissionsService {
 
   async findEnquiries(
     organizationId: string,
-    filters: { status?: string; assignedTo?: string; campusId?: string },
+    filters: {
+      status?: string;
+      assignedTo?: string;
+      campusId?: string;
+      search?: string;
+      page?: number;
+      limit?: number;
+    },
   ) {
-    return this.prisma.admissionEnquiry.findMany({
-      where: {
-        organizationId,
-        ...(filters.status ? { status: filters.status } : {}),
-        ...(filters.assignedTo ? { assignedTo: filters.assignedTo } : {}),
-        ...(filters.campusId ? { campusId: filters.campusId } : {}),
-      },
-      include: {
-        _count: { select: { applications: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const page = Math.max(1, filters.page ?? 1);
+    const limit = Math.min(Math.max(1, filters.limit ?? 25), 100);
+    const skip = (page - 1) * limit;
+
+    const where = {
+      organizationId,
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.assignedTo ? { assignedTo: filters.assignedTo } : {}),
+      ...(filters.campusId ? { campusId: filters.campusId } : {}),
+      ...(filters.search
+        ? {
+            OR: [
+              { studentName: { contains: filters.search, mode: 'insensitive' as const } },
+              { parentName: { contains: filters.search, mode: 'insensitive' as const } },
+              { phone: { contains: filters.search } },
+            ],
+          }
+        : {}),
+    };
+
+    const [rows, total] = await Promise.all([
+      this.prisma.admissionEnquiry.findMany({
+        where,
+        include: { _count: { select: { applications: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.admissionEnquiry.count({ where }),
+    ]);
+
+    // Enrich with classInterested name (no Prisma relation defined — manual lookup)
+    const classIds = [
+      ...new Set(rows.map((r) => r.classInterestedId).filter(Boolean)),
+    ] as string[];
+    const classes =
+      classIds.length > 0
+        ? await this.prisma.academicClass.findMany({
+            where: { id: { in: classIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+    const classMap = Object.fromEntries(classes.map((c) => [c.id, c]));
+
+    return {
+      data: rows.map((r) => ({
+        ...r,
+        classInterested: r.classInterestedId ? (classMap[r.classInterestedId] ?? null) : null,
+      })),
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async findEnquiry(organizationId: string, enquiryId: string) {
@@ -85,16 +166,26 @@ export class AdmissionsService {
             applicationNumber: true,
             status: true,
             submittedAt: true,
+            createdAt: true,
           },
         },
       },
     });
     if (!enquiry) throw new NotFoundException('Enquiry not found');
-    return enquiry;
+
+    // Enrich with classInterested name
+    const classInterested = enquiry.classInterestedId
+      ? await this.prisma.academicClass.findFirst({
+          where: { id: enquiry.classInterestedId },
+          select: { id: true, name: true },
+        })
+      : null;
+
+    return { ...enquiry, classInterested };
   }
 
   async updateEnquiry(organizationId: string, enquiryId: string, dto: UpdateEnquiryDto) {
-    const enquiry = await this.findEnquiry(organizationId, enquiryId);
+    await this.findEnquiry(organizationId, enquiryId);
 
     return this.prisma.admissionEnquiry.update({
       where: { id: enquiryId },
@@ -162,20 +253,79 @@ export class AdmissionsService {
 
   async findApplications(
     organizationId: string,
-    filters: { status?: string; academicYearId?: string; classId?: string },
+    filters: {
+      status?: string;
+      academicYearId?: string;
+      classId?: string;
+      search?: string;
+      page?: number;
+      limit?: number;
+    },
   ) {
-    return this.prisma.admissionApplication.findMany({
-      where: {
-        organizationId,
-        ...(filters.status ? { status: filters.status } : {}),
-        ...(filters.academicYearId ? { academicYearId: filters.academicYearId } : {}),
-        ...(filters.classId ? { classId: filters.classId } : {}),
-      },
-      include: {
-        _count: { select: { documents: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const page = Math.max(1, filters.page ?? 1);
+    const limit = Math.min(Math.max(1, filters.limit ?? 25), 100);
+    const skip = (page - 1) * limit;
+
+    const where = {
+      organizationId,
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.academicYearId ? { academicYearId: filters.academicYearId } : {}),
+      ...(filters.classId ? { classId: filters.classId } : {}),
+      ...(filters.search
+        ? {
+            OR: [
+              { applicationNumber: { contains: filters.search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+
+    const [rows, total] = await Promise.all([
+      this.prisma.admissionApplication.findMany({
+        where,
+        include: {
+          _count: { select: { documents: true } },
+          enquiry: {
+            select: { id: true, studentName: true, parentName: true, phone: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.admissionApplication.count({ where }),
+    ]);
+
+    // Enrich with class and academic year names
+    const classIds = [...new Set(rows.map((r) => r.classId))];
+    const yearIds = [...new Set(rows.map((r) => r.academicYearId))];
+
+    const [classes, years] = await Promise.all([
+      classIds.length > 0
+        ? this.prisma.academicClass.findMany({
+            where: { id: { in: classIds } },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve([]),
+      yearIds.length > 0
+        ? this.prisma.academicYear.findMany({
+            where: { id: { in: yearIds } },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const classMap = Object.fromEntries(classes.map((c) => [c.id, c]));
+    const yearMap = Object.fromEntries(years.map((y) => [y.id, y]));
+
+    return {
+      data: rows.map((r) => ({
+        ...r,
+        class: classMap[r.classId] ?? null,
+        academicYear: yearMap[r.academicYearId] ?? null,
+      })),
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async findApplication(organizationId: string, applicationId: string) {
@@ -189,7 +339,20 @@ export class AdmissionsService {
       },
     });
     if (!application) throw new NotFoundException('Application not found');
-    return application;
+
+    // Enrich with class and academic year names
+    const [cls, year] = await Promise.all([
+      this.prisma.academicClass.findFirst({
+        where: { id: application.classId },
+        select: { id: true, name: true },
+      }),
+      this.prisma.academicYear.findFirst({
+        where: { id: application.academicYearId },
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    return { ...application, class: cls ?? null, academicYear: year ?? null };
   }
 
   async submitApplication(organizationId: string, applicationId: string) {
@@ -202,6 +365,19 @@ export class AdmissionsService {
     return this.prisma.admissionApplication.update({
       where: { id: applicationId },
       data: { status: 'SUBMITTED', submittedAt: new Date() },
+    });
+  }
+
+  async setUnderReview(organizationId: string, applicationId: string) {
+    const application = await this.findApplication(organizationId, applicationId);
+
+    if (application.status !== 'SUBMITTED') {
+      throw new BadRequestException('Only SUBMITTED applications can be moved to UNDER_REVIEW');
+    }
+
+    return this.prisma.admissionApplication.update({
+      where: { id: applicationId },
+      data: { status: 'UNDER_REVIEW' },
     });
   }
 
@@ -248,19 +424,6 @@ export class AdmissionsService {
         rejectedAt: new Date(),
         rejectionReason: dto.rejectionReason ?? null,
       },
-    });
-  }
-
-  async setUnderReview(organizationId: string, applicationId: string) {
-    const application = await this.findApplication(organizationId, applicationId);
-
-    if (application.status !== 'SUBMITTED') {
-      throw new BadRequestException('Only SUBMITTED applications can be moved to UNDER_REVIEW');
-    }
-
-    return this.prisma.admissionApplication.update({
-      where: { id: applicationId },
-      data: { status: 'UNDER_REVIEW' },
     });
   }
 

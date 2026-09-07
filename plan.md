@@ -2805,4 +2805,929 @@ Admins need to create and manage the reference data that powers employee forms �
 - `apps/web/src/components/shared/reference-data-panel.tsx` ✅ (reusable)
 - `apps/web/src/app/(app)/teachers/_components/hr-setup-tab.tsx` ✅
 - `apps/web/src/lib/hooks/use-teachers.ts` ✅ (hooks added)
+
+---
+
+## Examination Module — Full Product Plan
+
+> Status: Planned (not yet built)
+> Backend foundation: complete. Frontend: shell only (mock data). Build deferred.
+
+---
+
+### Philosophy
+
+Examinations is a **complete assessment lifecycle system** — from configuration through publication. It consumes data from Academics, Students, Teachers, Attendance, and Timetable but never duplicates those entities.
+
+```
+Assessment Configuration → Exam Planning → Schedule → Marks Entry
+→ Verification → Result Computation → Approval → Report Card
+→ Publication → Historical Record
+```
+
+**Module boundaries respected:**
+- Classes/Sections → owned by Academics
+- Subjects/Curriculum → owned by Academics
+- Teacher profiles → owned by Teachers & Staff
+- Regular timetable → owned by Timetable
+- Student master → owned by Students
+- Attendance records → owned by Attendance
+- Room master → owned by Timetable/org infrastructure
+- Notification delivery → owned by Notifications
+
+---
+
+### Final Navigation Structure
+
+```
+EXAMINATIONS
+│
+├── Overview                          (Examination Control Center)
+│
+├── Exams
+│   ├── Draft
+│   ├── Scheduled
+│   ├── Active
+│   ├── Completed
+│   └── Published / Archived
+│
+├── Exam Schedule                     (Exam-specific calendar, not regular timetable)
+│
+├── Marks
+│   ├── Entry
+│   ├── Verification
+│   └── Corrections
+│
+├── Results
+│   ├── Compute
+│   ├── Review
+│   ├── Approve
+│   └── Publish
+│
+├── Report Cards
+│
+├── Continuous Assessment
+│   ├── Homework
+│   ├── Assignments
+│   ├── Projects
+│   └── Internal Assessment
+│
+├── Configuration
+│   ├── Exam Types
+│   ├── Grading Systems
+│   ├── Grade Rules
+│   └── Exam Policies
+│
+├── Analytics & Reports
+│
+└── Audit History
+```
+
+---
+
+### Current Implementation Status
+
+| Area | Backend | Database | Frontend |
+|---|---|---|---|
+| Exam Types | ✅ Complete | ✅ Defined | ⚠️ Mock only |
+| Grading Systems | ✅ Complete | ✅ Defined | ❌ Missing |
+| Exams | ✅ Complete | ✅ Defined | ⚠️ Mock only |
+| Exam Subjects | ✅ Complete | ✅ Defined | ❌ Missing |
+| Marks Entry | ✅ Complete | ✅ Defined | ❌ Missing |
+| Results Computation | ✅ Complete | ✅ Defined | ⚠️ Mock only |
+| Homework | ✅ Complete | ✅ Defined | ❌ Missing |
+| Submissions | ✅ Complete | ✅ Defined | ❌ Missing |
+| Exam Sessions / Invigilation | ❌ | ❌ | ❌ |
+| Report Cards | ❌ | ❌ | ❌ |
+| Result Correction workflow | ❌ | ❌ | ❌ |
+| Supplementary Exams | ❌ | ❌ | ❌ |
+| Analytics | ❌ | ❌ | ❌ |
+| Audit Trail | ❌ | ❌ | ❌ |
+
+**Backend foundation rating: 7.5–8/10**
+**Frontend rating: 2–3/10** (shell only, no API integration, all mock data)
+
+---
+
+### Existing Database Models (already in Prisma schema)
+
+```
+ExamType            — Categorizes exams (Unit Test, Mid-Term, Final…)
+GradingSystem       — Grading scale definition
+GradeRule           — minPercentage/maxPercentage → grade/gradePoint
+Exam                — Core exam entity with status lifecycle
+ExamSubject         — Exam × Class × Subject + schedule + marks config
+ExamMark            — Per-student marks per exam subject
+ExamResult          — Computed result per student per exam
+Homework            — Assignment with due date
+HomeworkSubmission  — Student submission + grading status
+HomeworkSubmissionFile — File attachments for submissions
+```
+
+---
+
+### Exam Status Lifecycle
+
+```
+DRAFT → CONFIGURED → SCHEDULED → IN_PROGRESS → MARKS_ENTRY
+→ VERIFICATION → RESULT_COMPUTED → APPROVED → PUBLISHED → ARCHIVED
+```
+
+> V1 can use the existing statuses (SCHEDULED / ONGOING / COMPLETED / CANCELLED). Extend incrementally.
+
+---
+
+### Marks Entry Workflow
+
+**Student mark statuses (do not auto-zero absents):**
+- `PRESENT` — marks entered
+- `ABSENT` — no marks, reason required
+- `EXCUSED` — medical/approved exemption
+- `MALPRACTICE` — special case
+- `NOT_APPLICABLE`
+
+**Mark submission flow:**
+```
+DRAFT → SUBMITTED → VERIFIED → LOCKED
+```
+Correction after lock: `Locked → Correction Request → Approval → Audit`
+
+**UX requirements:**
+- Auto-save with "Saved 10:42 AM" indicator
+- Bulk entry table (roll, name, marks, status, remark)
+- Inline validation: no marks > maxMarks, warn on blank required rows
+- `Save Draft` and `Submit Marks` separate actions
+
+---
+
+### Marks Verification
+
+Two-level check: Teacher submits → HOD/Exam Coordinator verifies → Locks.
+
+Verification dashboard shows per-subject status:
+```
+Mathematics 8-A     42/42 verified ✓
+Science 8-A         40/42 verified ⚠
+English 8-A         42/42 verified ✓
+```
+
+---
+
+### Result Computation Pipeline
+
+```
+Validate marks → Compute subject grades → Compute totals
+→ Compute percentage → Apply grade rules → Compute overall result
+→ Determine pass/fail → Generate provisional results
+```
+
+**Result states:** `PROVISIONAL → VERIFIED → APPROVED → PUBLISHED`
+
+Published result is immutable except through the correction/revision process.
+
+---
+
+### Student Result Structure
+
+Per student per exam:
+- Subject-wise: marks, grade, pass/fail
+- Totals: total marks, max marks, percentage, overall grade, overall grade point
+- Result status: PASS / FAIL
+- Optional: class rank / section rank (configurable policy — not all schools use ranking)
+
+---
+
+### Report Cards
+
+First-class feature. Results engine produces data; Report Cards transform it into a school-approved document.
+
+**Template components:**
+- School branding
+- Student details (name, class, roll, academic year)
+- Subject marks table
+- Attendance summary (sourced from Attendance module — not duplicated)
+- Grade summary
+- Class teacher remark
+- Subject teacher remark (optional)
+- Principal remark
+- Signatures
+
+**Output formats:** PDF, Print, Digital (parent portal access)
+
+---
+
+### Weighted Assessments (configurable)
+
+Example policy:
+```
+Unit Test    10%
+Mid Term     30%
+Project      10%
+Final Exam   50%
+```
+Weightage configurable per class/program/academic year.
+
+---
+
+### Exam Schedule
+
+Dedicated exam-specific schedule view (calendar + list), separate from regular timetable.
+
+Columns: Date, Time, Class, Section, Subject, Room, Invigilator(s)
+
+---
+
+### Invigilation (future — not V1)
+
+Assign staff to exam sessions. Validate:
+- Teacher not double-booked
+- Teacher not on leave
+- Teacher not teaching another exam simultaneously
+
+New models needed: `ExamSession`, `ExamInvigilator`
+
+---
+
+### Student Eligibility
+
+Source chain: Students → Enrollment → Class/Section → Exam → ExamSubject
+
+Don't manually type student lists. Eligibility driven by enrollment data.
+
+**Absence policies (configurable):**
+- Absent → excluded from result
+- Absent → zero
+- Absent → re-exam required
+- Absent → medical exemption
+
+---
+
+### Supplementary / Re-Examination (future)
+
+Store exam attempts separately — never overwrite original:
+```
+Exam Attempt 1
+Exam Attempt 2 (supplementary)
+```
+Result rules applied per attempt configuration.
+
+---
+
+### Homework & Continuous Assessment
+
+Treat as **Continuous Assessment**, separate from formal exam workflow.
+
+```
+Continuous Assessment
+├── Homework
+├── Assignments
+├── Projects
+└── Practical / Internal Assessment
+```
+
+Can eventually contribute a configured % to the overall academic score.
+
+**Submission tracking UI:**
+```
+Submitted   36
+Pending      5
+Late         1
+```
+
+**Grading:** marks + written feedback per student.
+
+---
+
+### Analytics (future phases)
+
+**Student level:** per-exam trend (74% → 78% → 84%), subject performance, improvement/decline detection.
+
+**Class level:** average per subject, weakest/strongest subject, pass rate.
+
+**Subject level:** performance across classes/years, grade distribution (A+/A/B+…/F counts).
+
+**Cross-exam comparison:** UT1 vs Mid-Term vs Final for same class/student.
+
+**Pass/fail analysis:** class-level and subject-level drill-down.
+
+> Start with transparent statistical rules. No predictive models in V1.
+
+---
+
+### Permissions Model
+
+| Role | Capabilities |
+|---|---|
+| Teacher | View assigned exams, enter/edit draft marks, submit marks |
+| HOD / Exam Coordinator | Review marks, verify, request corrections, view reports |
+| Principal | Approve, publish, view all |
+| Admin | Configure exams, manage all exams |
+| Student / Parent | View published results, download report card, view exam schedule |
+
+---
+
+### Audit Trail (required)
+
+Track every significant action:
+- Exam created / modified
+- Subject added / removed
+- Schedule changed
+- Marks entered / changed / submitted / verified
+- Result computed / approved / published
+- Result corrected (old value → new value, changed by, reason)
+- Report card generated
+
+---
+
+### Future Database Models to Add
+
+```
+ExamSession           — Specific sitting (class × subject × date × time × room)
+ExamInvigilator       — Staff assignment to exam session
+ExamAttempt           — Support supplementary/re-exams
+MarkCorrection        — Correction request + audit
+ResultApproval        — Approval workflow state
+ReportCard            — Generated report card record
+ReportCardTemplate    — School-branded template config
+AssessmentComponent   — Written / Practical / Project / Oral etc.
+AssessmentWeight      — % contribution of each component
+ExamPolicy            — Eligibility rules, absence policies, ranking toggle
+```
+
+> Do not add all at once. Add each model when the corresponding feature phase begins.
+
+---
+
+### Build Stages
+
+**Stage 1 — Wire existing backend to frontend**
+- Connect all existing APIs (Exam Types, Grading Systems, Exams, Exam Subjects, Marks, Results, Homework, Submissions)
+- Replace all mock data with real API calls
+- Build: create/edit exam form (multi-step), marks entry table, result view, homework UI
+
+**Stage 2 — Proper examination workflow**
+```
+Create Exam → Add Classes → Add Subjects → Configure Marks
+→ Schedule → Conduct → Marks Entry → Submit → Verify
+→ Compute → Approve → Publish
+```
+
+**Stage 3 — High-end capabilities**
+- Exam Sessions + Invigilation
+- Room allocation (reuse Timetable rooms)
+- Exam attendance tracking
+- Marks correction workflow
+- Result approval workflow
+- Report card templates + PDF generation
+- Exam attempts / supplementary exams
+- Continuous assessment aggregation
+
+**Stage 4 — Advanced analytics**
+- Student performance trends
+- Class performance analytics
+- Subject difficulty analysis
+- Grade distribution charts
+- At-risk student detection
+- Cross-exam comparison
 - `apps/web/src/app/(app)/teachers/page.tsx` ✅ (HR Setup tab added)
+
+---
+
+## Admissions Module — Full Product Plan
+
+> Status: Backend foundation complete. Frontend: static mock only — zero API integration. Build in progress.
+> Reviewed: 2026-09-07
+
+---
+
+### Philosophy
+
+Admissions owns the **pre-enrollment journey only** — from prospect to enrolled student. Once a person officially becomes a student, the Students module takes full ownership.
+
+```
+PROSPECT → ENQUIRY → APPLICATION → EVALUATION → DOCUMENT VERIFICATION
+→ INTERVIEW / ASSESSMENT → DECISION → OFFER → ACCEPTED → ENROLLMENT → STUDENT
+```
+
+**Module boundaries respected:**
+- Student master → owned by Students
+- Person/People records → owned by People
+- Class/Section capacity → owned by Academics (Admissions reads availability)
+- File storage → owned by Documents & Files (Admissions manages requirement + verification status)
+- Fee invoices / admission fee payments → owned by Finance
+- Notification delivery → owned by Notifications (Admissions fires events)
+- Regular academic calendar → owned by Academics (Admissions has its own admission calendar)
+
+---
+
+### The Most Important Architectural Boundary
+
+```
+ADMISSIONS
+"What is the applicant's journey?"
+      ↓
+  ENROLLED
+      ↓
+STUDENTS
+"What is the student's journey?"
+```
+
+- **Admissions** = Prospect → Applicant → Accepted
+- **Students** = Enrolled → Active → Promoted → Transferred → Graduated → Alumni
+
+The approval → student creation gap is the **missing bridge between two major bounded domains**.
+
+---
+
+### Final Navigation Structure
+
+```
+ADMISSIONS
+│
+├── Overview                        (Admissions Command Center)
+│
+├── Enquiries
+│   ├── All
+│   ├── New
+│   ├── Follow-ups
+│   └── Converted
+│
+├── Applications
+│   ├── Draft
+│   ├── Submitted
+│   ├── Under Review
+│   ├── Assessment / Interview
+│   ├── Decision Pending
+│   ├── Approved
+│   ├── Waitlisted
+│   └── Rejected
+│
+├── Evaluation
+│   ├── Assessments
+│   └── Interviews
+│
+├── Documents
+│   └── Verification
+│
+├── Offers & Decisions
+│
+├── Enrollment
+│
+├── Waitlist
+│
+├── Communication
+│
+├── Configuration
+│   ├── Application Forms
+│   ├── Sources
+│   ├── Workflow
+│   └── Requirements
+│
+└── Reports & Analytics
+```
+
+---
+
+### Current State vs Target
+
+| Area | Current | Target |
+|---|---|---|
+| Enquiries | Backend done, frontend static | Admission CRM with follow-up timeline |
+| Applications | Backend done, frontend static | Full workflow with reviewer workspace |
+| Documents | Backend done, no upload UI | Verification workflow + upload integration |
+| Application review | Basic state machine | Full reviewer workspace |
+| Interview | Missing entirely | Scheduling + evaluation + scoring |
+| Assessment | Missing entirely | Entrance test / aptitude scores |
+| Follow-ups | UI concept only, no actions | Scheduled follow-ups with counsellor assignment |
+| Waitlist | Missing entirely | Priority queue with seat promotion |
+| Offer management | Missing entirely | Offer letter + expiry + accept/decline |
+| Enrollment | Missing entirely | Critical — approved → Student record |
+| Family / siblings | Missing entirely | Household grouping + sibling detection |
+| Capacity integration | None | Reads available seats from Academics |
+| Communication | Missing entirely | Event-driven via Notifications module |
+| Analytics | Missing entirely | Funnel, conversion, source effectiveness |
+| API pagination | Missing | Cursor-based pagination on all list endpoints |
+| Frontend integration | Zero | Full React Query hooks + API client |
+
+---
+
+### Application State Machine (Fixed)
+
+Current backend (broken mismatch with frontend):
+```
+DRAFT → SUBMITTED → UNDER_REVIEW → APPROVED / REJECTED
+```
+
+Target state machine:
+```
+DRAFT
+  ↓
+SUBMITTED
+  ↓
+UNDER_REVIEW
+  ↓
+DOCUMENT_VERIFICATION
+  ↓
+ASSESSMENT_PENDING         (optional — configurable per school/class)
+  ↓
+INTERVIEW_PENDING          (optional — configurable per school/class)
+  ↓
+DECISION_PENDING
+  ↓
+APPROVED / WAITLISTED / REJECTED
+  ↓
+OFFERED
+  ↓
+ACCEPTED
+  ↓
+ENROLLMENT_PENDING
+  ↓
+ENROLLED
+```
+
+Additional terminal states: `WITHDRAWN`, `EXPIRED`, `DROPPED`
+
+> Workflow stages should be configurable — not every school runs assessments or interviews.
+
+---
+
+### Enquiry Status (Fixed)
+
+Current backend uses: `NEW, CONTACTED, VISITED, APPLIED, CONVERTED, DROPPED`
+Current frontend uses: `NEW, CONTACTED, SCHEDULED, ADMITTED, REJECTED, WITHDRAWN` (mismatch)
+
+Target (aligned):
+```
+NEW → CONTACTED → INTERESTED → VISIT_SCHEDULED → VISITED
+→ APPLICATION_STARTED → APPLIED → CONVERTED
+```
+Dead-ends: `DROPPED`, `NOT_INTERESTED`
+
+---
+
+### Enquiry Source (Fixed)
+
+Backend and frontend currently use different values. Align to:
+`WALK_IN, PHONE, WEBSITE, REFERRAL, SOCIAL_MEDIA, ADVERTISEMENT, EDUCATION_FAIR, EXISTING_PARENT, SCHOOL_EVENT, OTHER`
+
+Make the source master configurable in Configuration.
+
+---
+
+### Data Models — Current (Keep)
+
+```
+AdmissionEnquiry        — Lead/prospect record
+AdmissionApplication    — Formal application record
+AdmissionDocument       — Per-document verification record (links to storage.files)
+```
+
+---
+
+### Data Models — To Add
+
+```
+AdmissionFollowUp       — Scheduled follow-up against an enquiry (type, date, outcome)
+AdmissionInterview      — Interview session: interviewer, date, time, mode, status, rating
+AdmissionAssessment     — Test/aptitude result: type, subject, max score, actual score
+AdmissionDecision       — Formal decision record: decision, reason, approver, date
+AdmissionOffer          — Offer letter record: offered class, expiry, conditions, status
+AdmissionWaitlist       — Waitlist position per class/academic year, priority score
+AdmissionEnrollment     — Enrollment transaction: links application → Person → Student
+AdmissionActivity       — Audit log: every status change, note, action (actor + timestamp)
+AdmissionCommunication  — Record of comms sent: type, template, sent at, recipient
+AdmissionForm           — Configurable form definition per class/year
+AdmissionQuestion       — Custom question on a form
+AdmissionAnswer         — Applicant's answer to a custom question
+AdmissionSeatConfig     — Seat allocation per academic year / class (reads Academics capacity)
+```
+
+> Add each model when the corresponding feature phase begins. Do not add all at once.
+
+---
+
+### Enrollment Flow (Critical Missing Workflow)
+
+```
+AdmissionApplication (APPROVED)
+        ↓
+Offer sent → Offer ACCEPTED
+        ↓
+Enrollment initiated
+        ↓
+Identity check: existing Person record?
+  YES → link existing Person
+  NO  → create new Person
+        ↓
+Create Student record
+        ↓
+Create StudentEnrollment (academicYearId, classId, sectionId)
+        ↓
+Student status → ACTIVE
+        ↓
+Fire event → Notifications, Finance (registration fee due)
+```
+
+This must be a database transaction. Partial enrollment must not leave orphaned records.
+
+---
+
+### Approval → Student Boundary (studentPersonId fix)
+
+Current: `studentPersonId` is stored on `AdmissionApplication` but never used in any follow-through.
+
+Fix: Use it as the identity anchor.
+
+```
+Application
+    │
+    ▼
+Person (studentPersonId links here OR new person is created)
+    │
+    ├── Student
+    └── Guardian relationships
+```
+
+Identity matching strategy on enrollment:
+- Does a Person exist with same DOB + name + phone? → Link (sibling / re-applicant)
+- Otherwise → Create new Person
+
+---
+
+### Sibling & Family Detection
+
+```
+Household / Family
+    │
+    ├── Parent/Guardian
+    ├── Student A (enrolled)
+    ├── Student B (enrolled)
+    └── Applicant C (in admissions pipeline)
+```
+
+Benefits:
+- Pre-fill parent data from existing family record
+- Flag sibling discount eligibility (consumed by Finance)
+- Admissions priority for siblings (configurable policy)
+- Unified family communication
+
+---
+
+### Capacity & Seat Management
+
+Admissions does NOT maintain its own section capacity. It reads from Academics.
+
+```
+Class 8 — Section A
+Capacity (Academics): 40
+Admitted so far (Admissions): 38
+Available: 2
+```
+
+`AdmissionSeatConfig` tracks admission allocations per class/year, not the physical section capacity.
+
+On approval: check available seats → if zero, auto-waitlist or alert.
+
+---
+
+### Document Verification Workflow
+
+```
+AdmissionDocument
+├── documentType (e.g. BIRTH_CERTIFICATE)
+├── fileId → links to storage.files (Documents module owns the file)
+├── verificationStatus: PENDING | VERIFIED | REJECTED | RE_UPLOAD_REQUESTED
+├── verifiedBy, verifiedAt
+├── rejectionReason
+├── remarks
+└── version (track re-uploads)
+```
+
+Document checklist per application:
+| Document | Required | Status |
+|---|---|---|
+| Birth Certificate | Yes | VERIFIED |
+| Transfer Certificate | Yes | PENDING |
+| Address Proof | Yes | RE_UPLOAD_REQUESTED |
+| Medical Certificate | No | — |
+
+No file upload infrastructure in Admissions — all uploads go through the existing Documents & Files module which returns a `fileId`.
+
+---
+
+### Interview Management
+
+```
+AdmissionInterview
+├── applicationId
+├── interviewers (array of user IDs)
+├── scheduledAt (date + time)
+├── location / meetingLink
+├── mode: IN_PERSON | VIDEO | PHONE
+├── status: SCHEDULED | COMPLETED | RESCHEDULED | CANCELLED | NO_SHOW
+├── evaluation criteria (configurable scores)
+├── overallRating
+├── recommendation: RECOMMEND | HOLD | REJECT
+└── notes (internal)
+```
+
+Evaluation criteria are configurable (e.g. Communication, Confidence, Academic Readiness, Behaviour).
+
+---
+
+### Assessment Management
+
+```
+AdmissionAssessment
+├── applicationId
+├── assessmentType: WRITTEN | APTITUDE | SUBJECT_TEST | ONLINE
+├── subjects[] → { subject, maxScore, actualScore }
+├── conductedAt
+├── evaluatedBy
+└── remarks
+```
+
+Admissions assessment is separate from Examinations. Examinations handles enrolled students; Assessment here is pre-enrollment evaluation.
+
+---
+
+### Waitlist
+
+```
+AdmissionWaitlist
+├── applicationId
+├── academicYearId
+├── classId
+├── campusId
+├── priority (rank)
+├── priorityScore (computed from assessment + interview + policy)
+├── status: WAITING | PROMOTED | EXPIRED | WITHDRAWN
+└── promotedAt
+```
+
+When a seat opens: promote next applicant by priority → move application from WAITLISTED → OFFERED.
+
+---
+
+### Communication Events (fires into Notifications module)
+
+Admissions fires these events; Notifications owns delivery (email/WhatsApp/SMS/push):
+
+| Trigger | Event |
+|---|---|
+| Application submitted | `admissions.application.submitted` |
+| Document missing/rejected | `admissions.document.action_required` |
+| Interview scheduled | `admissions.interview.scheduled` |
+| Interview reminder (24h) | `admissions.interview.reminder` |
+| Application approved | `admissions.application.approved` |
+| Application rejected | `admissions.application.rejected` |
+| Waitlisted | `admissions.application.waitlisted` |
+| Offer issued | `admissions.offer.issued` |
+| Offer expiring (48h) | `admissions.offer.expiring` |
+| Enrolled | `admissions.enrollment.complete` |
+
+---
+
+### Application Detail Page Structure
+
+```
+← Applications
+
+Rahul Sharma
+Application #ADM-2026-00241 | Class 8 | AY 2026–27
+
+STATUS: UNDER REVIEW
+
+Tabs:
+[Overview] [Applicant] [Guardians] [Previous Education]
+[Documents] [Assessment] [Interview] [Decision] [Communication] [Activity]
+
+Right panel — Application Progress:
+✓ Submitted
+✓ Basic Review
+✓ Documents
+⚠ Interview (pending)
+○ Decision
+○ Enrollment
+
+Actions: [Request Info] [Approve] [Waitlist] [Reject]
+```
+
+---
+
+### Reports & Analytics
+
+**Operational:**
+- Pending applications by status
+- Missing documents report
+- Interviews today / this week
+- Applications nearing SLA deadline
+- Counsellor workload distribution
+
+**Management:**
+- Admissions funnel (stage-by-stage conversion)
+- Enquiries by source + source conversion rate
+- Class demand (applications vs available seats)
+- Campus demand
+- Average time per stage
+- Application aging (flagged > N days in a stage)
+
+**Enrollment:**
+- Approved vs enrolled
+- Waitlist status per class
+- Enrollment by class / campus / academic year
+
+---
+
+### Build Phases
+
+**Phase 1 — Fix Foundation & Wire Frontend**
+1. Align backend/frontend enums (enquiry status, application status, source)
+2. Add `use-admissions.ts` React Query hooks
+3. Add admissions methods to `api-client.ts`
+4. Add pagination to `findEnquiries` / `findApplications`
+5. Replace all static mock data with real API calls
+6. Wire "+ Add Enquiry" button → drawer/modal
+7. Wire all table actions (View, Follow Up, Review, Accept)
+8. Build enquiry detail page (`/admissions/enquiries/[id]`)
+9. Build application detail page (`/admissions/applications/[id]`)
+10. Live sidebar badge from real pending count
+11. Add seed data for enquiries, applications, documents
+
+**Phase 2 — Complete Application Workflow**
+- Multi-step application creation form
+- Application reviewer workspace (tabbed detail page)
+- Document checklist per application
+- Document upload integration (via existing Documents module)
+- Document verification actions (verify / reject / request re-upload)
+- Application status transitions (submit → review → document check → decision)
+- Internal reviewer notes
+- Application completeness score
+
+**Phase 3 — Enrollment (Highest Business Priority)**
+- Enrollment transaction: Application (APPROVED) → Person → Student → StudentEnrollment
+- Identity matching (existing person check)
+- Fix `studentPersonId` as identity anchor
+- Seat availability check from Academics before approval
+- Offer management (issue offer, set expiry, accept/decline)
+- Post-enrollment events (Notifications, Finance)
+
+**Phase 4 — Admission Operations**
+- Follow-up management (schedule, track, complete)
+- Interview scheduling + evaluation
+- Assessment recording
+- Waitlist (priority queue, seat promotion)
+- Application withdrawal workflow
+- Application revision (request changes → re-submit)
+- Sibling / family detection
+- Admission counsellor workload view
+
+**Phase 5 — Analytics & Reporting**
+- Admissions funnel visualisation
+- Source effectiveness (enquiry → enrollment)
+- Conversion rates by stage
+- Class demand report
+- Application aging / SLA alerts
+- Counsellor performance
+- Processing time metrics
+- Enrollment forecasting
+
+**Phase 6 — Configurability**
+- Configurable application forms per class/year
+- Configurable custom questions + answers
+- Configurable required documents per class
+- Configurable workflow stages (turn interview/assessment on/off)
+- Configurable interview evaluation criteria
+- Configurable admission categories
+- Configurable source master
+- Campus-specific settings
+- Admission policies (sibling priority, seat reservation %)
+
+---
+
+### KPI Dashboard Targets
+
+```
+Enquiries    Applications    Under Review    Approved
+1,842            963              248           412
+
+Rejected    Waitlisted    Enrolled    Conversion Rate
+  126           84           358          19.4%
+```
+
+Funnel view (clickable to filter application list):
+```
+ENQUIRY        1,842
+    ↓ 52%
+APPLICATION      963
+    ↓ 85%
+SUBMITTED        821
+    ↓ 30%
+UNDER REVIEW     248
+    ↓ 79%
+INTERVIEW        196
+    ↓ 68%
+APPROVED         134
+    ↓ 91%
+ENROLLED         122
+```

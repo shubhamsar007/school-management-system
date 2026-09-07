@@ -8,6 +8,7 @@ import {
   RefreshCw, Megaphone, FolderOpen, Settings, Shield, MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAdmissionStats } from '@/lib/hooks/use-admissions';
 
 interface NavItem {
   label: string;
@@ -48,7 +49,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     group: 'ADMISSIONS',
     items: [
-      { label: 'Admissions Pipeline', href: '/admissions', icon: UserPlus, badge: 12 },
+      { label: 'Admissions Pipeline', href: '/admissions', icon: UserPlus },
     ],
   },
   {
@@ -95,6 +96,8 @@ interface SidebarProps {
 
 function Sidebar({ collapsed, onToggle, currentPath }: SidebarProps) {
   const sidebarW = collapsed ? 52 : 224;
+  const { data: admissionStats } = useAdmissionStats();
+  const admissionPending = admissionStats?.applications.pendingReview ?? 0;
 
   return (
     /* Outer container: floats the pill inside the oat canvas */
@@ -193,6 +196,9 @@ function Sidebar({ collapsed, onToggle, currentPath }: SidebarProps) {
                   currentPath === item.href ||
                   currentPath.startsWith(item.href + '/');
                 const Icon = item.icon;
+                // Use live admission pending count for the admissions nav item
+                const badgeCount =
+                  item.href === '/admissions' ? admissionPending : item.badge;
                 return (
                   <Link
                     key={item.href}
@@ -227,7 +233,7 @@ function Sidebar({ collapsed, onToggle, currentPath }: SidebarProps) {
                     {!collapsed && (
                       <>
                         <span className="flex-1 truncate">{item.label}</span>
-                        {item.badge != null && (
+                        {badgeCount != null && badgeCount > 0 && (
                           <span
                             className="flex-shrink-0 flex items-center justify-center"
                             style={{
@@ -241,12 +247,12 @@ function Sidebar({ collapsed, onToggle, currentPath }: SidebarProps) {
                               fontWeight: 700,
                             }}
                           >
-                            {item.badge}
+                            {badgeCount}
                           </span>
                         )}
                       </>
                     )}
-                    {collapsed && item.badge != null && (
+                    {collapsed && badgeCount != null && badgeCount > 0 && (
                       <span
                         className="absolute"
                         style={{

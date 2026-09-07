@@ -28,6 +28,14 @@ import { AddDocumentDto, VerifyDocumentDto } from './dto/add-document.dto';
 export class AdmissionsController {
   constructor(private readonly admissionsService: AdmissionsService) {}
 
+  // ─── Stats ────────────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Get admissions stats (enquiry + application counts by status)' })
+  @Get('stats')
+  getStats(@CurrentUser() user: CurrentUserPayload) {
+    return this.admissionsService.getStats(user.organizationId);
+  }
+
   // ─── Enquiries ────────────────────────────────────────────────
 
   @ApiOperation({ summary: 'Create an admission enquiry' })
@@ -39,21 +47,30 @@ export class AdmissionsController {
     return this.admissionsService.createEnquiry(user.organizationId, dto);
   }
 
-  @ApiOperation({ summary: 'List enquiries' })
+  @ApiOperation({ summary: 'List enquiries (paginated)' })
   @ApiQuery({ name: 'status', required: false, description: 'NEW | CONTACTED | VISITED | APPLIED | CONVERTED | DROPPED' })
   @ApiQuery({ name: 'assignedTo', required: false })
   @ApiQuery({ name: 'campusId', required: false })
+  @ApiQuery({ name: 'search', required: false, description: 'Search by student name, parent name or phone' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   @Get('enquiries')
   findEnquiries(
     @CurrentUser() user: CurrentUserPayload,
     @Query('status') status?: string,
     @Query('assignedTo') assignedTo?: string,
     @Query('campusId') campusId?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     return this.admissionsService.findEnquiries(user.organizationId, {
       ...(status ? { status } : {}),
       ...(assignedTo ? { assignedTo } : {}),
       ...(campusId ? { campusId } : {}),
+      ...(search ? { search } : {}),
+      ...(page ? { page: parseInt(page, 10) } : {}),
+      ...(limit ? { limit: parseInt(limit, 10) } : {}),
     });
   }
 
@@ -87,21 +104,30 @@ export class AdmissionsController {
     return this.admissionsService.createApplication(user.organizationId, dto);
   }
 
-  @ApiOperation({ summary: 'List applications' })
-  @ApiQuery({ name: 'status', required: false, description: 'DRAFT | SUBMITTED | UNDER_REVIEW | APPROVED | REJECTED | WAITLISTED' })
+  @ApiOperation({ summary: 'List applications (paginated)' })
+  @ApiQuery({ name: 'status', required: false, description: 'DRAFT | SUBMITTED | UNDER_REVIEW | APPROVED | REJECTED' })
   @ApiQuery({ name: 'academicYearId', required: false })
   @ApiQuery({ name: 'classId', required: false })
+  @ApiQuery({ name: 'search', required: false, description: 'Search by application number' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   @Get('applications')
   findApplications(
     @CurrentUser() user: CurrentUserPayload,
     @Query('status') status?: string,
     @Query('academicYearId') academicYearId?: string,
     @Query('classId') classId?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     return this.admissionsService.findApplications(user.organizationId, {
       ...(status ? { status } : {}),
       ...(academicYearId ? { academicYearId } : {}),
       ...(classId ? { classId } : {}),
+      ...(search ? { search } : {}),
+      ...(page ? { page: parseInt(page, 10) } : {}),
+      ...(limit ? { limit: parseInt(limit, 10) } : {}),
     });
   }
 
