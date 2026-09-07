@@ -1490,6 +1490,36 @@ model AdmissionInterview {
   @@schema("admissions")
 }
 
+model AdmissionSeatConfig {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  classId        String   @map("class_id") @db.Uuid
+  academicYearId String   @map("academic_year_id") @db.Uuid
+  totalSeats     Int      @map("total_seats")
+  reservedSeats  Int      @default(0) @map("reserved_seats")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([organizationId, classId, academicYearId])
+  @@map("admission_seat_configs")
+  @@schema("admissions")
+}
+
+model AdmissionDocumentType {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(100)
+  description    String?  @db.Text
+  isRequired     Boolean  @default(false) @map("is_required")
+  isActive       Boolean  @default(true) @map("is_active")
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("admission_document_types")
+  @@schema("admissions")
+}
+
 // ─────────────────────────────────────────────
 // SCHEMA: finance
 // ─────────────────────────────────────────────
