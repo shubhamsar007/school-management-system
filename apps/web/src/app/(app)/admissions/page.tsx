@@ -13,6 +13,7 @@ import {
   type Enquiry, type Application,
 } from '@/lib/hooks/use-admissions';
 import { AddEnquiryModal } from './_components/add-enquiry-modal';
+import { NewApplicationModal } from './_components/new-application-modal';
 
 // ─── Enum maps ────────────────────────────────────────────────────────────────
 
@@ -108,6 +109,7 @@ export default function AdmissionsPage() {
   const [appStatusFilter, setAppStatusFilter] = React.useState('all');
   const [page, setPage] = React.useState(1);
   const [showAddEnquiry, setShowAddEnquiry] = React.useState(false);
+  const [showNewApplication, setShowNewApplication] = React.useState(false);
   const [selected, setSelected] = React.useState<Enquiry[]>([]);
 
   // Debounce search
@@ -376,6 +378,9 @@ export default function AdmissionsPage() {
                 }},
               ]}
             />
+            <Button variant="secondary" onClick={() => setShowNewApplication(true)}>
+              + New Application
+            </Button>
             <Button variant="primary" onClick={() => setShowAddEnquiry(true)}>
               + Add Enquiry
             </Button>
@@ -467,7 +472,8 @@ export default function AdmissionsPage() {
         ) : applications.length === 0 ? (
           <EmptyState
             title="No applications found"
-            description={debouncedSearch || appStatusFilter !== 'all' ? 'Try adjusting your filters.' : 'Applications will appear here once enquiries are converted.'}
+            description={debouncedSearch || appStatusFilter !== 'all' ? 'Try adjusting your filters.' : 'Create your first application to get started.'}
+            action={(!debouncedSearch && appStatusFilter === 'all') ? <Button variant="primary" onClick={() => setShowNewApplication(true)}>+ New Application</Button> : undefined}
           />
         ) : (
           <DataTable columns={appColumns} data={applications} />
@@ -488,6 +494,7 @@ export default function AdmissionsPage() {
       </div>
 
       <AddEnquiryModal open={showAddEnquiry} onClose={() => setShowAddEnquiry(false)} />
+      <NewApplicationModal open={showNewApplication} onClose={() => setShowNewApplication(false)} />
     </div>
   );
 }

@@ -368,3 +368,57 @@ export function useRemoveDocument() {
     },
   });
 }
+
+export interface DocumentActionPayload {
+  remarks?: string;
+}
+
+export function useVerifyDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      applicationId,
+      docId,
+      data,
+    }: {
+      applicationId: string;
+      docId: string;
+      data: DocumentActionPayload;
+    }) =>
+      apiClient.post<ApplicationDocument>(
+        `/admissions/applications/${applicationId}/documents/${docId}/verify`,
+        data,
+      ),
+    onSuccess: (_, { applicationId }) => {
+      void qc.invalidateQueries({
+        queryKey: ['admissions', 'applications', applicationId, 'documents'],
+      });
+      void qc.invalidateQueries({ queryKey: ['admissions', 'applications', applicationId] });
+    },
+  });
+}
+
+export function useRejectDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      applicationId,
+      docId,
+      data,
+    }: {
+      applicationId: string;
+      docId: string;
+      data: DocumentActionPayload;
+    }) =>
+      apiClient.post<ApplicationDocument>(
+        `/admissions/applications/${applicationId}/documents/${docId}/reject`,
+        data,
+      ),
+    onSuccess: (_, { applicationId }) => {
+      void qc.invalidateQueries({
+        queryKey: ['admissions', 'applications', applicationId, 'documents'],
+      });
+      void qc.invalidateQueries({ queryKey: ['admissions', 'applications', applicationId] });
+    },
+  });
+}
