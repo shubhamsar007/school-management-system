@@ -20,6 +20,7 @@ import { UpdateEnquiryDto } from './dto/update-enquiry.dto';
 import { CreateApplicationDto } from './dto/create-application.dto';
 import { RejectApplicationDto } from './dto/reject-application.dto';
 import { AddDocumentDto, VerifyDocumentDto } from './dto/add-document.dto';
+import { EnrollApplicationDto } from './dto/enroll-application.dto';
 
 @ApiTags('admissions')
 @ApiBearerAuth()
@@ -235,5 +236,16 @@ export class AdmissionsController {
     @Param('docId') docId: string,
   ) {
     return this.admissionsService.removeDocument(user.organizationId, id, docId);
+  }
+
+  @ApiOperation({ summary: 'Enroll an approved application — creates Person + Student + StudentEnrollment' })
+  @Post('applications/:id/enroll')
+  @HttpCode(HttpStatus.OK)
+  enrollApplication(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: EnrollApplicationDto,
+  ) {
+    return this.admissionsService.enrollApplication(user.organizationId, id, dto);
   }
 }

@@ -369,8 +369,38 @@ export function useRemoveDocument() {
   });
 }
 
+export interface EnrollApplicationPayload {
+  sectionId: string;
+  admissionNumber: string;
+  firstName: string;
+  lastName: string;
+  rollNumber?: string;
+  joiningDate?: string;
+  enrollmentDate?: string;
+}
+
+export interface EnrollApplicationResult {
+  application: Application;
+  person: { id: string; firstName: string; lastName: string };
+  student: { id: string; admissionNumber: string };
+  enrollment: { id: string };
+}
+
 export interface DocumentActionPayload {
   remarks?: string;
+}
+
+export function useEnrollApplication() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: EnrollApplicationPayload }) =>
+      apiClient.post<EnrollApplicationResult>(`/admissions/applications/${id}/enroll`, data),
+    onSuccess: (_, { id }) => {
+      void qc.invalidateQueries({ queryKey: ['admissions', 'applications'] });
+      void qc.invalidateQueries({ queryKey: ['admissions', 'applications', id] });
+      void qc.invalidateQueries({ queryKey: ['admissions', 'stats'] });
+    },
+  });
 }
 
 export function useVerifyDocument() {

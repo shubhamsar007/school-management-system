@@ -6,28 +6,30 @@ import {
   ArrowLeft, FileText, CheckCircle, XCircle, Clock,
   AlertCircle, ShieldCheck, ShieldX, Trash2,
 } from 'lucide-react';
-import { Badge, Button, Spinner, Textarea, FormField, Modal } from '@/components/ui';
+import { Badge, Button, Spinner, Textarea, FormField, Modal, Input, Select } from '@/components/ui';
 import {
   useApplication, useApplicationDocuments,
   useReviewApplication, useApproveApplication,
   useRejectApplication, useSubmitApplication,
   useVerifyDocument, useRejectDocument, useRemoveDocument,
+  useEnrollApplication,
   type Application, type ApplicationDocument,
 } from '@/lib/hooks/use-admissions';
+import { useSections } from '@/lib/hooks/use-academics';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATUS_VARIANT: Record<string, 'active' | 'pending' | 'default' | 'graduated' | 'left'> = {
   DRAFT: 'default', SUBMITTED: 'pending', UNDER_REVIEW: 'active',
-  APPROVED: 'graduated', REJECTED: 'left',
+  APPROVED: 'graduated', ENROLLED: 'graduated', REJECTED: 'left',
 };
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: 'Draft', SUBMITTED: 'Submitted', UNDER_REVIEW: 'Under Review',
-  APPROVED: 'Approved', REJECTED: 'Rejected',
+  APPROVED: 'Approved', ENROLLED: 'Enrolled', REJECTED: 'Rejected',
 };
 
-const WORKFLOW_STEPS = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED'];
+const WORKFLOW_STEPS = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'ENROLLED'];
 
 // ─── Completeness ─────────────────────────────────────────────────────────────
 
@@ -274,10 +276,21 @@ export default function ApplicationDetailPage() {
   const reviewApp = useReviewApplication();
   const approveApp = useApproveApplication();
   const rejectApp = useRejectApplication();
+  const enrollApp = useEnrollApplication();
+
+  const { data: sections = [] } = useSections(application?.classId ?? null);
 
   const [activeTab, setActiveTab] = React.useState<TabId>('overview');
   const [showRejectDialog, setShowRejectDialog] = React.useState(false);
   const [rejectionReason, setRejectionReason] = React.useState('');
+  const [showEnrollModal, setShowEnrollModal] = React.useState(false);
+  const [enrollFirstName, setEnrollFirstName] = React.useState('');
+  const [enrollLastName, setEnrollLastName] = React.useState('');
+  const [enrollAdmissionNumber, setEnrollAdmissionNumber] = React.useState('');
+  const [enrollSectionId, setEnrollSectionId] = React.useState('');
+  const [enrollRollNumber, setEnrollRollNumber] = React.useState('');
+  const [enrollJoiningDate, setEnrollJoiningDate] = React.useState('');
+  const [enrollErrors, setEnrollErrors] = React.useState<Partial<Record<string, string>>>({});
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-64"><Spinner /></div>;
@@ -308,6 +321,43 @@ export default function ApplicationDetailPage() {
     await rejectApp.mutateAsync({ id: application!.id, data: { rejectionReason: rejectionReason.trim() || undefined } });
     setShowRejectDialog(false);
     setRejectionReason('');
+  }
+
+  function openEnrollModal() {
+    // Pre-fill name from enquiry student name
+    const name = application!.enquiry?.studentName ?? '';
+    const parts = name.trim().split(/\s+/);
+    setEnrollFirstName(parts[0] ?? '');
+    setEnrollLastName(parts.slice(1).join(' ') || parts[0] ?? '');
+    setEnrollAdmissionNumber('');
+    setEnrollSectionId('');
+    setEnrollRollNumber('');
+    setEnrollJoiningDate('');
+    setEnrollErrors({});
+    setShowEnrollModal(true);
+  }
+
+  async function handleEnroll() {
+    const errs: Partial<Record<string, string>> = {};
+    if (!enrollFirstName.trim()) errs.firstName = 'First name is required';
+    if (!enrollLastName.trim()) errs.lastName = 'Last name is required';
+    if (!enrollAdmissionNumber.trim()) errs.admissionNumber = 'Admission number is required';
+    if (!enrollSectionId) errs.sectionId = 'Section is required';
+    setEnrollErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+
+    await enrollApp.mutateAsync({
+      id: application!.id,
+      data: {
+        sectionId: enrollSectionId,
+        admissionNumber: enrollAdmissionNumber.trim(),
+        firstName: enrollFirstName.trim(),
+        lastName: enrollLastName.trim(),
+        rollNumber: enrollRollNumber.trim() || undefined,
+        joiningDate: enrollJoiningDate || undefined,
+      },
+    });
+    setShowEnrollModal(false);
   }
 
   return (
@@ -360,6 +410,15 @@ export default function ApplicationDetailPage() {
                 Reject
               </Button>
             </>
+          )}
+          {application.status === 'APPROVED' && (
+            <Button
+              variant="primary"
+              onClick={openEnrollModal}
+              style={{ background: '#2b5fa8', borderColor: '#2b5fa8' }}
+            >
+              Enroll Student
+            </Button>
           )}
         </div>
       </div>
@@ -515,6 +574,18 @@ export default function ApplicationDetailPage() {
             </div>
           )}
 
+          {/* Enrolled student card */}
+          {application.status === 'ENROLLED' && application.studentPersonId && (
+            <div className="rounded-xl border border-[#c3e6cb] bg-[#edf7ef] p-5 shadow-sm">
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#146b41', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                Student Enrolled
+              </div>
+              <div style={{ fontSize: 13, color: '#14181c', lineHeight: 1.5 }}>
+                This application has been successfully enrolled. The student record has been created.
+              </div>
+            </div>
+          )}
+
           {/* Timeline */}
           <div className="rounded-xl border border-[#e6e8eb] bg-white p-5 shadow-sm">
             <div style={{ fontSize: 12, fontWeight: 700, color: '#8a929b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
@@ -543,6 +614,69 @@ export default function ApplicationDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Enroll modal */}
+      <Modal
+        open={showEnrollModal}
+        onClose={() => setShowEnrollModal(false)}
+        title="Enroll Student"
+        description={`Convert this approved application into an enrolled student record.`}
+        size="md"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowEnrollModal(false)} disabled={enrollApp.isPending}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleEnroll} disabled={enrollApp.isPending}>
+              {enrollApp.isPending ? 'Enrolling…' : 'Confirm Enrollment'}
+            </Button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#8a929b', textTransform: 'uppercase', paddingBottom: 4, borderBottom: '1px solid #f0f2f4' }}>
+            Student Identity
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <FormField label="First Name" required error={enrollErrors.firstName}>
+              <Input value={enrollFirstName} onChange={(e) => setEnrollFirstName(e.target.value)} placeholder="First name" />
+            </FormField>
+            <FormField label="Last Name" required error={enrollErrors.lastName}>
+              <Input value={enrollLastName} onChange={(e) => setEnrollLastName(e.target.value)} placeholder="Last name" />
+            </FormField>
+          </div>
+          <FormField label="Admission Number" required error={enrollErrors.admissionNumber}>
+            <Input value={enrollAdmissionNumber} onChange={(e) => setEnrollAdmissionNumber(e.target.value)} placeholder="e.g. 2024-001" />
+          </FormField>
+
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#8a929b', textTransform: 'uppercase', paddingBottom: 4, borderBottom: '1px solid #f0f2f4', marginTop: 4 }}>
+            Enrollment Details
+          </div>
+          <FormField label="Section" required error={enrollErrors.sectionId}>
+            <Select
+              value={enrollSectionId}
+              onChange={(e) => setEnrollSectionId(e.target.value)}
+              options={[
+                { label: 'Select section', value: '' },
+                ...sections.filter((s) => s.status === 'ACTIVE').map((s) => ({ label: s.name, value: s.id })),
+              ]}
+            />
+          </FormField>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <FormField label="Roll Number (optional)">
+              <Input value={enrollRollNumber} onChange={(e) => setEnrollRollNumber(e.target.value)} placeholder="e.g. 12" />
+            </FormField>
+            <FormField label="Joining Date (optional)">
+              <Input type="date" value={enrollJoiningDate} onChange={(e) => setEnrollJoiningDate(e.target.value)} />
+            </FormField>
+          </div>
+          {enrollApp.isError && (
+            <div style={{ fontSize: 13, color: '#b3261e', background: '#fef7f7', border: '1px solid #f5c6c6', borderRadius: 8, padding: '10px 14px' }}>
+              Enrollment failed. The admission number may already be in use.
+            </div>
+          )}
+        </div>
+      </Modal>
 
       {/* Reject dialog */}
       <Modal

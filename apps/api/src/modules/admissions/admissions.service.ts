@@ -10,6 +10,7 @@ import { UpdateEnquiryDto } from './dto/update-enquiry.dto';
 import { CreateApplicationDto } from './dto/create-application.dto';
 import { RejectApplicationDto } from './dto/reject-application.dto';
 import { AddDocumentDto, VerifyDocumentDto } from './dto/add-document.dto';
+import { EnrollApplicationDto } from './dto/enroll-application.dto';
 
 @Injectable()
 export class AdmissionsService {
@@ -528,5 +529,98 @@ export class AdmissionsService {
     if (!doc) throw new NotFoundException('Document not found');
 
     await this.prisma.admissionDocument.delete({ where: { id: documentId } });
+  }
+
+  // ─── Enrollment ───────────────────────────────────────────────
+
+  async enrollApplication(
+    organizationId: string,
+    applicationId: string,
+    dto: EnrollApplicationDto,
+  ) {
+    const application = await this.findApplication(organizationId, applicationId);
+
+    if (application.status !== 'APPROVED') {
+      throw new BadRequestException('Only APPROVED applications can be enrolled');
+    }
+
+    if (application.studentPersonId) {
+      throw new ConflictException('Application has already been enrolled');
+    }
+
+    // Validate admission number uniqueness within org
+    const existingStudent = await this.prisma.student.findFirst({
+      where: { organizationId, admissionNumber: dto.admissionNumber },
+    });
+    if (existingStudent) {
+      throw new ConflictException(
+        `Admission number '${dto.admissionNumber}' is already in use`,
+      );
+    }
+
+    // Validate section and get campusId
+    const section = await this.prisma.section.findFirst({
+      where: { id: dto.sectionId, academicClassId: application.classId },
+    });
+    if (!section) {
+      throw new NotFoundException(
+        'Section not found or does not belong to the application class',
+      );
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const joiningDate = dto.joiningDate ? new Date(dto.joiningDate) : today;
+    const enrollmentDate = dto.enrollmentDate ? new Date(dto.enrollmentDate) : today;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      // 1. Create Person
+      const person = await tx.person.create({
+        data: {
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          phone: application.enquiry?.phone ?? null,
+          email: application.enquiry?.email ?? null,
+        },
+      });
+
+      // 2. Create Student
+      const student = await tx.student.create({
+        data: {
+          organizationId,
+          personId: person.id,
+          admissionNumber: dto.admissionNumber,
+          admissionDate: joiningDate,
+          joiningDate,
+          studentStatus: 'ACTIVE',
+          currentCampusId: section.campusId,
+          admissionSource: 'ADMISSION_PROCESS',
+        },
+      });
+
+      // 3. Create StudentEnrollment
+      const enrollment = await tx.studentEnrollment.create({
+        data: {
+          studentId: student.id,
+          academicYearId: application.academicYearId,
+          campusId: section.campusId,
+          classId: application.classId,
+          sectionId: dto.sectionId,
+          rollNumber: dto.rollNumber ?? null,
+          enrollmentDate,
+          status: 'ACTIVE',
+        },
+      });
+
+      // 4. Update Application
+      const updated = await tx.admissionApplication.update({
+        where: { id: applicationId },
+        data: { status: 'ENROLLED', studentPersonId: person.id },
+      });
+
+      return { application: updated, person, student, enrollment };
+    });
+
+    return result;
   }
 }
