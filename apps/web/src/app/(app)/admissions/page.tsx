@@ -3,9 +3,10 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  PageHeader, Button, Badge, Avatar, KpiCard, SearchBar, Dropdown,
+  Button, Badge, Avatar, KpiCard, SearchBar, Dropdown,
   Pagination, Tabs, DataTable, ExportButton, Spinner, EmptyState,
 } from '@/components/ui';
+import { PageHeader } from '@/components/layouts/page-header';
 import type { ColumnDef } from '@/components/ui';
 import {
   useEnquiries, useApplications, useAdmissionStats,
@@ -14,6 +15,8 @@ import {
 } from '@/lib/hooks/use-admissions';
 import { AddEnquiryModal } from './_components/add-enquiry-modal';
 import { NewApplicationModal } from './_components/new-application-modal';
+import { AnalyticsTab } from './_components/analytics-tab';
+import { SettingsTab } from './_components/settings-tab';
 
 // ─── Enum maps ────────────────────────────────────────────────────────────────
 
@@ -154,12 +157,14 @@ export default function AdmissionsPage() {
 
   const enquiryTotal = sourceFilter !== 'all'
     ? enquiries.length
-    : (enquiryData?.meta.total ?? 0);
-  const appTotal = appData?.meta.total ?? 0;
+    : (enquiryData?.meta?.total ?? 0);
+  const appTotal = appData?.meta?.total ?? 0;
 
   const TABS = [
-    { id: 'enquiries', label: 'Enquiries', count: stats?.enquiries.total ?? enquiryData?.meta.total },
-    { id: 'applications', label: 'Applications', count: stats?.applications.total ?? appData?.meta.total },
+    { id: 'enquiries', label: 'Enquiries', count: stats?.enquiries?.total ?? enquiryData?.meta?.total },
+    { id: 'applications', label: 'Applications', count: stats?.applications?.total ?? appData?.meta?.total },
+    { id: 'analytics', label: 'Analytics' },
+    { id: 'settings', label: 'Settings' },
   ];
 
   // ─── Columns ──────────────────────────────────────────────────
@@ -349,10 +354,10 @@ export default function AdmissionsPage() {
 
   // ─── KPI values ───────────────────────────────────────────────
 
-  const totalEnquiries = stats?.enquiries.total ?? enquiryData?.meta.total ?? 0;
-  const totalApplications = stats?.applications.total ?? appData?.meta.total ?? 0;
-  const approved = stats?.applications.byStatus['APPROVED'] ?? 0;
-  const pendingReview = stats?.applications.pendingReview ?? 0;
+  const totalEnquiries = stats?.enquiries?.total ?? enquiryData?.meta?.total ?? 0;
+  const totalApplications = stats?.applications?.total ?? appData?.meta?.total ?? 0;
+  const approved = stats?.applications?.byStatus?.['APPROVED'] ?? 0;
+  const pendingReview = stats?.applications?.pendingReview ?? 0;
   const conversionRate = totalEnquiries > 0
     ? ((approved / totalEnquiries) * 100).toFixed(0)
     : '0';
@@ -409,6 +414,11 @@ export default function AdmissionsPage() {
 
       <Tabs tabs={TABS} activeTab={activeTab} onChange={(t) => { setActiveTab(t); setSearch(''); setPage(1); }} className="mb-4" />
 
+      {activeTab === 'analytics' ? (
+        <AnalyticsTab />
+      ) : activeTab === 'settings' ? (
+        <SettingsTab />
+      ) : (
       <div className="overflow-hidden rounded-xl border border-[#e6e8eb] bg-white shadow-sm">
         {/* Toolbar */}
         <div className="flex items-center gap-2 border-b border-[#eef0f2] p-3.5">
@@ -492,6 +502,8 @@ export default function AdmissionsPage() {
           </div>
         )}
       </div>
+
+      )}
 
       <AddEnquiryModal open={showAddEnquiry} onClose={() => setShowAddEnquiry(false)} />
       <NewApplicationModal open={showNewApplication} onClose={() => setShowNewApplication(false)} />

@@ -210,6 +210,157 @@ export function useAdmissionStats() {
   });
 }
 
+// ─── Analytics ───────────────────────────────────────────────────────────────
+
+export interface AdmissionAnalytics {
+  funnel: { stage: string; count: number }[];
+  sourceBreakdown: { source: string; count: number }[];
+  monthlyTrend: { month: string; enquiries: number; applications: number }[];
+  topClassDemand: { className: string; count: number }[];
+  metrics: {
+    conversionRate: number;
+    acceptanceRate: number;
+    withdrawalRate: number;
+    totalEnquiries: number;
+    totalApplications: number;
+    approved: number;
+    enrolled: number;
+  };
+}
+
+export function useAdmissionAnalytics() {
+  return useQuery<AdmissionAnalytics>({
+    queryKey: ['admissions', 'analytics'],
+    queryFn: () => apiClient.get<AdmissionAnalytics>('/admissions/analytics'),
+    staleTime: 120_000,
+    retry: 1,
+  });
+}
+
+// ─── Settings Types ───────────────────────────────────────────────────────────
+
+export interface ConfigOptions {
+  classes: { id: string; name: string }[];
+  academicYears: { id: string; name: string }[];
+}
+
+export interface SeatConfig {
+  id: string;
+  classId: string;
+  academicYearId: string;
+  totalSeats: number;
+  reservedSeats: number;
+  className: string;
+  academicYearName: string;
+  enrolledCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DocumentType {
+  id: string;
+  name: string;
+  description: string | null;
+  isRequired: boolean;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSeatConfigPayload {
+  classId: string;
+  academicYearId: string;
+  totalSeats: number;
+  reservedSeats?: number;
+}
+
+export interface CreateDocumentTypePayload {
+  name: string;
+  description?: string;
+  isRequired?: boolean;
+  isActive?: boolean;
+  sortOrder?: number;
+}
+
+// ─── Settings Hooks ───────────────────────────────────────────────────────────
+
+export function useConfigOptions() {
+  return useQuery<ConfigOptions>({
+    queryKey: ['admissions', 'settings', 'options'],
+    queryFn: () => apiClient.get<ConfigOptions>('/admissions/settings/options'),
+    staleTime: 300_000,
+  });
+}
+
+export function useSeatConfigs() {
+  return useQuery<SeatConfig[]>({
+    queryKey: ['admissions', 'settings', 'seat-configs'],
+    queryFn: () => apiClient.get<SeatConfig[]>('/admissions/settings/seat-configs'),
+    staleTime: 60_000,
+  });
+}
+
+export function useCreateSeatConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateSeatConfigPayload) =>
+      apiClient.post('/admissions/settings/seat-configs', payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admissions', 'settings', 'seat-configs'] }),
+  });
+}
+
+export function useUpdateSeatConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...payload }: Partial<CreateSeatConfigPayload> & { id: string }) =>
+      apiClient.patch(`/admissions/settings/seat-configs/${id}`, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admissions', 'settings', 'seat-configs'] }),
+  });
+}
+
+export function useDeleteSeatConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/admissions/settings/seat-configs/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admissions', 'settings', 'seat-configs'] }),
+  });
+}
+
+export function useDocumentTypes() {
+  return useQuery<DocumentType[]>({
+    queryKey: ['admissions', 'settings', 'document-types'],
+    queryFn: () => apiClient.get<DocumentType[]>('/admissions/settings/document-types'),
+    staleTime: 60_000,
+  });
+}
+
+export function useCreateDocumentType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateDocumentTypePayload) =>
+      apiClient.post('/admissions/settings/document-types', payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admissions', 'settings', 'document-types'] }),
+  });
+}
+
+export function useUpdateDocumentType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...payload }: Partial<CreateDocumentTypePayload> & { id: string }) =>
+      apiClient.patch(`/admissions/settings/document-types/${id}`, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admissions', 'settings', 'document-types'] }),
+  });
+}
+
+export function useDeleteDocumentType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/admissions/settings/document-types/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admissions', 'settings', 'document-types'] }),
+  });
+}
+
 export function useEnquiries(params: EnquiryListParams = {}) {
   const qs = toQueryString(params as Record<string, string | number | undefined>);
   return useQuery<EnquiryListResponse>({
