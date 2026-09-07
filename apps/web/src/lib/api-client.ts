@@ -19,7 +19,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     if (res.status === 401) {
-      localStorage.removeItem('access_token');
+      if (typeof window !== 'undefined') localStorage.removeItem('access_token');
       // Don't navigate away here — if the user is mid-form, a hard redirect
       // destroys all their unsaved data. Instead throw so the caller can show
       // the error in-place. The AuthGuard will redirect on the next navigation.
