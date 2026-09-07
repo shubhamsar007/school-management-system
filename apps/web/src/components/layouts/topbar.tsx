@@ -2,7 +2,8 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { ChevronDown, Check, Bell } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ChevronDown, Check, Bell, User, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SearchDropdown } from '@/components/ui/search-dropdown';
 import { useCurrentUser } from '@/lib/hooks/use-identity';
@@ -229,6 +230,123 @@ function NotificationsPanel() {
   );
 }
 
+// ─── User profile dropdown ────────────────────────────────────────────────────
+
+function UserProfileDropdown() {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  const router = useRouter();
+
+  const { data: currentUser } = useCurrentUser();
+
+  const initials = currentUser?.name
+    ? currentUser.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
+    : '??';
+  const role = currentUser?.roles?.[0]?.name ?? 'Administrator';
+
+  React.useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [open]);
+
+  function handleLogout() {
+    localStorage.removeItem('access_token');
+    router.replace('/login');
+  }
+
+  return (
+    <div ref={ref} className="relative flex-shrink-0">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center transition-colors"
+        style={{
+          gap: 7, height: 28, padding: '0 8px 0 5px',
+          border: `1px solid ${open ? '#c8c3b3' : '#ded9cc'}`,
+          borderRadius: 6, background: open ? '#f5f2e8' : '#fffdf7', cursor: 'pointer',
+        }}
+        aria-label="User menu"
+      >
+        <div style={{
+          width: 20, height: 20, borderRadius: '50%',
+          background: '#dbe8dc', color: '#33604a',
+          fontSize: 9, fontWeight: 700,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>
+          {initials}
+        </div>
+        <span style={{ fontSize: 12, fontWeight: 500, color: '#23282a', whiteSpace: 'nowrap' }}>
+          {currentUser?.name ?? '…'}
+        </span>
+        <ChevronDown size={11} style={{ color: '#a6a89f', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', right: 0,
+          background: '#fff', borderRadius: 10,
+          border: '1px solid #e6e8eb',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
+          minWidth: 210, overflow: 'hidden', zIndex: 9000,
+        }}>
+          {/* Profile header */}
+          <div style={{ padding: '12px 14px 10px', borderBottom: '1px solid #f0f2f4' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{
+                width: 34, height: 34, borderRadius: '50%',
+                background: '#dbe8dc', color: '#33604a',
+                fontSize: 13, fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                {initials}
+              </div>
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 600, color: '#14181c' }}>{currentUser?.name}</p>
+                <p style={{ fontSize: 11, color: '#8a929b' }}>{role}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Edit Profile */}
+          <Link
+            href="/profile"
+            onClick={() => setOpen(false)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 9,
+              padding: '9px 14px', fontSize: 13, color: '#14181c', textDecoration: 'none',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#f5f7fa'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+          >
+            <User size={13} style={{ color: '#6f746e', flexShrink: 0 }} />
+            Edit Profile
+          </Link>
+
+          <div style={{ height: 1, background: '#f0f2f4' }} />
+
+          {/* Logout */}
+          <button
+            onClick={handleLogout}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 9,
+              width: '100%', padding: '9px 14px',
+              fontSize: 13, color: '#b3563a',
+              background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#fdf6f4'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+          >
+            <LogOut size={13} style={{ color: '#b3563a', flexShrink: 0 }} />
+            Log out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Topbar ───────────────────────────────────────────────────────────────────
 
 interface Breadcrumb {
@@ -364,6 +482,9 @@ function Topbar({ onToggle, breadcrumbs, className }: TopbarProps) {
 
       {/* Notifications */}
       <NotificationsPanel />
+
+      {/* User profile */}
+      <UserProfileDropdown />
     </header>
   );
 }

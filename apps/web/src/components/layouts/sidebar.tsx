@@ -97,7 +97,7 @@ interface SidebarProps {
 function Sidebar({ collapsed, onToggle, currentPath }: SidebarProps) {
   const sidebarW = collapsed ? 52 : 224;
   const { data: admissionStats } = useAdmissionStats();
-  const admissionPending = admissionStats?.applications.pendingReview ?? 0;
+  const admissionPending = admissionStats?.applications?.pendingReview ?? 0;
 
   return (
     /* Outer container: floats the pill inside the oat canvas */
@@ -273,107 +273,6 @@ function Sidebar({ collapsed, onToggle, currentPath }: SidebarProps) {
           ))}
         </nav>
 
-        {/* Bottom: term alert + user + collapse */}
-        <div className="flex-shrink-0" style={{ borderTop: '1px solid #efece2', padding: 9 }}>
-          {/* Term alert – only when expanded */}
-          {!collapsed && (
-            <div
-              style={{
-                background: '#dbe8dc',
-                borderRadius: 14,
-                padding: '11px 12px',
-                marginBottom: 7,
-              }}
-            >
-              <div
-                className="truncate"
-                style={{ fontSize: 11.5, fontWeight: 700, color: '#33604a' }}
-              >
-                Term closes: 18 days
-              </div>
-              <div className="truncate" style={{ fontSize: 10.5, color: '#4d6b57' }}>
-                4 report cards pending
-              </div>
-            </div>
-          )}
-
-          {/* Collapse toggle */}
-          <button
-            onClick={onToggle}
-            className="w-full flex items-center transition-colors"
-            style={{
-              gap: 10,
-              height: 32,
-              padding: collapsed ? '0 9px' : '0 9px',
-              borderRadius: 11,
-              justifyContent: collapsed ? 'center' : 'flex-start',
-              fontSize: 12,
-              color: '#7d837c',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#f4f1e9'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              style={{
-                width: 16,
-                height: 16,
-                flexShrink: 0,
-                fill: 'none',
-                stroke: 'currentColor',
-                strokeWidth: 1.7,
-                strokeLinecap: 'round',
-                strokeLinejoin: 'round',
-                transform: `rotate(${collapsed ? 0 : 180}deg)`,
-                transition: 'transform 180ms ease',
-              }}
-            >
-              <path d="M14.5 6.5L9 12l5.5 5.5" />
-            </svg>
-            {!collapsed && <span>Fold sidebar</span>}
-          </button>
-
-          {/* User */}
-          <div
-            className="flex items-center"
-            style={{
-              gap: 10,
-              padding: collapsed ? '6px 9px 2px' : '6px 9px 2px',
-              justifyContent: collapsed ? 'center' : 'flex-start',
-            }}
-          >
-            <div
-              className="flex-shrink-0 flex items-center justify-center"
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: '50%',
-                background: '#dbe8dc',
-                color: '#33604a',
-                fontSize: 10.5,
-                fontWeight: 700,
-              }}
-            >
-              AR
-            </div>
-            {!collapsed && (
-              <div className="min-w-0">
-                <div
-                  className="truncate"
-                  style={{ fontSize: 12, fontWeight: 600, color: '#2c322f' }}
-                >
-                  Anita Rao
-                </div>
-                <div className="truncate" style={{ fontSize: 10.5, color: '#8d938d' }}>
-                  Administrator
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
     </div>
   );

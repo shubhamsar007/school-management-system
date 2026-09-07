@@ -41,12 +41,17 @@ function AppShell({ children }: AppShellProps) {
       />
       <div
         className="flex flex-col overflow-hidden flex-1 min-w-0"
-        style={{ padding: '14px 14px 0 0' }}
+        style={{ padding: '14px 14px 0 8px' }}
       >
         {/* Inner content wrapper — rounded top to look like a panel */}
         <div
           className="flex flex-col overflow-hidden flex-1"
-          style={{ borderRadius: '16px 16px 0 0', overflow: 'hidden' }}
+          style={{
+            borderRadius: '16px 16px 0 0',
+            overflow: 'hidden',
+            background: '#faf8f2',
+            boxShadow: '-2px 0 12px rgba(44,50,47,0.07)',
+          }}
         >
           <Topbar
             collapsed={collapsed}
