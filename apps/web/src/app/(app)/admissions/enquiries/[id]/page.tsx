@@ -2,9 +2,13 @@
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Phone, Mail, UserCircle, BookOpen, Calendar, Tag, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, UserCircle, BookOpen, Calendar, Tag, MessageSquare, PhoneCall, Mail as MailIcon, MapPin, MessageCircle, CheckCircle, Trash2, Plus } from 'lucide-react';
 import { Badge, Button, Spinner, Select, Textarea, FormField } from '@/components/ui';
-import { useEnquiry, useUpdateEnquiry } from '@/lib/hooks/use-admissions';
+import {
+  useEnquiry, useUpdateEnquiry,
+  useFollowUps, useCreateFollowUp, useUpdateFollowUp, useDeleteFollowUp,
+  type FollowUp,
+} from '@/lib/hooks/use-admissions';
 
 // ─── Maps ─────────────────────────────────────────────────────────────────────
 
@@ -32,6 +36,36 @@ const STATUS_OPTIONS = [
   { label: 'Dropped', value: 'DROPPED' },
 ];
 
+const METHOD_OPTIONS = [
+  { label: 'Call', value: 'CALL' },
+  { label: 'Email', value: 'EMAIL' },
+  { label: 'Visit', value: 'VISIT' },
+  { label: 'Message', value: 'MESSAGE' },
+];
+
+const OUTCOME_OPTIONS = [
+  { label: 'Select outcome', value: '' },
+  { label: 'Reached', value: 'REACHED' },
+  { label: 'No Answer', value: 'NO_ANSWER' },
+  { label: 'Scheduled Visit', value: 'SCHEDULED_VISIT' },
+  { label: 'Left Message', value: 'LEFT_MESSAGE' },
+  { label: 'Converted', value: 'CONVERTED' },
+];
+
+const METHOD_ICON: Record<string, React.ElementType> = {
+  CALL: PhoneCall,
+  EMAIL: MailIcon,
+  VISIT: MapPin,
+  MESSAGE: MessageCircle,
+};
+
+const METHOD_COLOR: Record<string, string> = {
+  CALL: '#2b5fa8',
+  EMAIL: '#146b41',
+  VISIT: '#8a5a00',
+  MESSAGE: '#6b4fa8',
+};
+
 // ─── Enquiry field row ────────────────────────────────────────────────────────
 
 function InfoRow({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
@@ -46,6 +80,226 @@ function InfoRow({ icon: Icon, label, value }: { icon: React.ElementType; label:
         </div>
         <div style={{ fontSize: 13.5, color: '#14181c' }}>{value}</div>
       </div>
+    </div>
+  );
+}
+
+// ─── Follow-up row ────────────────────────────────────────────────────────────
+
+function FollowUpRow({
+  followUp,
+  enquiryId,
+}: {
+  followUp: FollowUp;
+  enquiryId: string;
+}) {
+  const updateFollowUp = useUpdateFollowUp();
+  const deleteFollowUp = useDeleteFollowUp();
+
+  const [showCompleteForm, setShowCompleteForm] = React.useState(false);
+  const [outcome, setOutcome] = React.useState('');
+
+  const MethodIcon = METHOD_ICON[followUp.method] ?? PhoneCall;
+  const methodColor = METHOD_COLOR[followUp.method] ?? '#2b5fa8';
+
+  const scheduledDate = new Date(followUp.scheduledAt).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  });
+  const scheduledTime = new Date(followUp.scheduledAt).toLocaleTimeString('en-IN', {
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  });
+
+  async function handleMarkComplete() {
+    await updateFollowUp.mutateAsync({
+      enquiryId,
+      id: followUp.id,
+      data: {
+        completedAt: new Date().toISOString(),
+        outcome: outcome || undefined,
+      },
+    });
+    setShowCompleteForm(false);
+    setOutcome('');
+  }
+
+  return (
+    <div style={{ border: '1px solid #e6e8eb', borderRadius: 10, padding: '12px 14px', marginBottom: 8, background: followUp.completedAt ? '#f9fafb' : '#fff' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        {/* Method pill */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: `${methodColor}14`, border: `1px solid ${methodColor}30`, borderRadius: 20, padding: '3px 9px', flexShrink: 0 }}>
+          <MethodIcon size={11} style={{ color: methodColor }} />
+          <span style={{ fontSize: 10, fontWeight: 700, color: methodColor, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            {followUp.method}
+          </span>
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#14181c' }}>
+              {scheduledDate} at {scheduledTime}
+            </span>
+            {followUp.completedAt ? (
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#146b41', background: '#edf7ef', border: '1px solid #c3e6cb', borderRadius: 20, padding: '2px 8px' }}>
+                Completed
+              </span>
+            ) : (
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#8a5a00', background: '#fff8e6', border: '1px solid #f5d98a', borderRadius: 20, padding: '2px 8px' }}>
+                Pending
+              </span>
+            )}
+            {followUp.outcome && (
+              <span style={{ fontSize: 10, color: '#6b7480', background: '#f0f2f4', borderRadius: 20, padding: '2px 8px' }}>
+                {followUp.outcome.replace(/_/g, ' ')}
+              </span>
+            )}
+          </div>
+          {followUp.notes && (
+            <div style={{ fontSize: 12, color: '#6b7480', marginTop: 4, lineHeight: 1.5 }}>{followUp.notes}</div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          {!followUp.completedAt && (
+            <button
+              onClick={() => setShowCompleteForm(!showCompleteForm)}
+              style={{ fontSize: 11, fontWeight: 600, color: '#146b41', background: '#edf7ef', border: '1px solid #c3e6cb', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+            >
+              <CheckCircle size={11} />
+              Mark Complete
+            </button>
+          )}
+          <button
+            onClick={() => deleteFollowUp.mutate({ enquiryId, id: followUp.id })}
+            disabled={deleteFollowUp.isPending}
+            style={{ color: '#8a929b', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
+            title="Delete follow-up"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+      </div>
+
+      {showCompleteForm && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f0f2f4' }}>
+          <FormField label="Outcome">
+            <Select
+              options={OUTCOME_OPTIONS}
+              value={outcome}
+              onChange={(e) => setOutcome(e.target.value)}
+            />
+          </FormField>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <Button variant="primary" onClick={handleMarkComplete} disabled={updateFollowUp.isPending}>
+              {updateFollowUp.isPending ? 'Saving…' : 'Confirm Complete'}
+            </Button>
+            <Button variant="secondary" onClick={() => { setShowCompleteForm(false); setOutcome(''); }}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Follow-ups panel ─────────────────────────────────────────────────────────
+
+function FollowUpsPanel({ enquiryId }: { enquiryId: string }) {
+  const { data: followUps = [], isLoading } = useFollowUps(enquiryId);
+  const createFollowUp = useCreateFollowUp();
+
+  const [showForm, setShowForm] = React.useState(false);
+  const [method, setMethod] = React.useState('CALL');
+  const [scheduledAt, setScheduledAt] = React.useState('');
+  const [notes, setNotes] = React.useState('');
+  const [formError, setFormError] = React.useState('');
+
+  async function handleCreate() {
+    if (!scheduledAt) { setFormError('Please select a date and time.'); return; }
+    setFormError('');
+    await createFollowUp.mutateAsync({
+      enquiryId,
+      data: { scheduledAt: new Date(scheduledAt).toISOString(), method, notes: notes.trim() || undefined },
+    });
+    setShowForm(false);
+    setMethod('CALL');
+    setScheduledAt('');
+    setNotes('');
+  }
+
+  return (
+    <div className="rounded-xl border border-[#e6e8eb] bg-white p-5 shadow-sm">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <h2 style={{ fontSize: 13, fontWeight: 700, color: '#14181c', margin: 0 }}>
+          Follow-ups
+        </h2>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          style={{ fontSize: 12, fontWeight: 600, color: '#2b5fa8', background: '#eef3fb', border: '1px solid #b8d0f5', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          <Plus size={12} />
+          Schedule Follow-up
+        </button>
+      </div>
+
+      {/* Inline create form */}
+      {showForm && (
+        <div style={{ background: '#f9fafb', border: '1px solid #e6e8eb', borderRadius: 10, padding: '14px', marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#8a929b', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>
+            New Follow-up
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <FormField label="Method">
+              <Select
+                options={METHOD_OPTIONS}
+                value={method}
+                onChange={(e) => setMethod(e.target.value)}
+              />
+            </FormField>
+            <FormField label="Scheduled Date & Time" required>
+              <input
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+                style={{ width: '100%', padding: '7px 10px', border: '1px solid #d7dce1', borderRadius: 7, fontSize: 13, color: '#14181c', background: '#fff', outline: 'none' }}
+              />
+            </FormField>
+          </div>
+          <FormField label="Notes (optional)">
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Add any notes about this follow-up…"
+            />
+          </FormField>
+          {formError && (
+            <div style={{ fontSize: 12, color: '#b3261e', marginTop: 6 }}>{formError}</div>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <Button variant="primary" onClick={handleCreate} disabled={createFollowUp.isPending}>
+              {createFollowUp.isPending ? 'Scheduling…' : 'Schedule'}
+            </Button>
+            <Button variant="secondary" onClick={() => { setShowForm(false); setFormError(''); }}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* List */}
+      {isLoading ? (
+        <div style={{ textAlign: 'center', padding: '20px 0' }}><Spinner /></div>
+      ) : followUps.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '24px 0', color: '#8a929b', fontSize: 13 }}>
+          No follow-ups scheduled yet.
+        </div>
+      ) : (
+        followUps.map((fu) => (
+          <FollowUpRow key={fu.id} followUp={fu} enquiryId={enquiryId} />
+        ))
+      )}
     </div>
   );
 }
@@ -192,6 +446,9 @@ export default function EnquiryDetailPage() {
               </div>
             </div>
           )}
+
+          {/* Follow-ups */}
+          <FollowUpsPanel enquiryId={enquiry.id} />
         </div>
 
         {/* Right: Actions + Notes */}

@@ -11,6 +11,10 @@ import { CreateApplicationDto } from './dto/create-application.dto';
 import { RejectApplicationDto } from './dto/reject-application.dto';
 import { AddDocumentDto, VerifyDocumentDto } from './dto/add-document.dto';
 import { EnrollApplicationDto } from './dto/enroll-application.dto';
+import { WithdrawApplicationDto } from './dto/withdraw-application.dto';
+import { RequestRevisionDto } from './dto/request-revision.dto';
+import { CreateFollowUpDto, UpdateFollowUpDto } from './dto/create-follow-up.dto';
+import { CreateInterviewDto, UpdateInterviewDto } from './dto/create-interview.dto';
 
 @Injectable()
 export class AdmissionsService {
@@ -622,5 +626,185 @@ export class AdmissionsService {
     });
 
     return result;
+  }
+
+  // ─── Withdrawal & Revision ────────────────────────────────────
+
+  async withdrawApplication(
+    organizationId: string,
+    applicationId: string,
+    dto: WithdrawApplicationDto,
+  ) {
+    const application = await this.findApplication(organizationId, applicationId);
+
+    const terminal = ['ENROLLED', 'WITHDRAWN'];
+    if (terminal.includes(application.status)) {
+      throw new BadRequestException(`Application is already ${application.status.toLowerCase()}`);
+    }
+
+    return this.prisma.admissionApplication.update({
+      where: { id: applicationId },
+      data: {
+        status: 'WITHDRAWN',
+        withdrawnAt: new Date(),
+        rejectionReason: dto.reason ?? null,
+      },
+    });
+  }
+
+  async requestRevision(
+    organizationId: string,
+    applicationId: string,
+    dto: RequestRevisionDto,
+  ) {
+    const application = await this.findApplication(organizationId, applicationId);
+
+    if (!['SUBMITTED', 'UNDER_REVIEW'].includes(application.status)) {
+      throw new BadRequestException('Revision can only be requested for SUBMITTED or UNDER_REVIEW applications');
+    }
+
+    return this.prisma.admissionApplication.update({
+      where: { id: applicationId },
+      data: { status: 'REVISION_REQUESTED', revisionNote: dto.revisionNote },
+    });
+  }
+
+  // ─── Follow-ups ───────────────────────────────────────────────
+
+  async createFollowUp(
+    organizationId: string,
+    enquiryId: string,
+    userId: string,
+    dto: CreateFollowUpDto,
+  ) {
+    await this.findEnquiry(organizationId, enquiryId);
+
+    return this.prisma.admissionFollowUp.create({
+      data: {
+        enquiryId,
+        organizationId,
+        scheduledAt: new Date(dto.scheduledAt),
+        method: dto.method ?? 'CALL',
+        notes: dto.notes ?? null,
+        createdBy: userId,
+      },
+    });
+  }
+
+  async findFollowUps(organizationId: string, enquiryId: string) {
+    await this.findEnquiry(organizationId, enquiryId);
+
+    return this.prisma.admissionFollowUp.findMany({
+      where: { enquiryId, organizationId },
+      orderBy: { scheduledAt: 'desc' },
+    });
+  }
+
+  async updateFollowUp(
+    organizationId: string,
+    enquiryId: string,
+    followUpId: string,
+    dto: UpdateFollowUpDto,
+  ) {
+    await this.findEnquiry(organizationId, enquiryId);
+
+    const followUp = await this.prisma.admissionFollowUp.findFirst({
+      where: { id: followUpId, enquiryId, organizationId },
+    });
+    if (!followUp) throw new NotFoundException('Follow-up not found');
+
+    return this.prisma.admissionFollowUp.update({
+      where: { id: followUpId },
+      data: {
+        ...(dto.scheduledAt ? { scheduledAt: new Date(dto.scheduledAt) } : {}),
+        ...(dto.completedAt ? { completedAt: new Date(dto.completedAt) } : {}),
+        ...(dto.method ? { method: dto.method } : {}),
+        ...(dto.outcome !== undefined ? { outcome: dto.outcome ?? null } : {}),
+        ...(dto.notes !== undefined ? { notes: dto.notes ?? null } : {}),
+      },
+    });
+  }
+
+  async deleteFollowUp(organizationId: string, enquiryId: string, followUpId: string) {
+    await this.findEnquiry(organizationId, enquiryId);
+
+    const followUp = await this.prisma.admissionFollowUp.findFirst({
+      where: { id: followUpId, enquiryId, organizationId },
+    });
+    if (!followUp) throw new NotFoundException('Follow-up not found');
+
+    await this.prisma.admissionFollowUp.delete({ where: { id: followUpId } });
+  }
+
+  // ─── Interviews ───────────────────────────────────────────────
+
+  async createInterview(
+    organizationId: string,
+    applicationId: string,
+    userId: string,
+    dto: CreateInterviewDto,
+  ) {
+    await this.findApplication(organizationId, applicationId);
+
+    return this.prisma.admissionInterview.create({
+      data: {
+        applicationId,
+        organizationId,
+        scheduledAt: new Date(dto.scheduledAt),
+        format: dto.format ?? 'IN_PERSON',
+        conductedBy: dto.conductedBy ?? null,
+        notes: dto.notes ?? null,
+        createdBy: userId,
+      },
+    });
+  }
+
+  async findInterviews(organizationId: string, applicationId: string) {
+    await this.findApplication(organizationId, applicationId);
+
+    return this.prisma.admissionInterview.findMany({
+      where: { applicationId, organizationId },
+      orderBy: { scheduledAt: 'asc' },
+    });
+  }
+
+  async updateInterview(
+    organizationId: string,
+    applicationId: string,
+    interviewId: string,
+    dto: UpdateInterviewDto,
+  ) {
+    await this.findApplication(organizationId, applicationId);
+
+    const interview = await this.prisma.admissionInterview.findFirst({
+      where: { id: interviewId, applicationId, organizationId },
+    });
+    if (!interview) throw new NotFoundException('Interview not found');
+
+    return this.prisma.admissionInterview.update({
+      where: { id: interviewId },
+      data: {
+        ...(dto.scheduledAt ? { scheduledAt: new Date(dto.scheduledAt) } : {}),
+        ...(dto.completedAt ? { completedAt: new Date(dto.completedAt) } : {}),
+        ...(dto.status ? { status: dto.status } : {}),
+        ...(dto.format ? { format: dto.format } : {}),
+        ...(dto.score !== undefined ? { score: dto.score ?? null } : {}),
+        ...(dto.maxScore !== undefined ? { maxScore: dto.maxScore ?? null } : {}),
+        ...(dto.recommendation !== undefined ? { recommendation: dto.recommendation ?? null } : {}),
+        ...(dto.conductedBy !== undefined ? { conductedBy: dto.conductedBy ?? null } : {}),
+        ...(dto.notes !== undefined ? { notes: dto.notes ?? null } : {}),
+      },
+    });
+  }
+
+  async deleteInterview(organizationId: string, applicationId: string, interviewId: string) {
+    await this.findApplication(organizationId, applicationId);
+
+    const interview = await this.prisma.admissionInterview.findFirst({
+      where: { id: interviewId, applicationId, organizationId },
+    });
+    if (!interview) throw new NotFoundException('Interview not found');
+
+    await this.prisma.admissionInterview.delete({ where: { id: interviewId } });
   }
 }

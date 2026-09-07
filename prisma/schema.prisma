@@ -1397,6 +1397,7 @@ model AdmissionEnquiry {
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   applications AdmissionApplication[]
+  followUps    AdmissionFollowUp[]
 
   @@map("admission_enquiries")
   @@schema("admissions")
@@ -1418,8 +1419,12 @@ model AdmissionApplication {
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  enquiry   AdmissionEnquiry? @relation(fields: [enquiryId], references: [id])
-  documents AdmissionDocument[]
+  revisionNote      String?   @map("revision_note")
+  withdrawnAt       DateTime? @map("withdrawn_at")
+
+  enquiry    AdmissionEnquiry? @relation(fields: [enquiryId], references: [id])
+  documents  AdmissionDocument[]
+  interviews AdmissionInterview[]
 
   @@unique([organizationId, applicationNumber])
   @@map("admission_applications")
@@ -1440,6 +1445,48 @@ model AdmissionDocument {
   file        File                 @relation(fields: [fileId], references: [id])
 
   @@map("admission_documents")
+  @@schema("admissions")
+}
+
+model AdmissionFollowUp {
+  id             String    @id @default(uuid())
+  enquiryId      String    @map("enquiry_id")
+  organizationId String    @map("organization_id")
+  scheduledAt    DateTime  @map("scheduled_at")
+  completedAt    DateTime? @map("completed_at")
+  method         String    @default("CALL") @db.VarChar(20)
+  outcome        String?   @db.VarChar(30)
+  notes          String?
+  createdBy      String    @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  enquiry AdmissionEnquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  @@map("admission_follow_ups")
+  @@schema("admissions")
+}
+
+model AdmissionInterview {
+  id             String    @id @default(uuid())
+  applicationId  String    @map("application_id")
+  organizationId String    @map("organization_id")
+  scheduledAt    DateTime  @map("scheduled_at")
+  completedAt    DateTime? @map("completed_at")
+  format         String    @default("IN_PERSON") @db.VarChar(20)
+  status         String    @default("SCHEDULED") @db.VarChar(20)
+  score          Int?
+  maxScore       Int?      @default(100) @map("max_score")
+  recommendation String?   @db.VarChar(20)
+  notes          String?
+  conductedBy    String?   @map("conducted_by")
+  createdBy      String    @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  application AdmissionApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@map("admission_interviews")
   @@schema("admissions")
 }
 

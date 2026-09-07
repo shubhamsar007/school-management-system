@@ -4,7 +4,8 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft, FileText, CheckCircle, XCircle, Clock,
-  AlertCircle, ShieldCheck, ShieldX, Trash2,
+  AlertCircle, ShieldCheck, ShieldX, Trash2, Plus,
+  Video, Phone, Users, Star,
 } from 'lucide-react';
 import { Badge, Button, Spinner, Textarea, FormField, Modal, Input, Select } from '@/components/ui';
 import {
@@ -13,7 +14,9 @@ import {
   useRejectApplication, useSubmitApplication,
   useVerifyDocument, useRejectDocument, useRemoveDocument,
   useEnrollApplication,
-  type Application, type ApplicationDocument,
+  useWithdrawApplication, useRequestRevision,
+  useInterviews, useCreateInterview, useUpdateInterview, useDeleteInterview,
+  type Application, type ApplicationDocument, type Interview,
 } from '@/lib/hooks/use-admissions';
 import { useSections } from '@/lib/hooks/use-academics';
 
@@ -22,14 +25,40 @@ import { useSections } from '@/lib/hooks/use-academics';
 const STATUS_VARIANT: Record<string, 'active' | 'pending' | 'default' | 'graduated' | 'left'> = {
   DRAFT: 'default', SUBMITTED: 'pending', UNDER_REVIEW: 'active',
   APPROVED: 'graduated', ENROLLED: 'graduated', REJECTED: 'left',
+  WITHDRAWN: 'left', REVISION_REQUESTED: 'pending',
 };
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: 'Draft', SUBMITTED: 'Submitted', UNDER_REVIEW: 'Under Review',
   APPROVED: 'Approved', ENROLLED: 'Enrolled', REJECTED: 'Rejected',
+  WITHDRAWN: 'Withdrawn', REVISION_REQUESTED: 'Revision Requested',
 };
 
 const WORKFLOW_STEPS = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'ENROLLED'];
+
+const FORMAT_ICON: Record<string, React.ElementType> = {
+  IN_PERSON: Users,
+  ONLINE: Video,
+  PHONE: Phone,
+};
+
+const FORMAT_COLOR: Record<string, string> = {
+  IN_PERSON: '#2b5fa8',
+  ONLINE: '#146b41',
+  PHONE: '#8a5a00',
+};
+
+const INTERVIEW_STATUS_COLOR: Record<string, string> = {
+  SCHEDULED: '#8a5a00',
+  COMPLETED: '#146b41',
+  CANCELLED: '#b3261e',
+};
+
+const RECOMMENDATION_COLOR: Record<string, string> = {
+  ADMIT: '#146b41',
+  WAITLIST: '#8a5a00',
+  REJECT: '#b3261e',
+};
 
 // ─── Completeness ─────────────────────────────────────────────────────────────
 
@@ -59,12 +88,13 @@ function computeCompleteness(application: Application, documents: ApplicationDoc
 function WorkflowProgress({ status }: { status: string }) {
   const currentIdx = WORKFLOW_STEPS.indexOf(status);
   const isRejected = status === 'REJECTED';
+  const isTerminal = ['WITHDRAWN', 'REVISION_REQUESTED'].includes(status);
 
   return (
     <div className="flex items-center">
       {WORKFLOW_STEPS.map((step, idx) => {
-        const done = !isRejected && currentIdx > idx;
-        const active = currentIdx === idx;
+        const done = !isRejected && !isTerminal && currentIdx > idx;
+        const active = !isTerminal && currentIdx === idx;
         return (
           <React.Fragment key={step}>
             <div className="flex flex-col items-center gap-1" style={{ minWidth: 90 }}>
@@ -259,9 +289,158 @@ function CompletenessPanel({ score, checks }: { score: number; checks: Check[] }
   );
 }
 
+// ─── Interview row ────────────────────────────────────────────────────────────
+
+function InterviewRow({
+  interview,
+  applicationId,
+}: {
+  interview: Interview;
+  applicationId: string;
+}) {
+  const updateInterview = useUpdateInterview();
+  const deleteInterview = useDeleteInterview();
+
+  const [showResultForm, setShowResultForm] = React.useState(false);
+  const [score, setScore] = React.useState('');
+  const [maxScore, setMaxScore] = React.useState(String(interview.maxScore ?? 100));
+  const [recommendation, setRecommendation] = React.useState('');
+  const [resultNotes, setResultNotes] = React.useState('');
+
+  const FormatIcon = FORMAT_ICON[interview.format] ?? Users;
+  const formatColor = FORMAT_COLOR[interview.format] ?? '#2b5fa8';
+  const statusColor = INTERVIEW_STATUS_COLOR[interview.status] ?? '#8a929b';
+
+  const scheduledDate = new Date(interview.scheduledAt).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  });
+  const scheduledTime = new Date(interview.scheduledAt).toLocaleTimeString('en-IN', {
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  });
+
+  async function handleRecordResult() {
+    await updateInterview.mutateAsync({
+      applicationId,
+      id: interview.id,
+      data: {
+        status: 'COMPLETED',
+        completedAt: new Date().toISOString(),
+        score: score ? parseInt(score, 10) : undefined,
+        maxScore: maxScore ? parseInt(maxScore, 10) : undefined,
+        recommendation: recommendation || undefined,
+        notes: resultNotes.trim() || undefined,
+      },
+    });
+    setShowResultForm(false);
+  }
+
+  return (
+    <div style={{ border: '1px solid #e6e8eb', borderRadius: 10, padding: '12px 14px', marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        {/* Format pill */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: `${formatColor}14`, border: `1px solid ${formatColor}30`, borderRadius: 20, padding: '3px 9px', flexShrink: 0 }}>
+          <FormatIcon size={11} style={{ color: formatColor }} />
+          <span style={{ fontSize: 10, fontWeight: 700, color: formatColor, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            {interview.format.replace(/_/g, ' ')}
+          </span>
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#14181c' }}>
+              {scheduledDate} at {scheduledTime}
+            </span>
+            {/* Status */}
+            <span style={{ fontSize: 10, fontWeight: 700, color: statusColor, background: `${statusColor}14`, border: `1px solid ${statusColor}30`, borderRadius: 20, padding: '2px 8px' }}>
+              {interview.status}
+            </span>
+            {/* Score */}
+            {interview.score !== null && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#6b7480' }}>
+                <Star size={11} style={{ color: '#d4a017' }} />
+                {interview.score}/{interview.maxScore ?? 100}
+              </span>
+            )}
+            {/* Recommendation */}
+            {interview.recommendation && (
+              <span style={{ fontSize: 10, fontWeight: 700, color: RECOMMENDATION_COLOR[interview.recommendation] ?? '#6b7480', background: `${RECOMMENDATION_COLOR[interview.recommendation] ?? '#6b7480'}14`, border: `1px solid ${RECOMMENDATION_COLOR[interview.recommendation] ?? '#6b7480'}30`, borderRadius: 20, padding: '2px 8px' }}>
+                {interview.recommendation}
+              </span>
+            )}
+          </div>
+          {interview.conductedBy && (
+            <div style={{ fontSize: 11, color: '#8a929b', marginTop: 3 }}>
+              Conducted by: {interview.conductedBy}
+            </div>
+          )}
+          {interview.notes && (
+            <div style={{ fontSize: 12, color: '#6b7480', marginTop: 4, lineHeight: 1.5 }}>{interview.notes}</div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          {interview.status === 'SCHEDULED' && (
+            <button
+              onClick={() => setShowResultForm(!showResultForm)}
+              style={{ fontSize: 11, fontWeight: 600, color: '#2b5fa8', background: '#eef3fb', border: '1px solid #b8d0f5', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
+            >
+              Record Result
+            </button>
+          )}
+          <button
+            onClick={() => deleteInterview.mutate({ applicationId, id: interview.id })}
+            disabled={deleteInterview.isPending}
+            style={{ color: '#8a929b', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
+            title="Delete interview"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+      </div>
+
+      {showResultForm && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f0f2f4' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <FormField label="Score">
+              <Input type="number" value={score} onChange={(e) => setScore(e.target.value)} placeholder="e.g. 85" />
+            </FormField>
+            <FormField label="Max Score">
+              <Input type="number" value={maxScore} onChange={(e) => setMaxScore(e.target.value)} placeholder="100" />
+            </FormField>
+            <FormField label="Recommendation">
+              <Select
+                options={[
+                  { label: 'Select', value: '' },
+                  { label: 'Admit', value: 'ADMIT' },
+                  { label: 'Waitlist', value: 'WAITLIST' },
+                  { label: 'Reject', value: 'REJECT' },
+                ]}
+                value={recommendation}
+                onChange={(e) => setRecommendation(e.target.value)}
+              />
+            </FormField>
+          </div>
+          <FormField label="Notes (optional)">
+            <Textarea value={resultNotes} onChange={(e) => setResultNotes(e.target.value)} rows={2} placeholder="Interview notes…" />
+          </FormField>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <Button variant="primary" onClick={handleRecordResult} disabled={updateInterview.isPending}>
+              {updateInterview.isPending ? 'Saving…' : 'Save Result'}
+            </Button>
+            <Button variant="secondary" onClick={() => setShowResultForm(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Tab types ────────────────────────────────────────────────────────────────
 
-type TabId = 'overview' | 'documents';
+type TabId = 'overview' | 'documents' | 'interviews';
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -271,18 +450,31 @@ export default function ApplicationDetailPage() {
 
   const { data: application, isLoading, isError } = useApplication(id);
   const { data: documents = [] } = useApplicationDocuments(id ?? null);
+  const { data: interviews = [] } = useInterviews(id ?? null);
 
   const submitApp = useSubmitApplication();
   const reviewApp = useReviewApplication();
   const approveApp = useApproveApplication();
   const rejectApp = useRejectApplication();
   const enrollApp = useEnrollApplication();
+  const withdrawApp = useWithdrawApplication();
+  const requestRevision = useRequestRevision();
+  const createInterview = useCreateInterview();
 
   const { data: sections = [] } = useSections(application?.classId ?? null);
 
   const [activeTab, setActiveTab] = React.useState<TabId>('overview');
+
   const [showRejectDialog, setShowRejectDialog] = React.useState(false);
   const [rejectionReason, setRejectionReason] = React.useState('');
+
+  const [showWithdrawDialog, setShowWithdrawDialog] = React.useState(false);
+  const [withdrawReason, setWithdrawReason] = React.useState('');
+
+  const [showRevisionDialog, setShowRevisionDialog] = React.useState(false);
+  const [revisionNote, setRevisionNote] = React.useState('');
+  const [revisionError, setRevisionError] = React.useState('');
+
   const [showEnrollModal, setShowEnrollModal] = React.useState(false);
   const [enrollFirstName, setEnrollFirstName] = React.useState('');
   const [enrollLastName, setEnrollLastName] = React.useState('');
@@ -291,6 +483,13 @@ export default function ApplicationDetailPage() {
   const [enrollRollNumber, setEnrollRollNumber] = React.useState('');
   const [enrollJoiningDate, setEnrollJoiningDate] = React.useState('');
   const [enrollErrors, setEnrollErrors] = React.useState<Partial<Record<string, string>>>({});
+
+  const [showScheduleInterview, setShowScheduleInterview] = React.useState(false);
+  const [interviewScheduledAt, setInterviewScheduledAt] = React.useState('');
+  const [interviewFormat, setInterviewFormat] = React.useState('IN_PERSON');
+  const [interviewConductedBy, setInterviewConductedBy] = React.useState('');
+  const [interviewNotes, setInterviewNotes] = React.useState('');
+  const [interviewFormError, setInterviewFormError] = React.useState('');
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-64"><Spinner /></div>;
@@ -307,6 +506,7 @@ export default function ApplicationDetailPage() {
 
   const applicantName = application.enquiry?.studentName ?? application.applicationNumber;
   const canAct = ['SUBMITTED', 'UNDER_REVIEW'].includes(application.status);
+  const isTerminal = ['ENROLLED', 'WITHDRAWN', 'REJECTED'].includes(application.status);
   const { score, checks } = computeCompleteness(application, documents);
 
   const verifiedCount = documents.filter((d) => d.verificationStatus === 'VERIFIED').length;
@@ -315,6 +515,7 @@ export default function ApplicationDetailPage() {
   const TABS: { id: TabId; label: string; count?: number }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'documents', label: 'Documents', count: documents.length },
+    { id: 'interviews', label: 'Interviews', count: interviews.length },
   ];
 
   async function handleReject() {
@@ -323,8 +524,21 @@ export default function ApplicationDetailPage() {
     setRejectionReason('');
   }
 
+  async function handleWithdraw() {
+    await withdrawApp.mutateAsync({ id: application!.id, reason: withdrawReason.trim() || undefined });
+    setShowWithdrawDialog(false);
+    setWithdrawReason('');
+  }
+
+  async function handleRequestRevision() {
+    if (!revisionNote.trim()) { setRevisionError('Revision note is required.'); return; }
+    setRevisionError('');
+    await requestRevision.mutateAsync({ id: application!.id, revisionNote: revisionNote.trim() });
+    setShowRevisionDialog(false);
+    setRevisionNote('');
+  }
+
   function openEnrollModal() {
-    // Pre-fill name from enquiry student name
     const name = application!.enquiry?.studentName ?? '';
     const parts = name.trim().split(/\s+/);
     setEnrollFirstName(parts[0] ?? '');
@@ -358,6 +572,25 @@ export default function ApplicationDetailPage() {
       },
     });
     setShowEnrollModal(false);
+  }
+
+  async function handleScheduleInterview() {
+    if (!interviewScheduledAt) { setInterviewFormError('Please select a date and time.'); return; }
+    setInterviewFormError('');
+    await createInterview.mutateAsync({
+      applicationId: application!.id,
+      data: {
+        scheduledAt: new Date(interviewScheduledAt).toISOString(),
+        format: interviewFormat,
+        conductedBy: interviewConductedBy.trim() || undefined,
+        notes: interviewNotes.trim() || undefined,
+      },
+    });
+    setShowScheduleInterview(false);
+    setInterviewScheduledAt('');
+    setInterviewFormat('IN_PERSON');
+    setInterviewConductedBy('');
+    setInterviewNotes('');
   }
 
   return (
@@ -409,6 +642,9 @@ export default function ApplicationDetailPage() {
               <Button variant="secondary" onClick={() => setShowRejectDialog(true)}>
                 Reject
               </Button>
+              <Button variant="secondary" onClick={() => setShowRevisionDialog(true)}>
+                Request Revision
+              </Button>
             </>
           )}
           {application.status === 'APPROVED' && (
@@ -420,6 +656,15 @@ export default function ApplicationDetailPage() {
               Enroll Student
             </Button>
           )}
+          {!isTerminal && (
+            <Button
+              variant="secondary"
+              onClick={() => setShowWithdrawDialog(true)}
+              style={{ color: '#b3261e', borderColor: '#f5c6c6' }}
+            >
+              Withdraw
+            </Button>
+          )}
         </div>
       </div>
 
@@ -429,12 +674,36 @@ export default function ApplicationDetailPage() {
           Application Progress
         </div>
         <WorkflowProgress status={application.status} />
+
+        {/* Revision note callout */}
+        {application.status === 'REVISION_REQUESTED' && (application as Application & { revisionNote?: string }).revisionNote && (
+          <div className="mt-4 flex items-start gap-2 rounded-lg p-3" style={{ background: '#fff8e6', border: '1px solid #f5d98a' }}>
+            <AlertCircle size={14} style={{ color: '#8a5a00', flexShrink: 0, marginTop: 1 }} />
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#8a5a00', marginBottom: 2 }}>Revision Requested</div>
+              <div style={{ fontSize: 13, color: '#14181c' }}>{(application as Application & { revisionNote?: string }).revisionNote}</div>
+            </div>
+          </div>
+        )}
+
         {application.status === 'REJECTED' && application.rejectionReason && (
           <div className="mt-4 flex items-start gap-2 rounded-lg p-3" style={{ background: '#fef7f7', border: '1px solid #f5c6c6' }}>
             <AlertCircle size={14} style={{ color: '#b3261e', flexShrink: 0, marginTop: 1 }} />
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#b3261e', marginBottom: 2 }}>Rejection Reason</div>
               <div style={{ fontSize: 13, color: '#14181c' }}>{application.rejectionReason}</div>
+            </div>
+          </div>
+        )}
+
+        {application.status === 'WITHDRAWN' && (
+          <div className="mt-4 flex items-start gap-2 rounded-lg p-3" style={{ background: '#fef7f7', border: '1px solid #f5c6c6' }}>
+            <AlertCircle size={14} style={{ color: '#b3261e', flexShrink: 0, marginTop: 1 }} />
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#b3261e', marginBottom: 2 }}>Application Withdrawn</div>
+              {application.rejectionReason && (
+                <div style={{ fontSize: 13, color: '#14181c' }}>{application.rejectionReason}</div>
+              )}
             </div>
           </div>
         )}
@@ -478,6 +747,16 @@ export default function ApplicationDetailPage() {
           {/* ── Overview tab ── */}
           {activeTab === 'overview' && (
             <div className="rounded-b-xl rounded-tr-xl border border-t-0 border-[#e6e8eb] bg-white p-5 shadow-sm">
+              {/* Revision requested callout in overview */}
+              {application.status === 'REVISION_REQUESTED' && (application as Application & { revisionNote?: string }).revisionNote && (
+                <div className="mb-4 flex items-start gap-2 rounded-lg p-3" style={{ background: '#fff8e6', border: '1px solid #f5d98a' }}>
+                  <AlertCircle size={14} style={{ color: '#8a5a00', flexShrink: 0, marginTop: 1 }} />
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#8a5a00', marginBottom: 2 }}>Revision Note</div>
+                    <div style={{ fontSize: 13, color: '#14181c' }}>{(application as Application & { revisionNote?: string }).revisionNote}</div>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-x-8 gap-y-5">
                 {[
                   { label: 'Applicant Name', value: applicantName },
@@ -550,6 +829,81 @@ export default function ApplicationDetailPage() {
               )}
             </div>
           )}
+
+          {/* ── Interviews tab ── */}
+          {activeTab === 'interviews' && (
+            <div className="rounded-b-xl rounded-tr-xl border border-t-0 border-[#e6e8eb] bg-white p-5 shadow-sm">
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+                <button
+                  onClick={() => setShowScheduleInterview(!showScheduleInterview)}
+                  style={{ fontSize: 12, fontWeight: 600, color: '#2b5fa8', background: '#eef3fb', border: '1px solid #b8d0f5', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
+                >
+                  <Plus size={13} />
+                  Schedule Interview
+                </button>
+              </div>
+
+              {/* Schedule interview form */}
+              {showScheduleInterview && (
+                <div style={{ background: '#f9fafb', border: '1px solid #e6e8eb', borderRadius: 10, padding: 14, marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#8a929b', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>
+                    New Interview
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                    <FormField label="Date & Time" required>
+                      <input
+                        type="datetime-local"
+                        value={interviewScheduledAt}
+                        onChange={(e) => setInterviewScheduledAt(e.target.value)}
+                        style={{ width: '100%', padding: '7px 10px', border: '1px solid #d7dce1', borderRadius: 7, fontSize: 13, color: '#14181c', background: '#fff', outline: 'none' }}
+                      />
+                    </FormField>
+                    <FormField label="Format">
+                      <Select
+                        options={[
+                          { label: 'In Person', value: 'IN_PERSON' },
+                          { label: 'Online', value: 'ONLINE' },
+                          { label: 'Phone', value: 'PHONE' },
+                        ]}
+                        value={interviewFormat}
+                        onChange={(e) => setInterviewFormat(e.target.value)}
+                      />
+                    </FormField>
+                  </div>
+                  <FormField label="Conducted By (optional)">
+                    <Input value={interviewConductedBy} onChange={(e) => setInterviewConductedBy(e.target.value)} placeholder="e.g. Mr. Sharma" />
+                  </FormField>
+                  <div style={{ marginTop: 10 }}>
+                    <FormField label="Notes (optional)">
+                      <Textarea value={interviewNotes} onChange={(e) => setInterviewNotes(e.target.value)} rows={2} placeholder="Any preparation notes…" />
+                    </FormField>
+                  </div>
+                  {interviewFormError && (
+                    <div style={{ fontSize: 12, color: '#b3261e', marginTop: 6 }}>{interviewFormError}</div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                    <Button variant="primary" onClick={handleScheduleInterview} disabled={createInterview.isPending}>
+                      {createInterview.isPending ? 'Scheduling…' : 'Schedule'}
+                    </Button>
+                    <Button variant="secondary" onClick={() => { setShowScheduleInterview(false); setInterviewFormError(''); }}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {interviews.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                  <Users size={28} style={{ color: '#d7dce1', margin: '0 auto 8px' }} />
+                  <div style={{ fontSize: 13, color: '#8a929b' }}>No interviews scheduled yet.</div>
+                </div>
+              ) : (
+                interviews.map((iv) => (
+                  <InterviewRow key={iv.id} interview={iv} applicationId={application.id} />
+                ))
+              )}
+            </div>
+          )}
         </div>
 
         {/* Right panel */}
@@ -596,6 +950,7 @@ export default function ApplicationDetailPage() {
               { label: 'Submitted', date: application.submittedAt },
               { label: 'Approved', date: application.approvedAt },
               { label: 'Rejected', date: application.rejectedAt },
+              { label: 'Withdrawn', date: (application as Application & { withdrawnAt?: string }).withdrawnAt },
             ]
               .filter((t) => !!t.date)
               .map(({ label, date }) => (
@@ -699,6 +1054,55 @@ export default function ApplicationDetailPage() {
         <FormField label="Rejection Reason (optional)">
           <Textarea value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} placeholder="Explain the reason…" rows={3} />
         </FormField>
+      </Modal>
+
+      {/* Withdraw dialog */}
+      <Modal
+        open={showWithdrawDialog}
+        onClose={() => { setShowWithdrawDialog(false); setWithdrawReason(''); }}
+        title="Withdraw Application"
+        description={`Withdraw the application for ${applicantName}?`}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setShowWithdrawDialog(false); setWithdrawReason(''); }} disabled={withdrawApp.isPending}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={handleWithdraw} disabled={withdrawApp.isPending}>
+              {withdrawApp.isPending ? 'Withdrawing…' : 'Withdraw Application'}
+            </Button>
+          </>
+        }
+      >
+        <FormField label="Reason (optional)">
+          <Textarea value={withdrawReason} onChange={(e) => setWithdrawReason(e.target.value)} placeholder="Reason for withdrawal…" rows={3} />
+        </FormField>
+      </Modal>
+
+      {/* Request revision dialog */}
+      <Modal
+        open={showRevisionDialog}
+        onClose={() => { setShowRevisionDialog(false); setRevisionNote(''); setRevisionError(''); }}
+        title="Request Revision"
+        description={`Request the applicant to revise their application.`}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setShowRevisionDialog(false); setRevisionNote(''); setRevisionError(''); }} disabled={requestRevision.isPending}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleRequestRevision} disabled={requestRevision.isPending}>
+              {requestRevision.isPending ? 'Sending…' : 'Send Revision Request'}
+            </Button>
+          </>
+        }
+      >
+        <FormField label="What needs to be revised?" required>
+          <Textarea value={revisionNote} onChange={(e) => setRevisionNote(e.target.value)} placeholder="Describe what the applicant should revise or provide…" rows={4} />
+        </FormField>
+        {revisionError && (
+          <div style={{ fontSize: 12, color: '#b3261e', marginTop: 6 }}>{revisionError}</div>
+        )}
       </Modal>
     </div>
   );

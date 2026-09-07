@@ -21,6 +21,10 @@ import { CreateApplicationDto } from './dto/create-application.dto';
 import { RejectApplicationDto } from './dto/reject-application.dto';
 import { AddDocumentDto, VerifyDocumentDto } from './dto/add-document.dto';
 import { EnrollApplicationDto } from './dto/enroll-application.dto';
+import { WithdrawApplicationDto } from './dto/withdraw-application.dto';
+import { RequestRevisionDto } from './dto/request-revision.dto';
+import { CreateFollowUpDto, UpdateFollowUpDto } from './dto/create-follow-up.dto';
+import { CreateInterviewDto, UpdateInterviewDto } from './dto/create-interview.dto';
 
 @ApiTags('admissions')
 @ApiBearerAuth()
@@ -247,5 +251,113 @@ export class AdmissionsController {
     @Body() dto: EnrollApplicationDto,
   ) {
     return this.admissionsService.enrollApplication(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Withdraw an application' })
+  @Post('applications/:id/withdraw')
+  @HttpCode(HttpStatus.OK)
+  withdrawApplication(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: WithdrawApplicationDto,
+  ) {
+    return this.admissionsService.withdrawApplication(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Request revision on a submitted/under-review application' })
+  @Post('applications/:id/request-revision')
+  @HttpCode(HttpStatus.OK)
+  requestRevision(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: RequestRevisionDto,
+  ) {
+    return this.admissionsService.requestRevision(user.organizationId, id, dto);
+  }
+
+  // ─── Follow-ups ────────────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'List follow-ups for an enquiry' })
+  @Get('enquiries/:id/follow-ups')
+  findFollowUps(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.admissionsService.findFollowUps(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Create a follow-up for an enquiry' })
+  @Post('enquiries/:id/follow-ups')
+  createFollowUp(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateFollowUpDto,
+  ) {
+    return this.admissionsService.createFollowUp(user.organizationId, id, user.userId, dto);
+  }
+
+  @ApiOperation({ summary: 'Update a follow-up' })
+  @Patch('enquiries/:id/follow-ups/:followUpId')
+  updateFollowUp(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('followUpId') followUpId: string,
+    @Body() dto: UpdateFollowUpDto,
+  ) {
+    return this.admissionsService.updateFollowUp(user.organizationId, id, followUpId, dto);
+  }
+
+  @ApiOperation({ summary: 'Delete a follow-up' })
+  @Delete('enquiries/:id/follow-ups/:followUpId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteFollowUp(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('followUpId') followUpId: string,
+  ) {
+    return this.admissionsService.deleteFollowUp(user.organizationId, id, followUpId);
+  }
+
+  // ─── Interviews ────────────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'List interviews for an application' })
+  @Get('applications/:id/interviews')
+  findInterviews(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.admissionsService.findInterviews(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Schedule an interview for an application' })
+  @Post('applications/:id/interviews')
+  createInterview(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateInterviewDto,
+  ) {
+    return this.admissionsService.createInterview(user.organizationId, id, user.userId, dto);
+  }
+
+  @ApiOperation({ summary: 'Update an interview' })
+  @Patch('applications/:id/interviews/:interviewId')
+  updateInterview(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('interviewId') interviewId: string,
+    @Body() dto: UpdateInterviewDto,
+  ) {
+    return this.admissionsService.updateInterview(user.organizationId, id, interviewId, dto);
+  }
+
+  @ApiOperation({ summary: 'Delete an interview' })
+  @Delete('applications/:id/interviews/:interviewId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteInterview(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Param('interviewId') interviewId: string,
+  ) {
+    return this.admissionsService.deleteInterview(user.organizationId, id, interviewId);
   }
 }

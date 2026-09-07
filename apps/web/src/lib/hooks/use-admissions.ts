@@ -428,6 +428,73 @@ export function useVerifyDocument() {
   });
 }
 
+// ─── Phase 4 Types ────────────────────────────────────────────────────────────
+
+export interface FollowUp {
+  id: string;
+  enquiryId: string;
+  organizationId: string;
+  scheduledAt: string;
+  completedAt: string | null;
+  method: string;
+  outcome: string | null;
+  notes: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Interview {
+  id: string;
+  applicationId: string;
+  organizationId: string;
+  scheduledAt: string;
+  completedAt: string | null;
+  format: string;
+  status: string;
+  score: number | null;
+  maxScore: number | null;
+  recommendation: string | null;
+  notes: string | null;
+  conductedBy: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateFollowUpPayload {
+  scheduledAt: string;
+  method?: string;
+  notes?: string;
+}
+
+export interface UpdateFollowUpPayload {
+  scheduledAt?: string;
+  completedAt?: string;
+  method?: string;
+  outcome?: string;
+  notes?: string;
+}
+
+export interface CreateInterviewPayload {
+  scheduledAt: string;
+  format?: string;
+  conductedBy?: string;
+  notes?: string;
+}
+
+export interface UpdateInterviewPayload {
+  scheduledAt?: string;
+  completedAt?: string;
+  status?: string;
+  format?: string;
+  score?: number;
+  maxScore?: number;
+  recommendation?: string;
+  conductedBy?: string;
+  notes?: string;
+}
+
 export function useRejectDocument() {
   const qc = useQueryClient();
   return useMutation({
@@ -449,6 +516,119 @@ export function useRejectDocument() {
         queryKey: ['admissions', 'applications', applicationId, 'documents'],
       });
       void qc.invalidateQueries({ queryKey: ['admissions', 'applications', applicationId] });
+    },
+  });
+}
+
+// ─── Phase 4 Hooks ────────────────────────────────────────────────────────────
+
+export function useWithdrawApplication() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      apiClient.post<Application>(`/admissions/applications/${id}/withdraw`, { reason }),
+    onSuccess: (_, { id }) => {
+      void qc.invalidateQueries({ queryKey: ['admissions', 'applications'] });
+      void qc.invalidateQueries({ queryKey: ['admissions', 'applications', id] });
+      void qc.invalidateQueries({ queryKey: ['admissions', 'stats'] });
+    },
+  });
+}
+
+export function useRequestRevision() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, revisionNote }: { id: string; revisionNote: string }) =>
+      apiClient.post<Application>(`/admissions/applications/${id}/request-revision`, { revisionNote }),
+    onSuccess: (_, { id }) => {
+      void qc.invalidateQueries({ queryKey: ['admissions', 'applications'] });
+      void qc.invalidateQueries({ queryKey: ['admissions', 'applications', id] });
+    },
+  });
+}
+
+export function useFollowUps(enquiryId: string | null) {
+  return useQuery<FollowUp[]>({
+    queryKey: ['admissions', 'enquiries', enquiryId, 'follow-ups'],
+    queryFn: () => apiClient.get<FollowUp[]>(`/admissions/enquiries/${enquiryId}/follow-ups`),
+    enabled: !!enquiryId,
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+export function useCreateFollowUp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ enquiryId, data }: { enquiryId: string; data: CreateFollowUpPayload }) =>
+      apiClient.post<FollowUp>(`/admissions/enquiries/${enquiryId}/follow-ups`, data),
+    onSuccess: (_, { enquiryId }) => {
+      void qc.invalidateQueries({ queryKey: ['admissions', 'enquiries', enquiryId, 'follow-ups'] });
+    },
+  });
+}
+
+export function useUpdateFollowUp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ enquiryId, id, data }: { enquiryId: string; id: string; data: UpdateFollowUpPayload }) =>
+      apiClient.patch<FollowUp>(`/admissions/enquiries/${enquiryId}/follow-ups/${id}`, data),
+    onSuccess: (_, { enquiryId }) => {
+      void qc.invalidateQueries({ queryKey: ['admissions', 'enquiries', enquiryId, 'follow-ups'] });
+    },
+  });
+}
+
+export function useDeleteFollowUp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ enquiryId, id }: { enquiryId: string; id: string }) =>
+      apiClient.delete(`/admissions/enquiries/${enquiryId}/follow-ups/${id}`),
+    onSuccess: (_, { enquiryId }) => {
+      void qc.invalidateQueries({ queryKey: ['admissions', 'enquiries', enquiryId, 'follow-ups'] });
+    },
+  });
+}
+
+export function useInterviews(applicationId: string | null) {
+  return useQuery<Interview[]>({
+    queryKey: ['admissions', 'applications', applicationId, 'interviews'],
+    queryFn: () => apiClient.get<Interview[]>(`/admissions/applications/${applicationId}/interviews`),
+    enabled: !!applicationId,
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+export function useCreateInterview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ applicationId, data }: { applicationId: string; data: CreateInterviewPayload }) =>
+      apiClient.post<Interview>(`/admissions/applications/${applicationId}/interviews`, data),
+    onSuccess: (_, { applicationId }) => {
+      void qc.invalidateQueries({ queryKey: ['admissions', 'applications', applicationId, 'interviews'] });
+    },
+  });
+}
+
+export function useUpdateInterview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ applicationId, id, data }: { applicationId: string; id: string; data: UpdateInterviewPayload }) =>
+      apiClient.patch<Interview>(`/admissions/applications/${applicationId}/interviews/${id}`, data),
+    onSuccess: (_, { applicationId }) => {
+      void qc.invalidateQueries({ queryKey: ['admissions', 'applications', applicationId, 'interviews'] });
+    },
+  });
+}
+
+export function useDeleteInterview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ applicationId, id }: { applicationId: string; id: string }) =>
+      apiClient.delete(`/admissions/applications/${applicationId}/interviews/${id}`),
+    onSuccess: (_, { applicationId }) => {
+      void qc.invalidateQueries({ queryKey: ['admissions', 'applications', applicationId, 'interviews'] });
     },
   });
 }
