@@ -25,6 +25,8 @@ import { WithdrawApplicationDto } from './dto/withdraw-application.dto';
 import { RequestRevisionDto } from './dto/request-revision.dto';
 import { CreateFollowUpDto, UpdateFollowUpDto } from './dto/create-follow-up.dto';
 import { CreateInterviewDto, UpdateInterviewDto } from './dto/create-interview.dto';
+import { CreateSeatConfigDto, UpdateSeatConfigDto } from './dto/create-seat-config.dto';
+import { CreateDocumentTypeDto, UpdateDocumentTypeDto } from './dto/create-document-type.dto';
 
 @ApiTags('admissions')
 @ApiBearerAuth()
@@ -39,6 +41,84 @@ export class AdmissionsController {
   @Get('stats')
   getStats(@CurrentUser() user: CurrentUserPayload) {
     return this.admissionsService.getStats(user.organizationId);
+  }
+
+  @ApiOperation({ summary: 'Get full admissions analytics (funnel, sources, trend, class demand)' })
+  @Get('analytics')
+  getAnalytics(@CurrentUser() user: CurrentUserPayload) {
+    return this.admissionsService.getAnalytics(user.organizationId);
+  }
+
+  // ─── Settings ────────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Get classes and academic years available for seat config' })
+  @Get('settings/options')
+  getConfigOptions(@CurrentUser() user: CurrentUserPayload) {
+    return this.admissionsService.getConfigOptions(user.organizationId);
+  }
+
+  @ApiOperation({ summary: 'List seat configurations' })
+  @Get('settings/seat-configs')
+  getSeatConfigs(@CurrentUser() user: CurrentUserPayload) {
+    return this.admissionsService.getSeatConfigs(user.organizationId);
+  }
+
+  @ApiOperation({ summary: 'Create a seat configuration' })
+  @Post('settings/seat-configs')
+  createSeatConfig(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: CreateSeatConfigDto,
+  ) {
+    return this.admissionsService.createSeatConfig(user.organizationId, dto);
+  }
+
+  @ApiOperation({ summary: 'Update a seat configuration' })
+  @Patch('settings/seat-configs/:id')
+  updateSeatConfig(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: UpdateSeatConfigDto,
+  ) {
+    return this.admissionsService.updateSeatConfig(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Delete a seat configuration' })
+  @Delete('settings/seat-configs/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteSeatConfig(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.admissionsService.deleteSeatConfig(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'List document types' })
+  @Get('settings/document-types')
+  getDocumentTypes(@CurrentUser() user: CurrentUserPayload) {
+    return this.admissionsService.getDocumentTypes(user.organizationId);
+  }
+
+  @ApiOperation({ summary: 'Create a document type' })
+  @Post('settings/document-types')
+  createDocumentType(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: CreateDocumentTypeDto,
+  ) {
+    return this.admissionsService.createDocumentType(user.organizationId, dto);
+  }
+
+  @ApiOperation({ summary: 'Update a document type' })
+  @Patch('settings/document-types/:id')
+  updateDocumentType(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: UpdateDocumentTypeDto,
+  ) {
+    return this.admissionsService.updateDocumentType(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Delete a document type' })
+  @Delete('settings/document-types/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteDocumentType(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.admissionsService.deleteDocumentType(user.organizationId, id);
   }
 
   // ─── Enquiries ────────────────────────────────────────────────

@@ -15,6 +15,8 @@ import { WithdrawApplicationDto } from './dto/withdraw-application.dto';
 import { RequestRevisionDto } from './dto/request-revision.dto';
 import { CreateFollowUpDto, UpdateFollowUpDto } from './dto/create-follow-up.dto';
 import { CreateInterviewDto, UpdateInterviewDto } from './dto/create-interview.dto';
+import { CreateSeatConfigDto, UpdateSeatConfigDto } from './dto/create-seat-config.dto';
+import { CreateDocumentTypeDto, UpdateDocumentTypeDto } from './dto/create-document-type.dto';
 
 @Injectable()
 export class AdmissionsService {
@@ -51,6 +53,320 @@ export class AdmissionsService {
         total: Object.values(appMap).reduce((a, b) => a + b, 0),
         byStatus: appMap,
         pendingReview: (appMap['SUBMITTED'] ?? 0) + (appMap['UNDER_REVIEW'] ?? 0),
+      },
+    };
+  }
+
+  // ─── Settings — Config Options ────────────────────────────────
+
+  async getConfigOptions(organizationId: string) {
+    const [classes, academicYears] = await Promise.all([
+      this.prisma.academicClass.findMany({
+        where: { organizationId },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.academicYear.findMany({
+        where: { organizationId },
+        select: { id: true, name: true },
+        orderBy: { startDate: 'desc' },
+      }),
+    ]);
+    return { classes, academicYears };
+  }
+
+  // ─── Settings — Seat Configuration ────────────────────────────
+
+  async getSeatConfigs(organizationId: string) {
+    const [configs, enrolledGroups] = await Promise.all([
+      this.prisma.admissionSeatConfig.findMany({
+        where: { organizationId },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.admissionApplication.groupBy({
+        by: ['classId', 'academicYearId'],
+        where: { organizationId, status: 'ENROLLED' },
+        _count: { id: true },
+      }),
+    ]);
+
+    if (!configs.length) return [];
+
+    const classIds = [...new Set(configs.map((c) => c.classId))];
+    const yearIds = [...new Set(configs.map((c) => c.academicYearId))];
+
+    const [classes, years] = await Promise.all([
+      this.prisma.academicClass.findMany({
+        where: { id: { in: classIds } },
+        select: { id: true, name: true },
+      }),
+      this.prisma.academicYear.findMany({
+        where: { id: { in: yearIds } },
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    const classMap: Record<string, string> = {};
+    for (const c of classes) classMap[c.id] = c.name;
+
+    const yearMap: Record<string, string> = {};
+    for (const y of years) yearMap[y.id] = y.name;
+
+    const enrolledMap: Record<string, number> = {};
+    for (const g of enrolledGroups) {
+      enrolledMap[`${g.classId}:${g.academicYearId}`] = g._count.id;
+    }
+
+    return configs.map((config) => ({
+      ...config,
+      className: classMap[config.classId] ?? 'Unknown',
+      academicYearName: yearMap[config.academicYearId] ?? 'Unknown',
+      enrolledCount:
+        enrolledMap[`${config.classId}:${config.academicYearId}`] ?? 0,
+    }));
+  }
+
+  async createSeatConfig(organizationId: string, dto: CreateSeatConfigDto) {
+    const existing = await this.prisma.admissionSeatConfig.findFirst({
+      where: { organizationId, classId: dto.classId, academicYearId: dto.academicYearId },
+    });
+    if (existing) {
+      throw new ConflictException(
+        'A seat configuration for this class and academic year already exists.',
+      );
+    }
+    return this.prisma.admissionSeatConfig.create({
+      data: {
+        organizationId,
+        classId: dto.classId,
+        academicYearId: dto.academicYearId,
+        totalSeats: dto.totalSeats,
+        reservedSeats: dto.reservedSeats ?? 0,
+      },
+    });
+  }
+
+  async updateSeatConfig(organizationId: string, id: string, dto: UpdateSeatConfigDto) {
+    const config = await this.prisma.admissionSeatConfig.findFirst({
+      where: { id, organizationId },
+    });
+    if (!config) throw new NotFoundException('Seat configuration not found');
+    return this.prisma.admissionSeatConfig.update({
+      where: { id },
+      data: {
+        ...(dto.totalSeats !== undefined && { totalSeats: dto.totalSeats }),
+        ...(dto.reservedSeats !== undefined && { reservedSeats: dto.reservedSeats }),
+      },
+    });
+  }
+
+  async deleteSeatConfig(organizationId: string, id: string) {
+    const config = await this.prisma.admissionSeatConfig.findFirst({
+      where: { id, organizationId },
+    });
+    if (!config) throw new NotFoundException('Seat configuration not found');
+    await this.prisma.admissionSeatConfig.delete({ where: { id } });
+  }
+
+  // ─── Settings — Document Types ────────────────────────────────
+
+  async getDocumentTypes(organizationId: string) {
+    return this.prisma.admissionDocumentType.findMany({
+      where: { organizationId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async createDocumentType(organizationId: string, dto: CreateDocumentTypeDto) {
+    return this.prisma.admissionDocumentType.create({
+      data: {
+        organizationId,
+        name: dto.name,
+        ...(dto.description !== undefined && { description: dto.description }),
+        isRequired: dto.isRequired ?? false,
+        isActive: dto.isActive ?? true,
+        sortOrder: dto.sortOrder ?? 0,
+      },
+    });
+  }
+
+  async updateDocumentType(organizationId: string, id: string, dto: UpdateDocumentTypeDto) {
+    const dt = await this.prisma.admissionDocumentType.findFirst({
+      where: { id, organizationId },
+    });
+    if (!dt) throw new NotFoundException('Document type not found');
+    return this.prisma.admissionDocumentType.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.isRequired !== undefined && { isRequired: dto.isRequired }),
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+      },
+    });
+  }
+
+  async deleteDocumentType(organizationId: string, id: string) {
+    const dt = await this.prisma.admissionDocumentType.findFirst({
+      where: { id, organizationId },
+    });
+    if (!dt) throw new NotFoundException('Document type not found');
+    await this.prisma.admissionDocumentType.delete({ where: { id } });
+  }
+
+  // ─── Analytics ────────────────────────────────────────────────
+
+  async getAnalytics(organizationId: string) {
+    const now = new Date();
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+
+    const [
+      enquiryGroups,
+      appGroups,
+      sourceGroups,
+      recentEnquiries,
+      recentApplications,
+      topClassGroups,
+    ] = await Promise.all([
+      this.prisma.admissionEnquiry.groupBy({
+        by: ['status'],
+        where: { organizationId },
+        _count: { id: true },
+      }),
+      this.prisma.admissionApplication.groupBy({
+        by: ['status'],
+        where: { organizationId },
+        _count: { id: true },
+      }),
+      this.prisma.admissionEnquiry.groupBy({
+        by: ['source'],
+        where: { organizationId },
+        _count: { id: true },
+        orderBy: { _count: { id: 'desc' } },
+      }),
+      this.prisma.admissionEnquiry.findMany({
+        where: { organizationId, createdAt: { gte: sixMonthsAgo } },
+        select: { createdAt: true },
+      }),
+      this.prisma.admissionApplication.findMany({
+        where: { organizationId, createdAt: { gte: sixMonthsAgo } },
+        select: { createdAt: true },
+      }),
+      this.prisma.admissionEnquiry.groupBy({
+        by: ['classInterestedId'],
+        where: { organizationId, classInterestedId: { not: null } },
+        _count: { id: true },
+        orderBy: { _count: { id: 'desc' } },
+        take: 8,
+      }),
+    ]);
+
+    // Status maps
+    const enqMap: Record<string, number> = {};
+    for (const r of enquiryGroups) enqMap[r.status] = r._count.id;
+
+    const appMap: Record<string, number> = {};
+    for (const r of appGroups) appMap[r.status] = r._count.id;
+
+    const totalEnquiries = Object.values(enqMap).reduce((a, b) => a + b, 0);
+    const totalApplications = Object.values(appMap).reduce((a, b) => a + b, 0);
+    const approved = (appMap['APPROVED'] ?? 0) + (appMap['ENROLLED'] ?? 0);
+    const enrolled = appMap['ENROLLED'] ?? 0;
+    const underReviewOrBeyond = totalApplications - (appMap['DRAFT'] ?? 0);
+    const decided = approved + (appMap['REJECTED'] ?? 0);
+
+    // Funnel
+    const funnel = [
+      { stage: 'Enquiries', count: totalEnquiries },
+      { stage: 'Applied', count: totalApplications },
+      { stage: 'In Review', count: underReviewOrBeyond },
+      { stage: 'Approved', count: approved },
+      { stage: 'Enrolled', count: enrolled },
+    ];
+
+    // Source breakdown
+    const sourceBreakdown = sourceGroups.map((r) => ({
+      source: r.source,
+      count: r._count.id,
+    }));
+
+    // Monthly trend — always emit the last 6 calendar months
+    const monthKeys: string[] = [];
+    const monthLabels: string[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleString('en-US', { month: 'short', year: '2-digit' });
+      monthKeys.push(key);
+      monthLabels.push(label);
+    }
+
+    const toMonthKey = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+    const enqByMonth: Record<string, number> = {};
+    for (const { createdAt } of recentEnquiries) {
+      const key = toMonthKey(new Date(createdAt));
+      enqByMonth[key] = (enqByMonth[key] ?? 0) + 1;
+    }
+
+    const appByMonth: Record<string, number> = {};
+    for (const { createdAt } of recentApplications) {
+      const key = toMonthKey(new Date(createdAt));
+      appByMonth[key] = (appByMonth[key] ?? 0) + 1;
+    }
+
+    const monthlyTrend = monthKeys.map((key, i) => ({
+      month: monthLabels[i],
+      enquiries: enqByMonth[key] ?? 0,
+      applications: appByMonth[key] ?? 0,
+    }));
+
+    // Top class demand — resolve class names
+    const classIds = topClassGroups
+      .map((r) => r.classInterestedId)
+      .filter((id): id is string => !!id);
+
+    const classes = classIds.length
+      ? await this.prisma.academicClass.findMany({
+          where: { id: { in: classIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+
+    const classMap: Record<string, string> = {};
+    for (const c of classes) classMap[c.id] = c.name;
+
+    const topClassDemand = topClassGroups
+      .filter((r) => r.classInterestedId && classMap[r.classInterestedId])
+      .map((r) => ({
+        className: classMap[r.classInterestedId!],
+        count: r._count.id,
+      }));
+
+    // Summary metrics
+    const conversionRate =
+      totalEnquiries > 0 ? (totalApplications / totalEnquiries) * 100 : 0;
+    const acceptanceRate = decided > 0 ? (approved / decided) * 100 : 0;
+    const withdrawalRate =
+      totalApplications > 0
+        ? ((appMap['WITHDRAWN'] ?? 0) / totalApplications) * 100
+        : 0;
+
+    return {
+      funnel,
+      sourceBreakdown,
+      monthlyTrend,
+      topClassDemand,
+      metrics: {
+        conversionRate: Math.round(conversionRate * 10) / 10,
+        acceptanceRate: Math.round(acceptanceRate * 10) / 10,
+        withdrawalRate: Math.round(withdrawalRate * 10) / 10,
+        totalEnquiries,
+        totalApplications,
+        approved,
+        enrolled,
       },
     };
   }
