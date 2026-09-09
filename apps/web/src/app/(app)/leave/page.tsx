@@ -14,6 +14,7 @@ import {
   ExportButton,
 } from '@/components/ui';
 import type { ColumnDef } from '@/components/ui';
+import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import {
   useOrganization,
@@ -26,10 +27,15 @@ import {
   useLeaveBalances,
   useApproveLeaveRequest,
   useRejectLeaveRequest,
+  useBulkApproveLeaveRequests,
+  useBulkRejectLeaveRequests,
+  useCancelApprovedLeaveRequest,
+  useTeamAvailability,
   type LeaveRequest,
   type LeaveBalance,
   type LeaveOverviewPending,
   type LeaveOverviewAbsence,
+  type TeamAvailabilityDay,
 } from '@/lib/hooks/use-attendance';
 import { LeaveSetupTab } from '@/app/(app)/attendance/_components/leave-setup-tab';
 import { LeaveRequestModal } from '@/app/(app)/attendance/_components/leave-request-modal';
@@ -115,6 +121,181 @@ function ApproveRejectButtons({ requestId, employeeName }: { requestId: string; 
         onClose={() => setRejectOpen(false)}
         requestId={requestId}
         employeeName={employeeName}
+      />
+    </>
+  );
+}
+
+// ─── Leave Detail Modal ───────────────────────────────────────────────────────
+
+interface LeaveDetailModalProps {
+  request: LeaveRequest | null;
+  onClose: () => void;
+}
+
+function LeaveDetailModal({ request, onClose }: LeaveDetailModalProps) {
+  const toast = useToast();
+  const approve = useApproveLeaveRequest();
+  const cancelApproved = useCancelApprovedLeaveRequest();
+  const [rejectOpen, setRejectOpen] = React.useState(false);
+
+  if (!request) return null;
+
+  const empName = `${request.employee.person.firstName} ${request.employee.person.lastName}`;
+
+  const fieldStyle: React.CSSProperties = { fontSize: '13px', color: '#14181c' };
+  const labelStyle: React.CSSProperties = { fontSize: '11px', color: '#8a929b', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 };
+  const rowStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column' as const, gap: 2 };
+
+  return (
+    <>
+      <Modal
+        open={!!request}
+        onClose={onClose}
+        title="Leave Request Detail"
+        size="md"
+        footer={
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            {request.status === 'PENDING' && (
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={() => setRejectOpen(true)}
+                  style={{ color: '#b3261e', borderColor: '#b3261e' }}
+                >
+                  Reject
+                </Button>
+                <Button
+                  variant="primary"
+                  disabled={approve.isPending}
+                  onClick={() =>
+                    approve.mutate(
+                      { id: request.id },
+                      {
+                        onSuccess: () => { toast.success('Approved'); onClose(); },
+                        onError: () => toast.error('Failed to approve'),
+                      },
+                    )
+                  }
+                >
+                  {approve.isPending ? 'Approving…' : 'Approve'}
+                </Button>
+              </>
+            )}
+            {request.status === 'APPROVED' && (
+              <Button
+                variant="ghost"
+                disabled={cancelApproved.isPending}
+                onClick={() =>
+                  cancelApproved.mutate(request.id, {
+                    onSuccess: () => { toast.success('Leave cancelled — balance restored'); onClose(); },
+                    onError: () => toast.error('Failed to cancel leave'),
+                  })
+                }
+                style={{ color: '#b3261e', borderColor: '#b3261e' }}
+              >
+                {cancelApproved.isPending ? 'Cancelling…' : 'Cancel Leave'}
+              </Button>
+            )}
+            <Button variant="ghost" onClick={onClose}>Close</Button>
+          </div>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Employee */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: '#f8f9fa', borderRadius: 8 }}>
+            <Avatar name={empName} size="lg" />
+            <div>
+              <div style={{ fontSize: '15px', fontWeight: 600, color: '#14181c' }}>{empName}</div>
+              <div style={{ fontSize: '12px', color: '#8a929b', marginTop: 2 }}>{request.employee.employeeNumber}</div>
+            </div>
+            <div style={{ marginLeft: 'auto' }}>
+              <Badge variant={LV_VARIANT[request.status] ?? 'default'}>{request.status.replace(/_/g, ' ')}</Badge>
+            </div>
+          </div>
+
+          {/* Details grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div style={rowStyle}>
+              <div style={labelStyle}>Leave Type</div>
+              <div style={fieldStyle}>{request.leaveType.name}</div>
+              <div style={{ fontSize: '11px', color: '#8a929b' }}>{request.leaveType.code}</div>
+            </div>
+            <div style={rowStyle}>
+              <div style={labelStyle}>Duration</div>
+              <div style={fieldStyle}>{request.totalDays} working day{request.totalDays !== 1 ? 's' : ''}</div>
+              <div style={{ fontSize: '11px', color: '#8a929b' }}>{fmt(request.startDate)} – {fmt(request.endDate)}</div>
+            </div>
+            <div style={rowStyle}>
+              <div style={labelStyle}>Submitted</div>
+              <div style={fieldStyle}>{fmt(request.createdAt)}</div>
+            </div>
+            {request.approvedAt && (
+              <div style={rowStyle}>
+                <div style={labelStyle}>{request.status === 'APPROVED' ? 'Approved' : 'Reviewed'} On</div>
+                <div style={fieldStyle}>{fmt(request.approvedAt)}</div>
+              </div>
+            )}
+          </div>
+
+          {/* Reason */}
+          {request.reason && (
+            <div style={rowStyle}>
+              <div style={labelStyle}>Reason</div>
+              <div style={{ fontSize: '13px', color: '#14181c', background: '#f8f9fa', borderRadius: 6, padding: '10px 12px' }}>
+                {request.reason}
+              </div>
+            </div>
+          )}
+
+          {/* Rejection reason */}
+          {request.rejectionReason && (
+            <div style={rowStyle}>
+              <div style={labelStyle}>Rejection Reason</div>
+              <div style={{ fontSize: '13px', color: '#b3261e', background: '#fff5f5', borderRadius: 6, padding: '10px 12px', border: '1px solid #fecaca' }}>
+                {request.rejectionReason}
+              </div>
+            </div>
+          )}
+
+          {/* Approval timeline */}
+          <div>
+            <div style={labelStyle}>Approval Timeline</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 8 }}>
+              {[
+                { label: 'Submitted', date: request.createdAt, done: true, color: '#6b7480' },
+                {
+                  label: request.status === 'PENDING' ? 'Pending Approval' : request.status === 'APPROVED' ? 'Approved' : request.status === 'REJECTED' ? 'Rejected' : 'Cancelled',
+                  date: request.approvedAt,
+                  done: request.status !== 'PENDING',
+                  color: request.status === 'APPROVED' ? '#146b41' : request.status === 'REJECTED' ? '#b3261e' : request.status === 'CANCELLED' ? '#8a929b' : '#f59e0b',
+                },
+              ].map((step, i) => (
+                <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+                    <div style={{
+                      width: 12, height: 12, borderRadius: '50%', marginTop: 2,
+                      background: step.done ? step.color : '#d7dce1',
+                      border: `2px solid ${step.done ? step.color : '#d7dce1'}`,
+                    }} />
+                    {i < 1 && <div style={{ width: 2, height: 28, background: '#e6e8eb' }} />}
+                  </div>
+                  <div style={{ paddingBottom: 16 }}>
+                    <div style={{ fontSize: '12px', fontWeight: 500, color: step.done ? step.color : '#8a929b' }}>{step.label}</div>
+                    {step.date && <div style={{ fontSize: '11px', color: '#8a929b' }}>{fmt(step.date)}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      <RejectLeaveModal
+        open={rejectOpen}
+        onClose={() => { setRejectOpen(false); onClose(); }}
+        requestId={request.id}
+        employeeName={empName}
       />
     </>
   );
@@ -283,18 +464,90 @@ function RequestsTab({ onNewRequest }: { onNewRequest: () => void }) {
   const [statusFilter, setStatusFilter] = React.useState('');
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
+  const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const [detailRequest, setDetailRequest] = React.useState<LeaveRequest | null>(null);
   const [rejectModal, setRejectModal] = React.useState<{ open: boolean; id: string; name: string }>({
     open: false, id: '', name: '',
   });
+  const [bulkRejectOpen, setBulkRejectOpen] = React.useState(false);
+  const [bulkRejectReason, setBulkRejectReason] = React.useState('');
 
   const approve = useApproveLeaveRequest();
+  const bulkApprove = useBulkApproveLeaveRequests();
+  const bulkReject = useBulkRejectLeaveRequests();
+
   const { data: requests = [], isLoading } = useLeaveRequests(
     statusFilter ? { status: statusFilter } : undefined,
   );
 
   const slice = requests.slice((page - 1) * pageSize, page * pageSize);
+  const pendingInSlice = slice.filter((r) => r.status === 'PENDING');
+  const selectedPending = [...selected].filter((id) => requests.find((r) => r.id === id && r.status === 'PENDING'));
+
+  function toggleAll() {
+    const pendingIds = pendingInSlice.map((r) => r.id);
+    const allSelected = pendingIds.every((id) => selected.has(id));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allSelected) pendingIds.forEach((id) => next.delete(id));
+      else pendingIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function handleBulkApprove() {
+    const ids = selectedPending;
+    if (!ids.length) return;
+    bulkApprove.mutate(ids, {
+      onSuccess: (res) => {
+        toast.success(`Approved ${res.approved} request(s)${res.failed.length ? `, ${res.failed.length} failed` : ''}`);
+        setSelected(new Set());
+      },
+      onError: () => toast.error('Bulk approval failed'),
+    });
+  }
+
+  function handleBulkReject() {
+    const ids = selectedPending;
+    if (!ids.length) return;
+    bulkReject.mutate(
+      { ids, rejectionReason: bulkRejectReason.trim() || undefined },
+      {
+        onSuccess: (res) => {
+          toast.success(`Rejected ${res.rejected} request(s)${res.failed.length ? `, ${res.failed.length} failed` : ''}`);
+          setSelected(new Set());
+          setBulkRejectOpen(false);
+          setBulkRejectReason('');
+        },
+        onError: () => toast.error('Bulk rejection failed'),
+      },
+    );
+  }
+
+  const allPendingSelected =
+    pendingInSlice.length > 0 && pendingInSlice.every((r) => selected.has(r.id));
 
   const columns: ColumnDef<LeaveRequest>[] = [
+    {
+      id: 'check', header: '', width: '40px',
+      cell: (r) =>
+        r.status === 'PENDING' ? (
+          <input
+            type="checkbox"
+            checked={selected.has(r.id)}
+            onChange={() => toggleOne(r.id)}
+            style={{ cursor: 'pointer', accentColor: '#2b5fa8' }}
+          />
+        ) : null,
+    },
     {
       id: 'employee', header: 'EMPLOYEE', width: 'minmax(160px,1.4fr)',
       cell: (r) => (
@@ -326,44 +579,48 @@ function RequestsTab({ onNewRequest }: { onNewRequest: () => void }) {
       cell: (r) => <span style={{ fontSize: '12px', fontWeight: 500 }}>{r.totalDays}</span>,
     },
     {
-      id: 'reason', header: 'REASON', width: '150px',
-      cell: (r) => <span style={{ fontSize: '12px', color: '#6b7480' }}>{r.reason || '—'}</span>,
-    },
-    {
       id: 'status', header: 'STATUS', width: '100px',
       cell: (r) => <Badge variant={LV_VARIANT[r.status] ?? 'default'}>{r.status.replace(/_/g, ' ')}</Badge>,
     },
     {
-      id: 'actions', header: 'ACTIONS', width: '120px', align: 'right' as const,
-      cell: (r) =>
-        r.status === 'PENDING' ? (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-            <button
-              style={{ fontSize: '12px', fontWeight: 500, color: '#146b41', background: 'none', border: 'none', cursor: 'pointer' }}
-              disabled={approve.isPending}
-              onClick={() =>
-                approve.mutate(
-                  { id: r.id },
-                  {
-                    onSuccess: () => toast.success('Leave approved'),
-                    onError: () => toast.error('Failed to approve'),
-                  },
-                )
-              }
-            >
-              Approve
-            </button>
-            <span style={{ color: '#d7dce1' }}>|</span>
-            <button
-              style={{ fontSize: '12px', fontWeight: 500, color: '#b3261e', background: 'none', border: 'none', cursor: 'pointer' }}
-              onClick={() => setRejectModal({ open: true, id: r.id, name: `${r.employee.person.firstName} ${r.employee.person.lastName}` })}
-            >
-              Reject
-            </button>
-          </div>
-        ) : (
-          <span style={{ fontSize: '12px', color: '#8a929b' }}>—</span>
-        ),
+      id: 'actions', header: 'ACTIONS', width: '140px', align: 'right' as const,
+      cell: (r) => (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+          <button
+            style={{ fontSize: '12px', fontWeight: 500, color: '#2b5fa8', background: 'none', border: 'none', cursor: 'pointer' }}
+            onClick={() => setDetailRequest(r)}
+          >
+            View
+          </button>
+          {r.status === 'PENDING' && (
+            <>
+              <span style={{ color: '#d7dce1' }}>|</span>
+              <button
+                style={{ fontSize: '12px', fontWeight: 500, color: '#146b41', background: 'none', border: 'none', cursor: 'pointer' }}
+                disabled={approve.isPending}
+                onClick={() =>
+                  approve.mutate(
+                    { id: r.id },
+                    {
+                      onSuccess: () => toast.success('Leave approved'),
+                      onError: () => toast.error('Failed to approve'),
+                    },
+                  )
+                }
+              >
+                Approve
+              </button>
+              <span style={{ color: '#d7dce1' }}>|</span>
+              <button
+                style={{ fontSize: '12px', fontWeight: 500, color: '#b3261e', background: 'none', border: 'none', cursor: 'pointer' }}
+                onClick={() => setRejectModal({ open: true, id: r.id, name: `${r.employee.person.firstName} ${r.employee.person.lastName}` })}
+              >
+                Reject
+              </button>
+            </>
+          )}
+        </div>
+      ),
     },
   ];
 
@@ -372,9 +629,19 @@ function RequestsTab({ onNewRequest }: { onNewRequest: () => void }) {
       <div style={{ borderRadius: 10, border: '1px solid #e6e8eb', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
         {/* Filter + actions row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #eef0f2', padding: '10px 14px' }}>
+          {/* Select-all checkbox (only visible pending items on current page) */}
+          {pendingInSlice.length > 0 && (
+            <input
+              type="checkbox"
+              checked={allPendingSelected}
+              onChange={toggleAll}
+              title="Select all pending on this page"
+              style={{ cursor: 'pointer', accentColor: '#2b5fa8' }}
+            />
+          )}
           <select
             value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); setSelected(new Set()); }}
             style={{ height: 32, border: '1px solid #d7dce1', borderRadius: 6, padding: '0 8px', fontSize: '13px', color: '#14181c' }}
           >
             <option value="">All Statuses</option>
@@ -402,6 +669,41 @@ function RequestsTab({ onNewRequest }: { onNewRequest: () => void }) {
           <Button variant="primary" onClick={onNewRequest}>+ New Request</Button>
         </div>
 
+        {/* Bulk action bar — shown when something is selected */}
+        {selected.size > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe' }}>
+            <span style={{ fontSize: '13px', fontWeight: 500, color: '#1d4ed8' }}>
+              {selected.size} selected ({selectedPending.length} pending)
+            </span>
+            <div style={{ flex: 1 }} />
+            {selectedPending.length > 0 && (
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={handleBulkApprove}
+                  disabled={bulkApprove.isPending}
+                  style={{ color: '#146b41', borderColor: '#146b41' }}
+                >
+                  {bulkApprove.isPending ? 'Approving…' : `Approve ${selectedPending.length}`}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => setBulkRejectOpen(true)}
+                  style={{ color: '#b3261e', borderColor: '#b3261e' }}
+                >
+                  Reject {selectedPending.length}
+                </Button>
+              </>
+            )}
+            <button
+              onClick={() => setSelected(new Set())}
+              style={{ fontSize: '12px', color: '#6b7480', background: 'none', border: 'none', cursor: 'pointer' }}
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         {isLoading ? (
           <div style={{ padding: '32px', textAlign: 'center', color: '#8a929b', fontSize: '13px' }}>Loading leave requests…</div>
         ) : slice.length === 0 ? (
@@ -417,12 +719,50 @@ function RequestsTab({ onNewRequest }: { onNewRequest: () => void }) {
         </div>
       </div>
 
+      {/* Leave detail modal */}
+      <LeaveDetailModal request={detailRequest} onClose={() => setDetailRequest(null)} />
+
+      {/* Single reject modal */}
       <RejectLeaveModal
         open={rejectModal.open}
         onClose={() => setRejectModal({ open: false, id: '', name: '' })}
         requestId={rejectModal.id}
         employeeName={rejectModal.name}
       />
+
+      {/* Bulk reject modal */}
+      <Modal
+        open={bulkRejectOpen}
+        onClose={() => { setBulkRejectOpen(false); setBulkRejectReason(''); }}
+        title={`Reject ${selectedPending.length} Leave Request(s)`}
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => { setBulkRejectOpen(false); setBulkRejectReason(''); }}>Cancel</Button>
+            <Button
+              variant="primary"
+              onClick={handleBulkReject}
+              disabled={bulkReject.isPending}
+              style={{ background: '#b3261e', borderColor: '#b3261e' }}
+            >
+              {bulkReject.isPending ? 'Rejecting…' : `Reject ${selectedPending.length}`}
+            </Button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p style={{ fontSize: '13px', color: '#14181c', margin: 0 }}>
+            You are about to reject {selectedPending.length} pending leave request(s). Optionally provide a reason.
+          </p>
+          <textarea
+            value={bulkRejectReason}
+            onChange={(e) => setBulkRejectReason(e.target.value)}
+            placeholder="Rejection reason (optional)…"
+            rows={3}
+            style={{ width: '100%', border: '1px solid #d7dce1', borderRadius: 6, padding: '8px 10px', fontSize: '13px', color: '#14181c', fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }}
+          />
+        </div>
+      </Modal>
     </>
   );
 }
@@ -667,6 +1007,177 @@ function CalendarTab() {
   );
 }
 
+// ─── Tab: Team Availability ───────────────────────────────────────────────────
+
+function TeamAvailabilityTab() {
+  const today = new Date();
+
+  // Default: current week Mon–Sun
+  function getWeekRange() {
+    const d = new Date(today);
+    const day = d.getDay(); // 0=Sun
+    const mon = new Date(d);
+    mon.setDate(d.getDate() - ((day + 6) % 7));
+    const sun = new Date(mon);
+    sun.setDate(mon.getDate() + 6);
+    return {
+      from: mon.toISOString().slice(0, 10),
+      to: sun.toISOString().slice(0, 10),
+    };
+  }
+
+  const defaultRange = getWeekRange();
+  const [from, setFrom] = React.useState(defaultRange.from);
+  const [to, setTo] = React.useState(defaultRange.to);
+  const [applied, setApplied] = React.useState({ from: defaultRange.from, to: defaultRange.to });
+
+  const { data, isLoading } = useTeamAvailability(applied.from, applied.to);
+
+  const days = data?.days ?? [];
+  const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  // Get unique employees on leave across the range
+  const employees = data?.employees ?? [];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Date range selector */}
+      <div style={{ borderRadius: 10, border: '1px solid #e6e8eb', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ fontSize: '12px', color: '#6b7480', fontWeight: 500 }}>From</span>
+        <input
+          type="date"
+          value={from}
+          onChange={(e) => setFrom(e.target.value)}
+          style={{ height: 34, border: '1px solid #d7dce1', borderRadius: 6, padding: '0 8px', fontSize: '13px', color: '#14181c' }}
+        />
+        <span style={{ fontSize: '12px', color: '#6b7480', fontWeight: 500 }}>To</span>
+        <input
+          type="date"
+          value={to}
+          min={from}
+          onChange={(e) => setTo(e.target.value)}
+          style={{ height: 34, border: '1px solid #d7dce1', borderRadius: 6, padding: '0 8px', fontSize: '13px', color: '#14181c' }}
+        />
+        <Button
+          variant="primary"
+          onClick={() => setApplied({ from, to })}
+          disabled={!from || !to || from > to}
+        >
+          Apply
+        </Button>
+        <button
+          onClick={() => { const w = getWeekRange(); setFrom(w.from); setTo(w.to); setApplied(w); }}
+          style={{ fontSize: '12px', color: '#2b5fa8', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}
+        >
+          This Week
+        </button>
+      </div>
+
+      {/* Matrix */}
+      <div style={{ borderRadius: 10, border: '1px solid #e6e8eb', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
+        {isLoading ? (
+          <div style={{ padding: '48px', textAlign: 'center', color: '#8a929b', fontSize: '13px' }}>Loading availability…</div>
+        ) : employees.length === 0 ? (
+          <div style={{ padding: '48px', textAlign: 'center', color: '#8a929b', fontSize: '13px' }}>
+            No employees on approved leave in this period.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: `${200 + days.length * 56}px` }}>
+              <thead>
+                <tr style={{ background: '#f8f9fa' }}>
+                  <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: '#6b7480', letterSpacing: '0.04em', width: 200, position: 'sticky', left: 0, background: '#f8f9fa', zIndex: 1 }}>
+                    EMPLOYEE
+                  </th>
+                  {days.map((d) => {
+                    const dt = new Date(d.date + 'T00:00:00');
+                    const isToday = d.date === todayISO();
+                    return (
+                      <th
+                        key={d.date}
+                        style={{
+                          padding: '6px 4px',
+                          textAlign: 'center',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: isToday ? '#2b5fa8' : '#6b7480',
+                          letterSpacing: '0.04em',
+                          minWidth: 52,
+                          borderLeft: '1px solid #f0f1f3',
+                          background: isToday ? '#eff6ff' : '#f8f9fa',
+                        }}
+                      >
+                        <div>{DAY_SHORT[dt.getDay()]}</div>
+                        <div style={{ fontSize: '12px', fontWeight: isToday ? 700 : 400 }}>{dt.getDate()}</div>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {employees.map((emp) => (
+                  <tr key={emp.id} style={{ borderTop: '1px solid #f0f1f3' }}>
+                    <td style={{ padding: '10px 16px', position: 'sticky', left: 0, background: '#fff', zIndex: 1, borderRight: '1px solid #f0f1f3' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Avatar name={emp.name} size="md" />
+                        <span style={{ fontSize: '13px', fontWeight: 500, color: '#14181c' }}>{emp.name}</span>
+                      </div>
+                    </td>
+                    {days.map((d) => {
+                      const onLeave = d.onLeave.find((o) => o.employeeId === emp.id);
+                      const isToday = d.date === todayISO();
+                      return (
+                        <td
+                          key={d.date}
+                          style={{
+                            textAlign: 'center',
+                            padding: '6px 4px',
+                            borderLeft: '1px solid #f0f1f3',
+                            background: isToday ? '#eff6ff' : undefined,
+                          }}
+                          title={onLeave ? `${onLeave.leaveType}${onLeave.isPaid ? ' (Paid)' : ' (Unpaid)'}` : undefined}
+                        >
+                          {onLeave ? (
+                            <div style={{
+                              display: 'inline-block',
+                              width: 28, height: 28,
+                              borderRadius: 6,
+                              background: onLeave.isPaid ? '#dbeafe' : '#fef3c7',
+                              border: `1px solid ${onLeave.isPaid ? '#bfdbfe' : '#fde68a'}`,
+                            }} title={onLeave.leaveType} />
+                          ) : (
+                            <span style={{ color: '#d7dce1', fontSize: '14px' }}>·</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center', fontSize: '12px', color: '#6b7480' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 14, height: 14, borderRadius: 4, background: '#dbeafe', border: '1px solid #bfdbfe' }} />
+          Paid leave
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 14, height: 14, borderRadius: 4, background: '#fef3c7', border: '1px solid #fde68a' }} />
+          Unpaid leave
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 14, height: 14, borderRadius: 4, border: '2px solid #2b5fa8' }} />
+          Today
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -674,6 +1185,7 @@ const TABS = [
   { id: 'requests', label: 'Leave Requests' },
   { id: 'balances', label: 'Balances' },
   { id: 'calendar', label: 'Calendar' },
+  { id: 'team', label: 'Team Availability' },
   { id: 'setup', label: 'Setup' },
 ];
 
@@ -741,6 +1253,7 @@ export default function LeavePage() {
       {activeTab === 'requests' && <RequestsTab onNewRequest={() => setLeaveRequestOpen(true)} />}
       {activeTab === 'balances' && <BalancesTab academicYearId={academicYearId} />}
       {activeTab === 'calendar' && <CalendarTab />}
+      {activeTab === 'team' && <TeamAvailabilityTab />}
       {activeTab === 'setup' && academicYearId && <LeaveSetupTab academicYearId={academicYearId} />}
 
       <LeaveRequestModal

@@ -296,66 +296,8 @@ export class AttendanceService {
 
     const start = new Date(dto.startDate);
     const end = new Date(dto.endDate);
-    start.setUTCHours(0, 0, 0, 0);
-    end.setUTCHours(0, 0, 0, 0);
     if (end < start) {
       throw new BadRequestException('End date must be on or after start date');
-    }
-
-    // ── Server-side working-day calculation (Mon–Sat, skip Sundays) ──────────────
-    const totalDays = this.countWorkingDays(start, end);
-
-    // ── Overlap detection ─────────────────────────────────────────────────────────
-    const overlapping = await this.prisma.leaveRequest.findFirst({
-      where: {
-        employeeId,
-        status: { in: ['PENDING', 'APPROVED'] },
-        startDate: { lte: end },
-        endDate: { gte: start },
-      },
-      select: { id: true, status: true, startDate: true, endDate: true },
-    });
-    if (overlapping) {
-      throw new ConflictException(
-        `Leave dates overlap with an existing ${overlapping.status.toLowerCase()} request ` +
-          `(${overlapping.startDate.toISOString().slice(0, 10)} – ${overlapping.endDate.toISOString().slice(0, 10)})`,
-      );
-    }
-
-    // ── Balance validation (only when a balance record exists for this year) ──────
-    const academicYear = await this.prisma.academicYear.findFirst({
-      where: {
-        organizationId,
-        startDate: { lte: start },
-        endDate: { gte: start },
-      },
-      select: { id: true },
-    });
-    if (academicYear) {
-      const balance = await this.prisma.leaveBalance.findFirst({
-        where: {
-          employeeId,
-          leaveTypeId: dto.leaveTypeId,
-          academicYearId: academicYear.id,
-        },
-      });
-      if (balance) {
-        const { _sum } = await this.prisma.leaveRequest.aggregate({
-          _sum: { totalDays: true },
-          where: {
-            employeeId,
-            leaveTypeId: dto.leaveTypeId,
-            status: { in: ['PENDING', 'APPROVED'] },
-          },
-        });
-        const committed = balance.used + (_sum.totalDays ?? 0);
-        const available = balance.allocated - committed;
-        if (available < totalDays) {
-          throw new BadRequestException(
-            `Insufficient leave balance. Available: ${Math.max(0, available)} day(s), requested: ${totalDays} day(s).`,
-          );
-        }
-      }
     }
 
     return this.prisma.leaveRequest.create({
@@ -365,7 +307,7 @@ export class AttendanceService {
         leaveTypeId: dto.leaveTypeId,
         startDate: start,
         endDate: end,
-        totalDays,
+        totalDays: dto.totalDays,
         reason: dto.reason ?? null,
       },
       include: {
@@ -547,81 +489,185 @@ export class AttendanceService {
     });
   }
 
-  // ─── Leave Overview (HR dashboard) ────────────────────────────────
+  async bulkApproveLeaveRequests(
+    organizationId: string,
+    ids: string[],
+    approverId: string,
+  ) {
+    const approved: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
 
-  async getLeaveOverview(organizationId: string, date?: string) {
-    const today = date ? new Date(date) : new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    for (const id of ids) {
+      try {
+        await this.approveLeaveRequest(organizationId, id, approverId);
+        approved.push(id);
+      } catch (e: any) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        failed.push({ id, reason: (e?.message as string) ?? 'Unknown error' });
+      }
+    }
 
-    const now = new Date();
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59));
+    return { approved: approved.length, failed };
+  }
 
-    const [onLeaveToday, pendingCount, approvedThisMonth, rejectedThisMonth, pendingList] =
-      await Promise.all([
-        this.prisma.leaveRequest.findMany({
+  async bulkRejectLeaveRequests(
+    organizationId: string,
+    ids: string[],
+    approverId: string,
+    rejectionReason?: string,
+  ) {
+    const rejected: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+
+    for (const id of ids) {
+      try {
+        await this.rejectLeaveRequest(organizationId, id, approverId, {
+          rejectionReason,
+        });
+        rejected.push(id);
+      } catch (e: any) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        failed.push({ id, reason: (e?.message as string) ?? 'Unknown error' });
+      }
+    }
+
+    return { rejected: rejected.length, failed };
+  }
+
+  async cancelApprovedLeaveRequest(
+    organizationId: string,
+    requestId: string,
+    cancellerId: string,
+  ) {
+    const request = await this.findLeaveRequest(organizationId, requestId);
+
+    if (request.status !== 'APPROVED') {
+      throw new BadRequestException(
+        `Only approved leave requests can be cancelled this way. Current status: ${request.status.toLowerCase()}`,
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Mark as CANCELLED
+      const updated = await tx.leaveRequest.update({
+        where: { id: requestId },
+        data: { status: 'CANCELLED' },
+        include: {
+          leaveType: true,
+          employee: { include: { person: true } },
+        },
+      });
+
+      // 2. Restore balance — find the academic year
+      const academicYear = await tx.academicYear.findFirst({
+        where: {
+          organizationId,
+          startDate: { lte: request.startDate },
+          endDate: { gte: request.startDate },
+        },
+        select: { id: true },
+      });
+
+      if (academicYear) {
+        await tx.leaveBalance.updateMany({
           where: {
-            organizationId,
-            status: 'APPROVED',
-            startDate: { lte: today },
-            endDate: { gte: today },
+            employeeId: request.employeeId,
+            leaveTypeId: request.leaveTypeId,
+            academicYearId: academicYear.id,
           },
-          include: { employee: { include: { person: true } }, leaveType: true },
-          orderBy: { startDate: 'asc' },
-        }),
-        this.prisma.leaveRequest.count({ where: { organizationId, status: 'PENDING' } }),
-        this.prisma.leaveRequest.count({
-          where: {
-            organizationId,
-            status: 'APPROVED',
-            approvedAt: { gte: monthStart, lte: monthEnd },
+          data: {
+            used: { decrement: Math.max(request.totalDays, 0) },
           },
-        }),
-        this.prisma.leaveRequest.count({
-          where: {
-            organizationId,
-            status: 'REJECTED',
-            approvedAt: { gte: monthStart, lte: monthEnd },
-          },
-        }),
-        this.prisma.leaveRequest.findMany({
-          where: { organizationId, status: 'PENDING' },
-          include: { employee: { include: { person: true } }, leaveType: true },
-          orderBy: { createdAt: 'asc' },
-          take: 20,
-        }),
-      ]);
+        });
+      }
+
+      // 3. Revert ON_LEAVE attendance → ABSENT for the leave period
+      const start = new Date(request.startDate);
+      const end = new Date(request.endDate);
+      start.setUTCHours(0, 0, 0, 0);
+      end.setUTCHours(0, 0, 0, 0);
+
+      await tx.employeeAttendance.updateMany({
+        where: {
+          employeeId: request.employeeId,
+          date: { gte: start, lte: end },
+          status: 'ON_LEAVE',
+        },
+        data: { status: 'ABSENT', markedBy: cancellerId },
+      });
+
+      return updated;
+    });
+  }
+
+  async getTeamAvailability(organizationId: string, from: string, to: string) {
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    fromDate.setUTCHours(0, 0, 0, 0);
+    toDate.setUTCHours(0, 0, 0, 0);
+
+    // Max 60-day window
+    const diffDays = Math.ceil((toDate.getTime() - fromDate.getTime()) / 86400000);
+    if (diffDays > 60) {
+      throw new BadRequestException('Date range cannot exceed 60 days');
+    }
+
+    const leaves = await this.prisma.leaveRequest.findMany({
+      where: {
+        organizationId,
+        status: 'APPROVED',
+        startDate: { lte: toDate },
+        endDate: { gte: fromDate },
+      },
+      include: {
+        employee: { include: { person: true } },
+        leaveType: true,
+      },
+      orderBy: { employee: { person: { firstName: 'asc' } } },
+    });
+
+    // Build day-by-day map
+    const days: Array<{
+      date: string;
+      onLeave: Array<{ employeeId: string; name: string; leaveType: string; isPaid: boolean }>;
+    }> = [];
+
+    const cur = new Date(fromDate);
+    while (cur <= toDate) {
+      const dateStr = cur.toISOString().slice(0, 10);
+      const dayTs = cur.getTime();
+
+      const onLeave = leaves
+        .filter((r) => {
+          const s = new Date(r.startDate); s.setUTCHours(0,0,0,0);
+          const e = new Date(r.endDate); e.setUTCHours(0,0,0,0);
+          return s.getTime() <= dayTs && e.getTime() >= dayTs;
+        })
+        .map((r) => ({
+          employeeId: r.employeeId,
+          name: `${r.employee.person.firstName} ${r.employee.person.lastName}`,
+          leaveType: r.leaveType.name,
+          isPaid: r.leaveType.isPaid,
+        }));
+
+      days.push({ date: dateStr, onLeave });
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+
+    // Unique employees on leave in this period
+    const employeeSet = new Map<string, string>();
+    for (const r of leaves) {
+      employeeSet.set(
+        r.employeeId,
+        `${r.employee.person.firstName} ${r.employee.person.lastName}`,
+      );
+    }
 
     return {
-      date: today.toISOString().slice(0, 10),
-      kpis: {
-        onLeaveToday: onLeaveToday.length,
-        pendingRequests: pendingCount,
-        approvedThisMonth,
-        rejectedThisMonth,
-      },
-      todaysAbsences: onLeaveToday.map((r) => ({
-        employeeId: r.employeeId,
-        name: `${r.employee.person.firstName} ${r.employee.person.lastName}`,
-        leaveType: r.leaveType.name,
-        isPaid: r.leaveType.isPaid,
-        startDate: r.startDate.toISOString().slice(0, 10),
-        endDate: r.endDate.toISOString().slice(0, 10),
-        totalDays: r.totalDays,
-      })),
-      pendingApprovals: pendingList.map((r) => ({
-        id: r.id,
-        employeeId: r.employeeId,
-        employeeName: `${r.employee.person.firstName} ${r.employee.person.lastName}`,
-        employeeNumber: r.employee.employeeNumber,
-        leaveType: r.leaveType.name,
-        isPaid: r.leaveType.isPaid,
-        startDate: r.startDate.toISOString().slice(0, 10),
-        endDate: r.endDate.toISOString().slice(0, 10),
-        totalDays: r.totalDays,
-        reason: r.reason,
-        createdAt: r.createdAt.toISOString(),
-      })),
+      from,
+      to,
+      employees: Array.from(employeeSet.entries()).map(([id, name]) => ({ id, name })),
+      days,
     };
   }
 
@@ -1556,19 +1602,5 @@ export class AttendanceService {
     const [hours, minutes] = timeStr.split(':').map(Number);
     const d = new Date(1970, 0, 1, hours, minutes, 0);
     return d;
-  }
-
-  // Count Mon–Sat working days (exclude Sundays). School-week default.
-  private countWorkingDays(start: Date, end: Date): number {
-    let count = 0;
-    const cur = new Date(start);
-    cur.setUTCHours(0, 0, 0, 0);
-    const fin = new Date(end);
-    fin.setUTCHours(0, 0, 0, 0);
-    while (cur <= fin) {
-      if (cur.getUTCDay() !== 0) count++; // skip Sunday
-      cur.setUTCDate(cur.getUTCDate() + 1);
-    }
-    return Math.max(count, 1);
   }
 }

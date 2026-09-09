@@ -869,3 +869,75 @@ export function useLeaveOverview(date?: string) {
     retry: 1,
   });
 }
+
+// ─── Phase 2: Bulk Actions & Team Availability ────────────────────────────────
+
+export interface TeamAvailabilityDay {
+  date: string;
+  onLeave: Array<{ employeeId: string; name: string; leaveType: string; isPaid: boolean }>;
+}
+
+export interface TeamAvailability {
+  from: string;
+  to: string;
+  employees: Array<{ id: string; name: string }>;
+  days: TeamAvailabilityDay[];
+}
+
+export function useTeamAvailability(from?: string, to?: string) {
+  return useQuery<TeamAvailability>({
+    queryKey: ['leave', 'team-availability', from, to],
+    queryFn: () =>
+      apiClient.get<TeamAvailability>(
+        `/attendance/leave/team-availability${toQS({ from: from!, to: to! })}`,
+      ),
+    enabled: !!from && !!to,
+    staleTime: 60_000,
+    retry: 1,
+  });
+}
+
+export function useBulkApproveLeaveRequests() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) =>
+      apiClient.post<{ approved: number; failed: Array<{ id: string; reason: string }> }>(
+        '/attendance/leave-requests/bulk-approve',
+        { ids },
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'leave-requests'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'overview'] });
+      void qc.invalidateQueries({ queryKey: ['leave', 'overview'] });
+    },
+  });
+}
+
+export function useBulkRejectLeaveRequests() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, rejectionReason }: { ids: string[]; rejectionReason?: string }) =>
+      apiClient.post<{ rejected: number; failed: Array<{ id: string; reason: string }> }>(
+        '/attendance/leave-requests/bulk-reject',
+        { ids, ...(rejectionReason ? { rejectionReason } : {}) },
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'leave-requests'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'overview'] });
+      void qc.invalidateQueries({ queryKey: ['leave', 'overview'] });
+    },
+  });
+}
+
+export function useCancelApprovedLeaveRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiClient.post(`/attendance/leave-requests/${id}/cancel-approved`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'leave-requests'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'leave-balances'] });
+      void qc.invalidateQueries({ queryKey: ['leave', 'overview'] });
+    },
+  });
+}

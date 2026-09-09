@@ -85,16 +85,6 @@ export class AttendanceController {
     return this.attendanceService.getLeaveBalances(user.organizationId, employeeId, academicYearId);
   }
 
-  @ApiOperation({ summary: 'Leave management overview — KPIs, today\'s absences, pending approvals' })
-  @ApiQuery({ name: 'date', required: false, description: 'YYYY-MM-DD (defaults to today)' })
-  @Get('leave/overview')
-  getLeaveOverview(
-    @CurrentUser() user: CurrentUserPayload,
-    @Query('date') date?: string,
-  ) {
-    return this.attendanceService.getLeaveOverview(user.organizationId, date);
-  }
-
   // ─── Health Alerts ─────────────────────────────────────────────
 
   @ApiOperation({ summary: 'Get student attendance health alerts' })
@@ -314,6 +304,61 @@ export class AttendanceController {
     @Query('employeeId') employeeId: string,
   ) {
     return this.attendanceService.cancelLeaveRequest(user.organizationId, id, employeeId);
+  }
+
+  @ApiOperation({ summary: 'Bulk approve multiple leave requests' })
+  @Post('leave-requests/bulk-approve')
+  @HttpCode(HttpStatus.OK)
+  bulkApproveLeaveRequests(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() body: { ids: string[]; },
+  ) {
+    return this.attendanceService.bulkApproveLeaveRequests(
+      user.organizationId,
+      body.ids,
+      user.userId,
+    );
+  }
+
+  @ApiOperation({ summary: 'Bulk reject multiple leave requests' })
+  @Post('leave-requests/bulk-reject')
+  @HttpCode(HttpStatus.OK)
+  bulkRejectLeaveRequests(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() body: { ids: string[]; rejectionReason?: string },
+  ) {
+    return this.attendanceService.bulkRejectLeaveRequests(
+      user.organizationId,
+      body.ids,
+      user.userId,
+      body.rejectionReason,
+    );
+  }
+
+  @ApiOperation({ summary: 'Cancel an approved leave request and restore balance (admin action)' })
+  @Post('leave-requests/:id/cancel-approved')
+  @HttpCode(HttpStatus.OK)
+  cancelApprovedLeaveRequest(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.attendanceService.cancelApprovedLeaveRequest(
+      user.organizationId,
+      id,
+      user.userId,
+    );
+  }
+
+  @ApiOperation({ summary: 'Team leave availability for a date range (max 60 days)' })
+  @ApiQuery({ name: 'from', required: true, description: 'YYYY-MM-DD' })
+  @ApiQuery({ name: 'to', required: true, description: 'YYYY-MM-DD' })
+  @Get('leave/team-availability')
+  getTeamAvailability(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    return this.attendanceService.getTeamAvailability(user.organizationId, from, to);
   }
 
   // ─── Sessions ──────────────────────────────────────────────────
