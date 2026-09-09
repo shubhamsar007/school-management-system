@@ -15,6 +15,27 @@ export enum NotificationChannelEnum {
   PUSH = 'PUSH',
 }
 
+export enum NotificationCategoryEnum {
+  ACADEMIC = 'ACADEMIC',
+  ATTENDANCE = 'ATTENDANCE',
+  EXAMINATION = 'EXAMINATION',
+  FINANCE = 'FINANCE',
+  ADMISSIONS = 'ADMISSIONS',
+  HR = 'HR',
+  SUBSTITUTION = 'SUBSTITUTION',
+  ANNOUNCEMENT = 'ANNOUNCEMENT',
+  PTM = 'PTM',
+  SYSTEM = 'SYSTEM',
+  GENERAL = 'GENERAL',
+}
+
+export enum NotificationPriorityEnum {
+  LOW = 'LOW',
+  NORMAL = 'NORMAL',
+  HIGH = 'HIGH',
+  URGENT = 'URGENT',
+}
+
 export class SendNotificationDto {
   @ApiProperty()
   @IsUUID()
@@ -25,6 +46,16 @@ export class SendNotificationDto {
   @IsNotEmpty()
   @MaxLength(100)
   eventType: string;
+
+  @ApiPropertyOptional({ enum: NotificationCategoryEnum, default: NotificationCategoryEnum.GENERAL })
+  @IsOptional()
+  @IsEnum(NotificationCategoryEnum)
+  category?: NotificationCategoryEnum;
+
+  @ApiPropertyOptional({ enum: NotificationPriorityEnum, default: NotificationPriorityEnum.NORMAL })
+  @IsOptional()
+  @IsEnum(NotificationPriorityEnum)
+  priority?: NotificationPriorityEnum;
 
   @ApiProperty()
   @IsString()
@@ -40,4 +71,22 @@ export class SendNotificationDto {
   @ApiProperty({ enum: NotificationChannelEnum })
   @IsEnum(NotificationChannelEnum)
   channel: NotificationChannelEnum;
+
+  @ApiPropertyOptional({ description: 'Source entity type (e.g. INVOICE, STUDENT, LEAVE_REQUEST)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  entityType?: string;
+
+  @ApiPropertyOptional({ description: 'Source entity ID' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  entityId?: string;
+
+  @ApiPropertyOptional({ description: 'Deep link URL within the ERP (e.g. /finance/invoices/abc123)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  actionUrl?: string;
 }

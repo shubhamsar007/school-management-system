@@ -5,45 +5,35 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
-  PlayCircle,
-  Users,
-  Layers,
-  Puzzle,
-  FileText,
+  CalendarCheck,
+  ClipboardList,
+  UserCheck,
+  Calendar,
+  History,
   BarChart2,
+  Users,
+  Clock,
   Settings,
-  TrendingUp,
-  Landmark,
-  Receipt,
-  Handshake,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { label: 'Overview',          href: '/payroll',                   icon: LayoutDashboard },
-  { label: 'Payroll Runs',      href: '/payroll/runs',              icon: PlayCircle },
-  { label: 'Employees',         href: '/payroll/employees',         icon: Users },
-  { label: 'Salary Structures', href: '/payroll/salary-structures', icon: Layers },
-  { label: 'Salary Components', href: '/payroll/salary-components', icon: Puzzle },
-  { label: 'Adjustments',       href: '/payroll/adjustments',       icon: TrendingUp },
-  { label: 'Loans & Advances',  href: '/payroll/loans',             icon: Landmark },
-  { label: 'Tax / TDS',         href: '/payroll/tax',               icon: Receipt },
-  { label: 'Full & Final',      href: '/payroll/settlements',       icon: Handshake },
-  { label: 'Payslips',          href: '/payroll/payslips',          icon: FileText },
-  { label: 'Reports',           href: '/payroll/reports',           icon: BarChart2 },
-  { label: 'Configuration',     href: '/payroll/configuration',     icon: Settings },
+  { label: 'Overview',         href: '/substitutions',                icon: LayoutDashboard },
+  { label: "Today's Coverage", href: '/substitutions/today',          icon: CalendarCheck },
+  { label: 'Requests',         href: '/substitutions/requests',       icon: ClipboardList },
+  { label: 'Assignments',      href: '/substitutions/assignments',    icon: UserCheck },
+  { label: 'Calendar',         href: '/substitutions/calendar',       icon: Calendar },
+  { label: 'History',          href: '/substitutions/history',        icon: History },
+  { label: 'Analytics',        href: '/substitutions/analytics',      icon: BarChart2 },
+  { label: 'Pools',            href: '/substitutions/pools',          icon: Users },
+  { label: 'Availability',     href: '/substitutions/availability',   icon: Clock },
+  { label: 'Configuration',    href: '/substitutions/configuration',  icon: Settings },
 ];
 
-export function PayrollSubNav() {
+export function SubstitutionSubNav() {
   const pathname = usePathname();
 
   return (
-    <div
-      style={{
-        width: 200,
-        flexShrink: 0,
-        paddingTop: 2,
-      }}
-    >
+    <div style={{ width: 200, flexShrink: 0, paddingTop: 2 }}>
       <div
         style={{
           fontSize: 10,
@@ -54,13 +44,13 @@ export function PayrollSubNav() {
           padding: '0 10px 10px',
         }}
       >
-        Payroll
+        Substitutions
       </div>
       <nav style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
         {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
           const isActive =
-            href === '/payroll'
-              ? pathname === '/payroll'
+            href === '/substitutions'
+              ? pathname === '/substitutions'
               : pathname.startsWith(href);
 
           return (

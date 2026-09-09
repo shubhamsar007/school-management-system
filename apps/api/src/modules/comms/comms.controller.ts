@@ -112,18 +112,33 @@ export class CommsController {
   @ApiQuery({ name: 'recipientUserId', required: false })
   @ApiQuery({ name: 'status', required: false, description: 'PENDING | SENT | READ | FAILED' })
   @ApiQuery({ name: 'channel', required: false })
+  @ApiQuery({ name: 'category', required: false, description: 'ACADEMIC | ATTENDANCE | EXAMINATION | FINANCE | ADMISSIONS | HR | SUBSTITUTION | ANNOUNCEMENT | PTM | SYSTEM | GENERAL' })
   @Get('notifications')
   findNotifications(
     @CurrentUser() user: CurrentUserPayload,
     @Query('recipientUserId') recipientUserId?: string,
     @Query('status') status?: string,
     @Query('channel') channel?: string,
+    @Query('category') category?: string,
   ) {
     return this.commsService.findNotifications(user.organizationId, {
       ...(recipientUserId ? { recipientUserId } : {}),
       ...(status ? { status } : {}),
       ...(channel ? { channel } : {}),
+      ...(category ? { category } : {}),
     });
+  }
+
+  @ApiOperation({ summary: 'Get unread notification count for the authenticated user' })
+  @Get('notifications/unread-count')
+  getUnreadCount(@CurrentUser() user: CurrentUserPayload) {
+    return this.commsService.getUnreadCount(user.organizationId, user.userId);
+  }
+
+  @ApiOperation({ summary: 'Get org-wide notification stats for the overview dashboard' })
+  @Get('notifications/stats')
+  getNotificationStats(@CurrentUser() user: CurrentUserPayload) {
+    return this.commsService.getNotificationStats(user.organizationId);
   }
 
   @ApiOperation({ summary: 'Mark a notification as read' })

@@ -134,17 +134,22 @@ export class CommsService {
         organizationId,
         recipientUserId: dto.recipientUserId,
         eventType: dto.eventType,
+        category: dto.category ?? 'GENERAL',
+        priority: dto.priority ?? 'NORMAL',
         title: dto.title,
         message: dto.message,
         channel: dto.channel,
         status: 'PENDING',
+        entityType: dto.entityType ?? null,
+        entityId: dto.entityId ?? null,
+        actionUrl: dto.actionUrl ?? null,
       },
     });
   }
 
   async findNotifications(
     organizationId: string,
-    filters: { recipientUserId?: string; status?: string; channel?: string },
+    filters: { recipientUserId?: string; status?: string; channel?: string; category?: string },
   ) {
     return this.prisma.notification.findMany({
       where: {
@@ -152,9 +157,56 @@ export class CommsService {
         ...(filters.recipientUserId ? { recipientUserId: filters.recipientUserId } : {}),
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.channel ? { channel: filters.channel } : {}),
+        ...(filters.category ? { category: filters.category } : {}),
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async getUnreadCount(organizationId: string, recipientUserId: string) {
+    const count = await this.prisma.notification.count({
+      where: {
+        organizationId,
+        recipientUserId,
+        readAt: null,
+        status: { not: 'FAILED' },
+      },
+    });
+    return { count };
+  }
+
+  async getNotificationStats(organizationId: string) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [sentToday, delivered, failed, pending, readCount] = await Promise.all([
+      this.prisma.notification.count({
+        where: { organizationId, createdAt: { gte: todayStart } },
+      }),
+      this.prisma.notification.count({
+        where: { organizationId, status: { in: ['SENT', 'READ'] } },
+      }),
+      this.prisma.notification.count({
+        where: { organizationId, status: 'FAILED' },
+      }),
+      this.prisma.notification.count({
+        where: { organizationId, status: 'PENDING' },
+      }),
+      this.prisma.notification.count({
+        where: { organizationId, status: 'READ' },
+      }),
+    ]);
+
+    const deliveryBase = delivered + failed;
+    const deliveryRate = deliveryBase > 0 ? Math.round((delivered / deliveryBase) * 1000) / 10 : 0;
+    const readBase = delivered;
+    const readRate = readBase > 0 ? Math.round((readCount / readBase) * 1000) / 10 : 0;
+
+    const unread = await this.prisma.notification.count({
+      where: { organizationId, readAt: null, status: 'SENT' },
+    });
+
+    return { sentToday, delivered, failed, pending, unread, deliveryRate, readRate };
   }
 
   async markNotificationRead(organizationId: string, notificationId: string) {

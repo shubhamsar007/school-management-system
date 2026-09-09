@@ -21,6 +21,7 @@ export interface DataTableProps<T> {
   data: T[];
   selectable?: boolean;
   onSelectionChange?: (selected: T[]) => void;
+  onRowClick?: (row: T) => void;
   loading?: boolean;
   emptyState?: React.ReactNode;
   className?: string;
@@ -49,6 +50,7 @@ function DataTable<T extends object>({
   data,
   selectable = false,
   onSelectionChange,
+  onRowClick,
   loading = false,
   emptyState,
   className,
@@ -186,13 +188,14 @@ function DataTable<T extends object>({
           {sortedData.map((row, rowIdx) => (
             <div
               key={rowIdx}
-              className={cn('grid transition-colors')}
+              className={cn('grid transition-colors', onRowClick && 'cursor-pointer')}
               style={{
                 gridTemplateColumns: gridCols,
                 minHeight: 52,
                 borderBottom: '1px solid #f4f1e8',
                 background: selected.has(rowIdx) ? '#dbe8dc' : 'transparent',
               }}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
               onMouseEnter={(e) => {
                 if (!selected.has(rowIdx)) (e.currentTarget as HTMLElement).style.background = '#fbf9f3';
               }}

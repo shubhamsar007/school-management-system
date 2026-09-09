@@ -282,6 +282,100 @@ export interface UpsertTaxDeclarationData {
   otherDeductions?: number;
 }
 
+export type FnfSeparationType =
+  | 'RESIGNATION'
+  | 'TERMINATION'
+  | 'RETIREMENT'
+  | 'DEATH'
+  | 'CONTRACT_END'
+  | 'OTHER';
+
+export type FnfStatus = 'DRAFT' | 'APPROVED' | 'PAID';
+
+export interface FnfSettlement {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  separationDate: string;
+  separationType: FnfSeparationType;
+  lastWorkingDay: string;
+  noticePeriodDays: number;
+  partialMonthDays: number;
+  partialMonthSalary: string;
+  pendingLeaveDays: string;
+  leaveEncashmentAmount: string;
+  gratuityAmount: string;
+  loanRecoveryAmount: string;
+  totalPayable: string;
+  totalDeductions: string;
+  netSettlement: string;
+  status: FnfStatus;
+  notes: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  employee?: {
+    id: string;
+    employeeCode: string;
+    person?: { firstName: string; lastName: string };
+    department?: { name: string };
+  } | null;
+}
+
+export interface InitiateFnfData {
+  employeeId: string;
+  separationDate: string;
+  separationType: FnfSeparationType;
+  lastWorkingDay: string;
+  noticePeriodDays?: number;
+  pendingLeaveDays?: number;
+  notes?: string;
+}
+
+// ─── Analytics types ──────────────────────────────────────────────────────────
+
+export interface PayrollAnalyticsOverview {
+  financialYear: string;
+  totalRuns: number;
+  totalEmployees: number;
+  totalGross: string;
+  totalDeductions: string;
+  totalNet: string;
+  totalTds: string;
+}
+
+export interface DepartmentPayrollSummary {
+  departmentName: string;
+  employeeCount: number;
+  totalGross: string;
+  totalNet: string;
+  totalTds: string;
+}
+
+export interface PayrollMonthSummary {
+  period: string;       // YYYY-MM
+  runId: string;
+  status: string;
+  headcount: number;
+  totalGross: string;
+  totalNet: string;
+  totalTds: string;
+}
+
+export interface TdsEmployeeSummary {
+  employeeId: string;
+  employeeName: string;
+  taxRegime: TaxRegime;
+  section80C: string;
+  hraExemption: string;
+  otherDeductions: string;
+  annualTax: string;
+  monthlyTds: string;
+  taxableIncome: string;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function buildQuery(params?: Record<string, string | undefined>): string {
@@ -400,6 +494,30 @@ export const payrollApi = {
       ),
     upsert: (data: UpsertTaxDeclarationData) =>
       apiClient.post<TaxDeclaration>('/payroll/tax-declarations', data),
+  },
+
+  settlements: {
+    list: (params?: { status?: string }) =>
+      apiClient.get<FnfSettlement[]>(`/payroll/fnf-settlements${buildQuery(params)}`),
+    get: (id: string) =>
+      apiClient.get<FnfSettlement>(`/payroll/fnf-settlements/${id}`),
+    initiate: (data: InitiateFnfData) =>
+      apiClient.post<FnfSettlement>('/payroll/fnf-settlements', data),
+    approve: (id: string) =>
+      apiClient.patch<FnfSettlement>(`/payroll/fnf-settlements/${id}/approve`, {}),
+    markPaid: (id: string) =>
+      apiClient.patch<FnfSettlement>(`/payroll/fnf-settlements/${id}/mark-paid`, {}),
+  },
+
+  analytics: {
+    overview: (params?: { financialYear?: string }) =>
+      apiClient.get<PayrollAnalyticsOverview>(`/payroll/analytics/overview${buildQuery(params)}`),
+    byDepartment: (params?: { financialYear?: string }) =>
+      apiClient.get<DepartmentPayrollSummary[]>(`/payroll/analytics/by-department${buildQuery(params)}`),
+    monthTrend: (params?: { financialYear?: string }) =>
+      apiClient.get<PayrollMonthSummary[]>(`/payroll/analytics/month-trend${buildQuery(params)}`),
+    tdsSummary: (params?: { financialYear?: string }) =>
+      apiClient.get<TdsEmployeeSummary[]>(`/payroll/analytics/tds-summary${buildQuery(params)}`),
   },
 };
 

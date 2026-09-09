@@ -6,9 +6,9 @@ ALTER TABLE hr.payroll_records
 
 -- Employee investment declarations per financial year
 CREATE TABLE IF NOT EXISTS hr.tax_declarations (
-  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id  UUID NOT NULL,
-  employee_id      UUID NOT NULL,
+  id               TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  organization_id  TEXT NOT NULL,
+  employee_id      TEXT NOT NULL,
   financial_year   VARCHAR(9) NOT NULL,
   tax_regime       VARCHAR(10) NOT NULL DEFAULT 'NEW',
   section_80c      DECIMAL(12, 2) NOT NULL DEFAULT 0,
@@ -22,10 +22,10 @@ CREATE TABLE IF NOT EXISTS hr.tax_declarations (
 
 -- Per-payroll-record TDS computation audit snapshot
 CREATE TABLE IF NOT EXISTS hr.tax_calculations (
-  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  payroll_record_id  UUID NOT NULL UNIQUE
+  id                 TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  payroll_record_id  TEXT NOT NULL UNIQUE
                      REFERENCES hr.payroll_records(id) ON DELETE CASCADE,
-  tax_declaration_id UUID REFERENCES hr.tax_declarations(id),
+  tax_declaration_id TEXT REFERENCES hr.tax_declarations(id),
   tax_regime         VARCHAR(10) NOT NULL,
   annualized_gross   DECIMAL(14, 2) NOT NULL,
   total_exemptions   DECIMAL(12, 2) NOT NULL DEFAULT 0,

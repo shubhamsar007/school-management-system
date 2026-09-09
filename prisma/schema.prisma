@@ -1292,16 +1292,17 @@ model LeaveEncashment {
 }
 
 model SubstitutionRequest {
-  id             String   @id @default(uuid())
-  organizationId String   @map("organization_id")
-  leaveRequestId String   @map("leave_request_id")
-  academicYearId String   @map("academic_year_id")
-  date           DateTime @db.Date
-  status         String   @default("PENDING") @db.VarChar(30)
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  leaveRequestId String?   @map("leave_request_id")
+  academicYearId String    @map("academic_year_id")
+  date           DateTime  @db.Date
+  status         String    @default("PENDING") @db.VarChar(30)
+  escalatedAt    DateTime? @map("escalated_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  leaveRequest LeaveRequest           @relation(fields: [leaveRequestId], references: [id])
+  leaveRequest LeaveRequest?           @relation(fields: [leaveRequestId], references: [id])
   assignments  SubstitutionAssignment[]
   candidateScores SubstitutionCandidateScore[]
 
@@ -1320,6 +1321,7 @@ model SubstitutionAssignment {
   assignedBy            String?   @map("assigned_by")
   notifiedAt            DateTime? @map("notified_at")
   confirmedAt           DateTime? @map("confirmed_at")
+  declineReason         String?   @map("decline_reason")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
 
@@ -1344,6 +1346,29 @@ model SubstitutionCandidateScore {
   substitutionRequest SubstitutionRequest @relation(fields: [substitutionRequestId], references: [id])
 
   @@map("substitution_candidate_scores")
+  @@schema("attendance")
+}
+
+model SubstitutionPolicy {
+  id                   String   @id @default(uuid())
+  organizationId       String   @unique @map("organization_id")
+  maxSubsPerDay        Int      @default(2)  @map("max_subs_per_day")
+  maxSubsPerWeek       Int      @default(6)  @map("max_subs_per_week")
+  autoAssignThreshold  Int      @default(85) @map("auto_assign_threshold")
+  escalateAfterMinutes Int      @default(5)  @map("escalate_after_minutes")
+  fairnessWindowDays   Int      @default(7)  @map("fairness_window_days")
+  weightSubject        Int      @default(40) @map("weight_subject")
+  weightWorkload       Int      @default(30) @map("weight_workload")
+  weightFairness       Int      @default(20) @map("weight_fairness")
+  weightDept           Int      @default(10) @map("weight_dept")
+  mode                 String   @default("HYBRID") @db.VarChar(20)
+  notifyTeacher        Boolean  @default(true)  @map("notify_teacher")
+  notifyParents        Boolean  @default(false) @map("notify_parents")
+  subjectMatchRequired Boolean  @default(false) @map("subject_match_required")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt      @map("updated_at")
+
+  @@map("substitution_policies")
   @@schema("attendance")
 }
 
@@ -2366,10 +2391,15 @@ model Notification {
   organizationId   String    @map("organization_id")
   recipientUserId  String    @map("recipient_user_id")
   eventType        String    @map("event_type") @db.VarChar(100)
+  category         String    @default("GENERAL") @db.VarChar(30)
+  priority         String    @default("NORMAL") @db.VarChar(20)
   title            String    @db.VarChar(255)
   message          String
   channel          String    @db.VarChar(20)
   status           String    @default("PENDING") @db.VarChar(20)
+  entityType       String?   @map("entity_type") @db.VarChar(50)
+  entityId         String?   @map("entity_id") @db.VarChar(100)
+  actionUrl        String?   @map("action_url") @db.VarChar(500)
   sentAt           DateTime? @map("sent_at")
   readAt           DateTime? @map("read_at")
   createdAt        DateTime  @default(now()) @map("created_at")
@@ -2448,4 +2478,56 @@ model PtmBooking {
   @@unique([ptmScheduleId, teacherId, slotStart])
   @@map("ptm_bookings")
   @@schema("comms")
+}
+
+model SubstitutePool {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  name           String   @db.VarChar(120)
+  description    String?
+  isActive       Boolean  @default(true)  @map("is_active")
+  poolBonusPts   Int      @default(5)     @map("pool_bonus_pts")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt      @map("updated_at")
+  members        SubstitutePoolMember[]
+
+  @@map("substitute_pools")
+  @@schema("attendance")
+}
+
+model SubstitutePoolMember {
+  poolId     String          @map("pool_id")
+  employeeId String          @map("employee_id")
+  addedAt    DateTime        @default(now()) @map("added_at")
+  pool       SubstitutePool  @relation(fields: [poolId], references: [id], onDelete: Cascade)
+
+  @@id([poolId, employeeId])
+  @@map("substitute_pool_members")
+  @@schema("attendance")
+}
+
+model TeacherUnavailabilityOverride {
+  id         String   @id @default(uuid())
+  employeeId String   @map("employee_id")
+  startDate  DateTime @map("start_date") @db.Date
+  endDate    DateTime @map("end_date")   @db.Date
+  reason     String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("teacher_unavailability_overrides")
+  @@schema("attendance")
+}
+
+model SubstitutionAuditLog {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  requestId      String?  @map("request_id")
+  assignmentId   String?  @map("assignment_id")
+  action         String   @db.VarChar(80)
+  actor          String?
+  details        Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("substitution_audit_logs")
+  @@schema("attendance")
 }

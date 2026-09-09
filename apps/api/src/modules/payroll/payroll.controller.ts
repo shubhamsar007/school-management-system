@@ -23,6 +23,7 @@ import { CreatePayrollRunDto, ProcessPayrollRunDto } from './dto/create-payroll-
 import { CreateAdjustmentDto, RejectAdjustmentDto } from './dto/create-adjustment.dto';
 import { CreateLoanDto } from './dto/create-loan.dto';
 import { UpsertTaxDeclarationDto } from './dto/upsert-tax-declaration.dto';
+import { InitiateFnfDto } from './dto/initiate-fnf.dto';
 
 @ApiTags('payroll')
 @ApiBearerAuth()
@@ -365,5 +366,99 @@ export class PayrollController {
     @Res() res: Response,
   ) {
     return this.payrollService.exportBankCsv(user.organizationId, id, res);
+  }
+
+  // ─── Full & Final Settlements ─────────────────────────────────
+
+  @ApiOperation({ summary: 'Initiate a Full & Final settlement for a separating employee' })
+  @Post('fnf-settlements')
+  initiateFnf(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: InitiateFnfDto,
+  ) {
+    return this.payrollService.initiateFnf(user.organizationId, user.userId, dto);
+  }
+
+  @ApiOperation({ summary: 'List FnF settlements' })
+  @ApiQuery({ name: 'status', required: false, description: 'DRAFT | APPROVED | PAID' })
+  @Get('fnf-settlements')
+  listFnfSettlements(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('status') status?: string,
+  ) {
+    return this.payrollService.listFnfSettlements(user.organizationId, status);
+  }
+
+  @ApiOperation({ summary: 'Get a specific FnF settlement by ID' })
+  @Get('fnf-settlements/:id')
+  getFnfSettlement(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.payrollService.getFnfSettlement(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Approve a DRAFT FnF settlement' })
+  @Patch('fnf-settlements/:id/approve')
+  approveFnfSettlement(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.payrollService.approveFnfSettlement(user.organizationId, id, user.userId);
+  }
+
+  @ApiOperation({ summary: 'Mark an APPROVED FnF settlement as PAID' })
+  @Patch('fnf-settlements/:id/mark-paid')
+  markFnfPaid(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.payrollService.markFnfPaid(user.organizationId, id);
+  }
+
+  // ─── Analytics ────────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Payroll analytics overview (totals for a financial year)' })
+  @ApiQuery({ name: 'financialYear', required: false, description: 'e.g. 2026-2027 (defaults to current FY)' })
+  @Get('analytics/overview')
+  getAnalyticsOverview(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('financialYear') financialYear?: string,
+  ) {
+    const fy = financialYear ?? this.payrollService.deriveFinancialYear(new Date());
+    return this.payrollService.getPayrollAnalyticsOverview(user.organizationId, fy);
+  }
+
+  @ApiOperation({ summary: 'Payroll analytics broken down by department' })
+  @ApiQuery({ name: 'financialYear', required: false })
+  @Get('analytics/by-department')
+  getAnalyticsByDepartment(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('financialYear') financialYear?: string,
+  ) {
+    const fy = financialYear ?? this.payrollService.deriveFinancialYear(new Date());
+    return this.payrollService.getPayrollAnalyticsByDepartment(user.organizationId, fy);
+  }
+
+  @ApiOperation({ summary: 'Month-by-month payroll trend for a financial year' })
+  @ApiQuery({ name: 'financialYear', required: false })
+  @Get('analytics/month-trend')
+  getAnalyticsMonthTrend(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('financialYear') financialYear?: string,
+  ) {
+    const fy = financialYear ?? this.payrollService.deriveFinancialYear(new Date());
+    return this.payrollService.getPayrollAnalyticsMonthTrend(user.organizationId, fy);
+  }
+
+  @ApiOperation({ summary: 'TDS summary per employee for a financial year' })
+  @ApiQuery({ name: 'financialYear', required: false })
+  @Get('analytics/tds-summary')
+  getAnalyticsTdsSummary(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('financialYear') financialYear?: string,
+  ) {
+    const fy = financialYear ?? this.payrollService.deriveFinancialYear(new Date());
+    return this.payrollService.getPayrollAnalyticsTdsSummary(user.organizationId, fy);
   }
 }

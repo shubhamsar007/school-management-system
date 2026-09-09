@@ -24,13 +24,28 @@ export interface AppNotification {
   organizationId: string;
   recipientUserId: string;
   eventType: string;
+  category: string;
+  priority: string;
   title: string;
   message: string;
   channel: string;
   status: string;
+  entityType: string | null;
+  entityId: string | null;
+  actionUrl: string | null;
   sentAt: string | null;
   readAt: string | null;
   createdAt: string;
+}
+
+export interface NotificationStats {
+  sentToday: number;
+  delivered: number;
+  failed: number;
+  pending: number;
+  unread: number;
+  deliveryRate: number;
+  readRate: number;
 }
 
 export interface PtmSchedule {
@@ -158,11 +173,13 @@ export function useNotifications(filters?: {
   recipientUserId?: string;
   status?: string;
   channel?: string;
+  category?: string;
 }) {
   const params = new URLSearchParams();
   if (filters?.recipientUserId) params.set('recipientUserId', filters.recipientUserId);
   if (filters?.status) params.set('status', filters.status);
   if (filters?.channel) params.set('channel', filters.channel);
+  if (filters?.category) params.set('category', filters.category);
   const qs = params.toString();
   return useQuery<AppNotification[]>({
     queryKey: ['comms', 'notifications', filters],
@@ -174,11 +191,52 @@ export function useNotifications(filters?: {
   });
 }
 
+export function useUnreadCount() {
+  return useQuery<{ count: number }>({
+    queryKey: ['comms', 'notifications', 'unread-count'],
+    queryFn: () => apiClient.get<{ count: number }>('/comms/notifications/unread-count'),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    retry: 1,
+  });
+}
+
+export function useNotificationStats() {
+  return useQuery<NotificationStats>({
+    queryKey: ['comms', 'notifications', 'stats'],
+    queryFn: () => apiClient.get<NotificationStats>('/comms/notifications/stats'),
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+    retry: 1,
+  });
+}
+
 export function useMarkNotificationRead() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       apiClient.post<AppNotification>(`/comms/notifications/${id}/read`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['comms', 'notifications'] });
+    },
+  });
+}
+
+export function useSendNotification() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: {
+      recipientUserId: string;
+      eventType: string;
+      category?: string;
+      priority?: string;
+      title: string;
+      message: string;
+      channel: string;
+      entityType?: string;
+      entityId?: string;
+      actionUrl?: string;
+    }) => apiClient.post<AppNotification>('/comms/notifications', dto),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['comms', 'notifications'] });
     },

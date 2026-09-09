@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAdmissionStats } from '@/lib/hooks/use-admissions';
+import { useUnreadCount } from '@/lib/hooks/use-comms';
 
 interface NavItem {
   label: string;
@@ -27,7 +28,7 @@ const NAV_GROUPS: NavGroup[] = [
     group: 'MAIN',
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-      { label: 'Notifications', href: '/notifications', icon: Bell, badge: 7 },
+      { label: 'Notifications', href: '/notifications', icon: Bell },
     ],
   },
   {
@@ -98,6 +99,8 @@ function Sidebar({ collapsed, onToggle, currentPath }: SidebarProps) {
   const sidebarW = collapsed ? 52 : 224;
   const { data: admissionStats } = useAdmissionStats();
   const admissionPending = admissionStats?.applications?.pendingReview ?? 0;
+  const { data: unreadData } = useUnreadCount();
+  const notifUnread = unreadData?.count ?? 0;
 
   return (
     /* Outer container: floats the pill inside the oat canvas */
@@ -198,7 +201,9 @@ function Sidebar({ collapsed, onToggle, currentPath }: SidebarProps) {
                 const Icon = item.icon;
                 // Use live admission pending count for the admissions nav item
                 const badgeCount =
-                  item.href === '/admissions' ? admissionPending : item.badge;
+                  item.href === '/admissions' ? admissionPending
+                  : item.href === '/notifications' ? notifUnread
+                  : item.badge;
                 return (
                   <Link
                     key={item.href}
