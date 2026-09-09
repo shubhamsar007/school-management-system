@@ -941,3 +941,166 @@ export function useCancelApprovedLeaveRequest() {
     },
   });
 }
+
+// ─── Leave Balance Ledger ─────────────────────────────────────
+
+export interface LeaveBalanceLedgerEntry {
+  id: string;
+  employeeId: string;
+  leaveTypeId: string;
+  academicYearId: string;
+  delta: number;
+  balanceAfter: number;
+  reason: string;
+  source: 'ALLOCATION' | 'USED' | 'CANCELLED' | 'ADJUSTMENT' | 'CARRY_FORWARD' | 'ENCASHMENT';
+  referenceId: string | null;
+  createdBy: string;
+  createdAt: string;
+  leaveType: { name: string; code: string };
+}
+
+export function useLeaveBalanceLedger(
+  employeeId?: string,
+  leaveTypeId?: string,
+  academicYearId?: string,
+) {
+  return useQuery({
+    queryKey: ['leave', 'balance-ledger', employeeId, leaveTypeId, academicYearId],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (employeeId) params.set('employeeId', employeeId);
+      if (leaveTypeId) params.set('leaveTypeId', leaveTypeId);
+      if (academicYearId) params.set('academicYearId', academicYearId);
+      return apiClient.get<LeaveBalanceLedgerEntry[]>(
+        `/attendance/leave-balances/ledger?${params.toString()}`,
+      );
+    },
+    enabled: !!employeeId,
+  });
+}
+
+// ─── Leave Adjustments ────────────────────────────────────────
+
+export interface LeaveAdjustment {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  leaveTypeId: string;
+  academicYearId: string;
+  delta: number;
+  reason: string;
+  adjustedBy: string;
+  createdAt: string;
+  leaveType: { name: string; code: string };
+}
+
+export interface CreateLeaveAdjustmentPayload {
+  employeeId: string;
+  leaveTypeId: string;
+  academicYearId: string;
+  delta: number;
+  reason: string;
+}
+
+export function useLeaveAdjustments(
+  employeeId?: string,
+  leaveTypeId?: string,
+  academicYearId?: string,
+) {
+  return useQuery({
+    queryKey: ['leave', 'adjustments', employeeId, leaveTypeId, academicYearId],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (employeeId) params.set('employeeId', employeeId);
+      if (leaveTypeId) params.set('leaveTypeId', leaveTypeId);
+      if (academicYearId) params.set('academicYearId', academicYearId);
+      return apiClient.get<LeaveAdjustment[]>(`/attendance/leave-adjustments?${params.toString()}`);
+    },
+  });
+}
+
+export function useCreateLeaveAdjustment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateLeaveAdjustmentPayload) =>
+      apiClient.post<LeaveAdjustment>('/attendance/leave-adjustments', payload),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['leave', 'adjustments'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'leave-balances'] });
+      void qc.invalidateQueries({ queryKey: ['leave', 'balance-ledger'] });
+    },
+  });
+}
+
+// ─── Leave Encashment ─────────────────────────────────────────
+
+export interface LeaveEncashment {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  leaveTypeId: string;
+  academicYearId: string;
+  days: number;
+  amountPerDay: string;
+  totalAmount: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  requestedBy: string;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+  leaveType: { name: string; code: string };
+}
+
+export interface SubmitEncashmentPayload {
+  leaveTypeId: string;
+  academicYearId: string;
+  days: number;
+  amountPerDay: number;
+}
+
+export function useLeaveEncashments(employeeId?: string, status?: string) {
+  return useQuery({
+    queryKey: ['leave', 'encashments', employeeId, status],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (employeeId) params.set('employeeId', employeeId);
+      if (status) params.set('status', status);
+      return apiClient.get<LeaveEncashment[]>(`/attendance/leave-encashments?${params.toString()}`);
+    },
+  });
+}
+
+export function useSubmitLeaveEncashment(employeeId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SubmitEncashmentPayload) =>
+      apiClient.post<LeaveEncashment>(`/attendance/leave-encashments/${employeeId}`, payload),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['leave', 'encashments'] });
+      void qc.invalidateQueries({ queryKey: ['attendance', 'leave-balances'] });
+    },
+  });
+}
+
+export function useApproveLeaveEncashment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiClient.post<LeaveEncashment>(`/attendance/leave-encashments/${id}/approve`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['leave', 'encashments'] });
+    },
+  });
+}
+
+export function useRejectLeaveEncashment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      apiClient.post<LeaveEncashment>(`/attendance/leave-encashments/${id}/reject`, { reason }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['leave', 'encashments'] });
+    },
+  });
+}

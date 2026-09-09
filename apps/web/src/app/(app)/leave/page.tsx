@@ -31,8 +31,14 @@ import {
   useBulkRejectLeaveRequests,
   useCancelApprovedLeaveRequest,
   useTeamAvailability,
+  useLeaveBalanceLedger,
+  useLeaveEncashments,
+  useApproveLeaveEncashment,
+  useRejectLeaveEncashment,
   type LeaveRequest,
   type LeaveBalance,
+  type LeaveEncashment,
+  type LeaveBalanceLedgerEntry,
   type LeaveOverviewPending,
   type LeaveOverviewAbsence,
   type TeamAvailabilityDay,
@@ -769,11 +775,26 @@ function RequestsTab({ onNewRequest }: { onNewRequest: () => void }) {
 
 // ─── Tab: Balances ────────────────────────────────────────────────────────────
 
+const LEDGER_SOURCE_COLORS: Record<string, { bg: string; color: string }> = {
+  ALLOCATION:    { bg: '#dbeafe', color: '#1d4ed8' },
+  USED:          { bg: '#fee2e2', color: '#b91c1c' },
+  CANCELLED:     { bg: '#ffedd5', color: '#c2410c' },
+  ADJUSTMENT:    { bg: '#ede9fe', color: '#6d28d9' },
+  CARRY_FORWARD: { bg: '#d1fae5', color: '#065f46' },
+  ENCASHMENT:    { bg: '#fef3c7', color: '#92400e' },
+};
+
 function BalancesTab({ academicYearId }: { academicYearId: string }) {
   const [employeeId, setEmployeeId] = React.useState('');
+  const [selectedLedgerType, setSelectedLedgerType] = React.useState<string | null>(null);
   const { data: empRes } = useTeachers({ limit: 200 });
   const employees = empRes?.data ?? [];
   const { data: balances = [], isLoading } = useLeaveBalances(employeeId || undefined, academicYearId || undefined);
+  const { data: ledger = [], isLoading: ledgerLoading } = useLeaveBalanceLedger(
+    employeeId || undefined,
+    selectedLedgerType ?? undefined,
+    academicYearId || undefined,
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -826,9 +847,17 @@ function BalancesTab({ academicYearId }: { academicYearId: string }) {
                       <Badge variant={b.leaveType.isPaid ? 'active' : 'default'}>{b.leaveType.isPaid ? 'Paid' : 'Unpaid'}</Badge>
                     </div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '22px', fontWeight: 700, color: b.remaining > 0 ? '#14181c' : '#b3261e' }}>{b.remaining}</div>
-                    <div style={{ fontSize: '11px', color: '#8a929b' }}>remaining</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '22px', fontWeight: 700, color: b.remaining > 0 ? '#14181c' : '#b3261e' }}>{b.remaining}</div>
+                      <div style={{ fontSize: '11px', color: '#8a929b' }}>remaining</div>
+                    </div>
+                    <button
+                      onClick={() => setSelectedLedgerType(selectedLedgerType === b.leaveTypeId ? null : b.leaveTypeId)}
+                      style={{ fontSize: '11px', color: selectedLedgerType === b.leaveTypeId ? '#3f6152' : '#6b7480', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                    >
+                      {selectedLedgerType === b.leaveTypeId ? 'Hide history' : 'History'}
+                    </button>
                   </div>
                 </div>
 
@@ -855,6 +884,194 @@ function BalancesTab({ academicYearId }: { academicYearId: string }) {
           })}
         </div>
       )}
+
+      {/* Ledger history panel */}
+      {selectedLedgerType && employeeId && (
+        <div style={{ borderRadius: 10, border: '1px solid #e6e8eb', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid #f0f1f3', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: '#14181c' }}>Balance History</div>
+            <button onClick={() => setSelectedLedgerType(null)} style={{ fontSize: '12px', color: '#6b7480', background: 'none', border: 'none', cursor: 'pointer' }}>
+              Close ×
+            </button>
+          </div>
+          {ledgerLoading ? (
+            <div style={{ padding: '24px', textAlign: 'center', color: '#8a929b', fontSize: '13px' }}>Loading…</div>
+          ) : (ledger as LeaveBalanceLedgerEntry[]).length === 0 ? (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#8a929b', fontSize: '13px' }}>No history yet.</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: '#f8f9fa' }}>
+                  {['Date', 'Change', 'Balance After', 'Source', 'Reason'].map((h) => (
+                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7480', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #f0f1f3' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(ledger as LeaveBalanceLedgerEntry[]).map((entry) => {
+                  const sc = LEDGER_SOURCE_COLORS[entry.source] ?? { bg: '#f0f1f3', color: '#6b7480' };
+                  return (
+                    <tr key={entry.id} style={{ borderTop: '1px solid #f0f1f3' }}>
+                      <td style={{ padding: '10px 16px', color: '#6b7480' }}>{fmt(entry.createdAt)}</td>
+                      <td style={{ padding: '10px 16px', fontWeight: 600, color: entry.delta > 0 ? '#146b41' : '#b3261e' }}>
+                        {entry.delta > 0 ? `+${entry.delta}` : `${entry.delta}`}
+                      </td>
+                      <td style={{ padding: '10px 16px', color: '#14181c' }}>{entry.balanceAfter}</td>
+                      <td style={{ padding: '10px 16px' }}>
+                        <span style={{ padding: '2px 8px', borderRadius: 10, background: sc.bg, color: sc.color, fontSize: '11px', fontWeight: 600 }}>
+                          {entry.source.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 16px', color: '#6b7480', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={entry.reason}>{entry.reason}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Tab: Encashment ──────────────────────────────────────────────────────────
+
+const ENCASHMENT_STATUS_COLORS: Record<string, { bg: string; color: string }> = {
+  PENDING:  { bg: '#fef3c7', color: '#92400e' },
+  APPROVED: { bg: '#d1fae5', color: '#065f46' },
+  REJECTED: { bg: '#fee2e2', color: '#b91c1c' },
+};
+
+function EncashmentTab() {
+  const toast = useToast();
+  const { data: encashments = [], isLoading } = useLeaveEncashments();
+  const approve = useApproveLeaveEncashment();
+  const reject = useRejectLeaveEncashment();
+  const [rejectingId, setRejectingId] = React.useState<string | null>(null);
+  const [rejectReason, setRejectReason] = React.useState('');
+
+  function handleApprove(id: string) {
+    approve.mutate(id, {
+      onSuccess: () => toast.success('Encashment approved'),
+      onError: () => toast.error('Failed to approve'),
+    });
+  }
+
+  function handleReject(id: string) {
+    if (!rejectReason.trim()) return;
+    reject.mutate(
+      { id, reason: rejectReason },
+      {
+        onSuccess: () => { toast.success('Encashment rejected'); setRejectingId(null); setRejectReason(''); },
+        onError: () => toast.error('Failed to reject'),
+      },
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ borderRadius: 10, border: '1px solid #e6e8eb', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #f0f1f3' }}>
+          <div style={{ fontSize: '14px', fontWeight: 600, color: '#14181c' }}>Encashment Requests</div>
+          <div style={{ fontSize: '12px', color: '#8a929b', marginTop: 2 }}>Review and action employee leave encashment requests</div>
+        </div>
+
+        {isLoading ? (
+          <div style={{ padding: '32px', textAlign: 'center', color: '#8a929b', fontSize: '13px' }}>Loading…</div>
+        ) : (encashments as LeaveEncashment[]).length === 0 ? (
+          <div style={{ padding: '48px', textAlign: 'center', color: '#8a929b', fontSize: '13px' }}>No encashment requests.</div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+            <thead>
+              <tr style={{ background: '#f8f9fa' }}>
+                {['Employee', 'Leave Type', 'Days', '₹/Day', 'Total', 'Status', 'Requested', 'Actions'].map((h) => (
+                  <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7480', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #f0f1f3', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(encashments as LeaveEncashment[]).map((enc) => {
+                const sc = ENCASHMENT_STATUS_COLORS[enc.status] ?? { bg: '#f0f1f3', color: '#6b7480' };
+                const isRejecting = rejectingId === enc.id;
+                return (
+                  <React.Fragment key={enc.id}>
+                    <tr style={{ borderTop: '1px solid #f0f1f3' }}>
+                      <td style={{ padding: '10px 16px', color: '#14181c', fontFamily: 'monospace', fontSize: '12px' }}>{enc.employeeId.slice(0, 8)}…</td>
+                      <td style={{ padding: '10px 16px', color: '#14181c' }}>{enc.leaveType.name}</td>
+                      <td style={{ padding: '10px 16px', color: '#14181c', fontWeight: 600 }}>{enc.days}</td>
+                      <td style={{ padding: '10px 16px', color: '#6b7480' }}>₹{Number(enc.amountPerDay).toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '10px 16px', color: '#14181c', fontWeight: 600 }}>₹{Number(enc.totalAmount).toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '10px 16px' }}>
+                        <span style={{ padding: '3px 10px', borderRadius: 12, background: sc.bg, color: sc.color, fontSize: '11px', fontWeight: 600 }}>
+                          {enc.status}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 16px', color: '#6b7480' }}>{fmt(enc.createdAt)}</td>
+                      <td style={{ padding: '10px 16px' }}>
+                        {enc.status === 'PENDING' && (
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button
+                              onClick={() => handleApprove(enc.id)}
+                              disabled={approve.isPending}
+                              style={{ fontSize: '12px', fontWeight: 500, color: '#146b41', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                            >
+                              Approve
+                            </button>
+                            <span style={{ color: '#d7dce1' }}>|</span>
+                            <button
+                              onClick={() => { setRejectingId(enc.id); setRejectReason(''); }}
+                              style={{ fontSize: '12px', fontWeight: 500, color: '#b3261e', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                        {enc.status === 'REJECTED' && enc.rejectionReason && (
+                          <span style={{ fontSize: '11px', color: '#8a929b' }} title={enc.rejectionReason}>
+                            {enc.rejectionReason.slice(0, 30)}{enc.rejectionReason.length > 30 ? '…' : ''}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                    {isRejecting && (
+                      <tr style={{ borderTop: 'none', background: '#fffbf0' }}>
+                        <td colSpan={8} style={{ padding: '12px 16px' }}>
+                          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                            <textarea
+                              autoFocus
+                              value={rejectReason}
+                              onChange={(e) => setRejectReason(e.target.value)}
+                              placeholder="Reason for rejection…"
+                              rows={2}
+                              style={{ flex: 1, border: '1px solid #fde68a', borderRadius: 6, padding: '8px 10px', fontSize: '13px', color: '#14181c', fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }}
+                            />
+                            <div style={{ display: 'flex', gap: 6, paddingTop: 2 }}>
+                              <button
+                                onClick={() => { setRejectingId(null); setRejectReason(''); }}
+                                style={{ height: 32, padding: '0 12px', borderRadius: 6, border: '1px solid #d7dce1', background: '#fff', fontSize: '12px', color: '#6b7480', cursor: 'pointer' }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => handleReject(enc.id)}
+                                disabled={!rejectReason.trim() || reject.isPending}
+                                style={{ height: 32, padding: '0 12px', borderRadius: 6, border: 'none', background: '#b3261e', color: '#fff', fontSize: '12px', fontWeight: 600, cursor: 'pointer', opacity: !rejectReason.trim() ? 0.5 : 1 }}
+                              >
+                                {reject.isPending ? 'Rejecting…' : 'Confirm Reject'}
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
@@ -1186,6 +1403,7 @@ const TABS = [
   { id: 'balances', label: 'Balances' },
   { id: 'calendar', label: 'Calendar' },
   { id: 'team', label: 'Team Availability' },
+  { id: 'encashment', label: 'Encashment' },
   { id: 'setup', label: 'Setup' },
 ];
 
@@ -1254,6 +1472,7 @@ export default function LeavePage() {
       {activeTab === 'balances' && <BalancesTab academicYearId={academicYearId} />}
       {activeTab === 'calendar' && <CalendarTab />}
       {activeTab === 'team' && <TeamAvailabilityTab />}
+      {activeTab === 'encashment' && <EncashmentTab />}
       {activeTab === 'setup' && academicYearId && <LeaveSetupTab academicYearId={academicYearId} />}
 
       <LeaveRequestModal

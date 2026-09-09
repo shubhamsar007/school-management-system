@@ -16,6 +16,10 @@ import { RejectLeaveRequestDto } from './dto/review-leave-request.dto';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { CreateCorrectionDto } from './dto/create-correction.dto';
 import { AllocateLeaveBalancesDto } from './dto/allocate-leave-balances.dto';
+import { CreateLeaveAdjustmentDto } from './dto/create-leave-adjustment.dto';
+import { SubmitLeaveEncashmentDto } from './dto/submit-leave-encashment.dto';
+import { RejectLeaveEncashmentDto } from './dto/reject-leave-encashment.dto';
+import { RunCarryForwardDto } from './dto/run-carry-forward.dto';
 
 @Injectable()
 export class AttendanceService {
@@ -1355,6 +1359,320 @@ export class AttendanceService {
     }
 
     return { count };
+  }
+
+  // ─── Leave Balance Ledger ─────────────────────────────────────
+
+  async getLeaveBalanceLedger(
+    organizationId: string,
+    employeeId: string,
+    leaveTypeId?: string,
+    academicYearId?: string,
+  ) {
+    return this.prisma.leaveBalanceLedger.findMany({
+      where: {
+        employeeId,
+        ...(leaveTypeId ? { leaveTypeId } : {}),
+        ...(academicYearId ? { academicYearId } : {}),
+        leaveType: { organizationId },
+      },
+      include: { leaveType: { select: { name: true, code: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  // ─── Leave Adjustments ────────────────────────────────────────
+
+  async createLeaveAdjustment(
+    organizationId: string,
+    adjustedBy: string,
+    dto: CreateLeaveAdjustmentDto,
+  ) {
+    const { employeeId, leaveTypeId, academicYearId, delta, reason } = dto;
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.leaveBalance.upsert({
+        where: {
+          employeeId_leaveTypeId_academicYearId: { employeeId, leaveTypeId, academicYearId },
+        },
+        create: { employeeId, leaveTypeId, academicYearId, allocated: Math.max(0, delta), used: 0 },
+        update: { allocated: { increment: delta } },
+      });
+
+      const current = await tx.leaveBalance.findUniqueOrThrow({
+        where: {
+          employeeId_leaveTypeId_academicYearId: { employeeId, leaveTypeId, academicYearId },
+        },
+      });
+
+      const balanceAfter = current.allocated - current.used;
+
+      const adjustment = await tx.leaveAdjustment.create({
+        data: { organizationId, employeeId, leaveTypeId, academicYearId, delta, reason, adjustedBy },
+      });
+
+      await tx.leaveBalanceLedger.create({
+        data: {
+          employeeId,
+          leaveTypeId,
+          academicYearId,
+          delta,
+          balanceAfter,
+          reason,
+          source: 'ADJUSTMENT',
+          referenceId: adjustment.id,
+          createdBy: adjustedBy,
+        },
+      });
+
+      return adjustment;
+    });
+  }
+
+  async getLeaveAdjustments(
+    organizationId: string,
+    employeeId?: string,
+    leaveTypeId?: string,
+    academicYearId?: string,
+  ) {
+    return this.prisma.leaveAdjustment.findMany({
+      where: {
+        organizationId,
+        ...(employeeId ? { employeeId } : {}),
+        ...(leaveTypeId ? { leaveTypeId } : {}),
+        ...(academicYearId ? { academicYearId } : {}),
+      },
+      include: { leaveType: { select: { name: true, code: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  // ─── Carry Forward ────────────────────────────────────────────
+
+  async runCarryForward(organizationId: string, performedBy: string, dto: RunCarryForwardDto) {
+    const { fromAcademicYearId, toAcademicYearId } = dto;
+
+    const leaveTypes = await this.prisma.leaveType.findMany({
+      where: { organizationId, carryForward: true, status: 'ACTIVE' },
+      select: { id: true },
+    });
+
+    if (leaveTypes.length === 0) return { processed: 0 };
+
+    const leaveTypeIds = leaveTypes.map((lt) => lt.id);
+
+    const balances = await this.prisma.leaveBalance.findMany({
+      where: { leaveTypeId: { in: leaveTypeIds }, academicYearId: fromAcademicYearId },
+    });
+
+    let processed = 0;
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const balance of balances) {
+        const remaining = balance.allocated - balance.used;
+        if (remaining <= 0) continue;
+
+        await tx.leaveBalance.upsert({
+          where: {
+            employeeId_leaveTypeId_academicYearId: {
+              employeeId: balance.employeeId,
+              leaveTypeId: balance.leaveTypeId,
+              academicYearId: toAcademicYearId,
+            },
+          },
+          create: {
+            employeeId: balance.employeeId,
+            leaveTypeId: balance.leaveTypeId,
+            academicYearId: toAcademicYearId,
+            allocated: remaining,
+            used: 0,
+          },
+          update: { allocated: { increment: remaining } },
+        });
+
+        const updated = await tx.leaveBalance.findUniqueOrThrow({
+          where: {
+            employeeId_leaveTypeId_academicYearId: {
+              employeeId: balance.employeeId,
+              leaveTypeId: balance.leaveTypeId,
+              academicYearId: toAcademicYearId,
+            },
+          },
+        });
+
+        await tx.leaveBalanceLedger.create({
+          data: {
+            employeeId: balance.employeeId,
+            leaveTypeId: balance.leaveTypeId,
+            academicYearId: toAcademicYearId,
+            delta: remaining,
+            balanceAfter: updated.allocated - updated.used,
+            reason: `Carry forward from academic year ${fromAcademicYearId}`,
+            source: 'CARRY_FORWARD',
+            referenceId: fromAcademicYearId,
+            createdBy: performedBy,
+          },
+        });
+
+        processed++;
+      }
+    });
+
+    return { processed };
+  }
+
+  // ─── Leave Encashment ─────────────────────────────────────────
+
+  async submitLeaveEncashment(
+    organizationId: string,
+    employeeId: string,
+    requestedBy: string,
+    dto: SubmitLeaveEncashmentDto,
+  ) {
+    const { leaveTypeId, academicYearId, days, amountPerDay } = dto;
+
+    return this.prisma.$transaction(async (tx) => {
+      const balance = await tx.leaveBalance.findUnique({
+        where: { employeeId_leaveTypeId_academicYearId: { employeeId, leaveTypeId, academicYearId } },
+      });
+
+      const available = balance ? balance.allocated - balance.used : 0;
+      if (available < days) {
+        throw new BadRequestException(
+          `Insufficient leave balance. Available: ${available}, Requested: ${days}`,
+        );
+      }
+
+      const totalAmount = days * amountPerDay;
+
+      const encashment = await tx.leaveEncashment.create({
+        data: {
+          organizationId,
+          employeeId,
+          leaveTypeId,
+          academicYearId,
+          days,
+          amountPerDay,
+          totalAmount,
+          status: 'PENDING',
+          requestedBy,
+        },
+      });
+
+      await tx.leaveBalance.update({
+        where: { employeeId_leaveTypeId_academicYearId: { employeeId, leaveTypeId, academicYearId } },
+        data: { allocated: { decrement: days } },
+      });
+
+      const updated = await tx.leaveBalance.findUniqueOrThrow({
+        where: { employeeId_leaveTypeId_academicYearId: { employeeId, leaveTypeId, academicYearId } },
+      });
+
+      await tx.leaveBalanceLedger.create({
+        data: {
+          employeeId,
+          leaveTypeId,
+          academicYearId,
+          delta: -days,
+          balanceAfter: updated.allocated - updated.used,
+          reason: `Encashment request for ${days} day(s)`,
+          source: 'ENCASHMENT',
+          referenceId: encashment.id,
+          createdBy: requestedBy,
+        },
+      });
+
+      return encashment;
+    });
+  }
+
+  async approveLeaveEncashment(organizationId: string, encashmentId: string, approverId: string) {
+    const encashment = await this.prisma.leaveEncashment.findFirst({
+      where: { id: encashmentId, organizationId, status: 'PENDING' },
+    });
+
+    if (!encashment) {
+      throw new NotFoundException('Encashment request not found or already processed');
+    }
+
+    return this.prisma.leaveEncashment.update({
+      where: { id: encashmentId },
+      data: { status: 'APPROVED', approvedBy: approverId, approvedAt: new Date() },
+    });
+  }
+
+  async rejectLeaveEncashment(
+    organizationId: string,
+    encashmentId: string,
+    approverId: string,
+    dto: RejectLeaveEncashmentDto,
+  ) {
+    const encashment = await this.prisma.leaveEncashment.findFirst({
+      where: { id: encashmentId, organizationId, status: 'PENDING' },
+    });
+
+    if (!encashment) {
+      throw new NotFoundException('Encashment request not found or already processed');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.leaveEncashment.update({
+        where: { id: encashmentId },
+        data: {
+          status: 'REJECTED',
+          approvedBy: approverId,
+          approvedAt: new Date(),
+          rejectionReason: dto.reason,
+        },
+      });
+
+      await tx.leaveBalance.update({
+        where: {
+          employeeId_leaveTypeId_academicYearId: {
+            employeeId: encashment.employeeId,
+            leaveTypeId: encashment.leaveTypeId,
+            academicYearId: encashment.academicYearId,
+          },
+        },
+        data: { allocated: { increment: encashment.days } },
+      });
+
+      const updated = await tx.leaveBalance.findUniqueOrThrow({
+        where: {
+          employeeId_leaveTypeId_academicYearId: {
+            employeeId: encashment.employeeId,
+            leaveTypeId: encashment.leaveTypeId,
+            academicYearId: encashment.academicYearId,
+          },
+        },
+      });
+
+      await tx.leaveBalanceLedger.create({
+        data: {
+          employeeId: encashment.employeeId,
+          leaveTypeId: encashment.leaveTypeId,
+          academicYearId: encashment.academicYearId,
+          delta: encashment.days,
+          balanceAfter: updated.allocated - updated.used,
+          reason: `Encashment rejected: ${dto.reason}`,
+          source: 'ENCASHMENT',
+          referenceId: encashmentId,
+          createdBy: approverId,
+        },
+      });
+    });
+  }
+
+  async getLeaveEncashments(organizationId: string, employeeId?: string, status?: string) {
+    return this.prisma.leaveEncashment.findMany({
+      where: {
+        organizationId,
+        ...(employeeId ? { employeeId } : {}),
+        ...(status ? { status } : {}),
+      },
+      include: { leaveType: { select: { name: true, code: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   // ─── Health Alerts ────────────────────────────────────────────

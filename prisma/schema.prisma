@@ -1181,8 +1181,11 @@ model LeaveType {
   carryForward   Boolean @default(false) @map("carry_forward")
   status         String  @default("ACTIVE") @db.VarChar(20)
 
-  balances LeaveBalance[]
-  requests LeaveRequest[]
+  balances       LeaveBalance[]
+  requests       LeaveRequest[]
+  ledgerEntries  LeaveBalanceLedger[]
+  adjustments    LeaveAdjustment[]
+  encashments    LeaveEncashment[]
 
   @@map("leave_types")
   @@schema("attendance")
@@ -1224,6 +1227,66 @@ model LeaveRequest {
   substitutionRequests SubstitutionRequest[]
 
   @@map("leave_requests")
+  @@schema("attendance")
+}
+
+model LeaveBalanceLedger {
+  id             String   @id @default(uuid())
+  employeeId     String   @map("employee_id")
+  leaveTypeId    String   @map("leave_type_id")
+  academicYearId String   @map("academic_year_id")
+  delta          Int
+  balanceAfter   Int      @map("balance_after")
+  reason         String   @db.VarChar(300)
+  source         String   @db.VarChar(50)
+  referenceId    String?  @map("reference_id")
+  createdBy      String   @map("created_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@index([employeeId, academicYearId])
+  @@map("leave_balance_ledger")
+  @@schema("attendance")
+}
+
+model LeaveAdjustment {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  employeeId     String   @map("employee_id")
+  leaveTypeId    String   @map("leave_type_id")
+  academicYearId String   @map("academic_year_id")
+  delta          Int
+  reason         String   @db.VarChar(500)
+  adjustedBy     String   @map("adjusted_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@map("leave_adjustments")
+  @@schema("attendance")
+}
+
+model LeaveEncashment {
+  id              String    @id @default(uuid())
+  organizationId  String    @map("organization_id")
+  employeeId      String    @map("employee_id")
+  leaveTypeId     String    @map("leave_type_id")
+  academicYearId  String    @map("academic_year_id")
+  days            Int
+  amountPerDay    Decimal   @map("amount_per_day") @db.Decimal(10, 2)
+  totalAmount     Decimal   @map("total_amount") @db.Decimal(12, 2)
+  status          String    @default("PENDING") @db.VarChar(20)
+  requestedBy     String    @map("requested_by")
+  approvedBy      String?   @map("approved_by")
+  approvedAt      DateTime? @map("approved_at")
+  rejectionReason String?   @map("rejection_reason")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@map("leave_encashments")
   @@schema("attendance")
 }
 
@@ -2016,6 +2079,38 @@ model TaxCalculation {
   taxDeclaration TaxDeclaration? @relation(fields: [taxDeclarationId], references: [id])
 
   @@map("tax_calculations")
+  @@schema("hr")
+}
+
+// ─── Full & Final Settlement ──────────────────────────────────────────────────
+
+model FnfSettlement {
+  id                    String    @id @default(uuid())
+  organizationId        String    @map("organization_id")
+  employeeId            String    @map("employee_id")
+  separationDate        DateTime  @map("separation_date") @db.Date
+  separationType        String    @map("separation_type") @db.VarChar(30)
+  lastWorkingDay        DateTime  @map("last_working_day") @db.Date
+  noticePeriodDays      Int       @default(0) @map("notice_period_days")
+  partialMonthDays      Int       @map("partial_month_days")
+  partialMonthSalary    Decimal   @map("partial_month_salary") @db.Decimal(12, 2)
+  pendingLeaveDays      Decimal   @default(0) @map("pending_leave_days") @db.Decimal(5, 2)
+  leaveEncashmentAmount Decimal   @default(0) @map("leave_encashment_amount") @db.Decimal(12, 2)
+  gratuityAmount        Decimal   @default(0) @map("gratuity_amount") @db.Decimal(12, 2)
+  loanRecoveryAmount    Decimal   @default(0) @map("loan_recovery_amount") @db.Decimal(12, 2)
+  totalPayable          Decimal   @map("total_payable") @db.Decimal(12, 2)
+  totalDeductions       Decimal   @default(0) @map("total_deductions") @db.Decimal(12, 2)
+  netSettlement         Decimal   @map("net_settlement") @db.Decimal(12, 2)
+  status                String    @default("DRAFT") @db.VarChar(20)
+  notes                 String?
+  approvedBy            String?   @map("approved_by")
+  approvedAt            DateTime? @map("approved_at")
+  createdBy             String    @map("created_by")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@index([organizationId, employeeId])
+  @@map("fnf_settlements")
   @@schema("hr")
 }
 

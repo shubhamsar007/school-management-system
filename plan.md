@@ -3731,3 +3731,229 @@ APPROVED         134
     ↓ 91%
 ENROLLED         122
 ```
+
+---
+
+## Leave Management Module
+
+> Product boundary: Leave Management owns **authorized absence decisions** (who applied, who approved, how many days deducted). The Attendance module owns **what happened on a given day** (present / absent / ON_LEAVE). When a leave is approved the leave service auto-marks attendance; when a leave is cancelled the attendance revert happens inside a transaction.
+
+---
+
+### Schema Models
+
+#### Existing (built)
+
+| Model | Table | Notes |
+|---|---|---|
+| `LeaveType` | `attendance.leave_types` | `carryForward`, `isPaid`, `annualLimit`, `applicableTo` |
+| `LeaveBalance` | `attendance.leave_balances` | `allocated`, `used`; unique on `(employeeId, leaveTypeId, academicYearId)` |
+| `LeaveRequest` | `attendance.leave_requests` | Status machine: PENDING → APPROVED / REJECTED / CANCELLED |
+
+#### Phase 3 — to add
+
+| Model | Table | Purpose |
+|---|---|---|
+| `LeaveBalanceLedger` | `attendance.leave_balance_ledger` | Immutable audit trail of every balance change (allocation, usage, cancellation, adjustment, carry-forward, encashment) |
+| `LeaveAdjustment` | `attendance.leave_adjustments` | Manual HR credit / debit with reason; writes a ledger entry |
+| `LeaveEncashment` | `attendance.leave_encashments` | Employee submits encashment request for unused leave days; PENDING → APPROVED / REJECTED |
+
+Proposed Prisma schema additions:
+
+```prisma
+model LeaveBalanceLedger {
+  id             String   @id @default(uuid())
+  employeeId     String   @map("employee_id")
+  leaveTypeId    String   @map("leave_type_id")
+  academicYearId String   @map("academic_year_id")
+  delta          Int      // positive = credit, negative = debit
+  balanceAfter   Int      @map("balance_after")
+  reason         String   @db.VarChar(300)
+  source         String   @db.VarChar(50) // ALLOCATION | USED | CANCELLED | ADJUSTMENT | CARRY_FORWARD | ENCASHMENT
+  referenceId    String?  @map("reference_id") // leaveRequestId | adjustmentId | encashmentId
+  createdBy      String   @map("created_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@index([employeeId, academicYearId])
+  @@map("leave_balance_ledger")
+  @@schema("attendance")
+}
+
+model LeaveAdjustment {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  employeeId     String   @map("employee_id")
+  leaveTypeId    String   @map("leave_type_id")
+  academicYearId String   @map("academic_year_id")
+  delta          Int      // positive = add days, negative = deduct days
+  reason         String   @db.VarChar(500)
+  adjustedBy     String   @map("adjusted_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@map("leave_adjustments")
+  @@schema("attendance")
+}
+
+model LeaveEncashment {
+  id              String    @id @default(uuid())
+  organizationId  String    @map("organization_id")
+  employeeId      String    @map("employee_id")
+  leaveTypeId     String    @map("leave_type_id")
+  academicYearId  String    @map("academic_year_id")
+  days            Int
+  amountPerDay    Decimal   @map("amount_per_day") @db.Decimal(10, 2)
+  totalAmount     Decimal   @map("total_amount") @db.Decimal(12, 2)
+  status          String    @default("PENDING") @db.VarChar(20)
+  requestedBy     String    @map("requested_by")
+  approvedBy      String?   @map("approved_by")
+  approvedAt      DateTime? @map("approved_at")
+  rejectionReason String?   @map("rejection_reason")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@map("leave_encashments")
+  @@schema("attendance")
+}
+```
+
+---
+
+### Build Phases
+
+---
+
+#### Phase 1 — Foundation & Hardening ✅ DONE
+
+**Backend**
+- [x] Server-side `countWorkingDays(start, end)` — Mon–Sat, skip Sundays
+- [x] Overlap detection: `findFirst` on PENDING/APPROVED requests intersecting the date range
+- [x] Balance validation: blocks apply if `allocated - used - pendingDays < totalDays`
+- [x] `approveLeaveRequest`: increments `used`, auto-marks `ON_LEAVE` attendance for each working day
+- [x] `cancelLeaveRequest` (employee self-cancel while PENDING)
+- [x] `GET /attendance/leave/overview` — KPI data: on-leave today, pending approvals, by-type breakdown
+- [x] `GET /attendance/leave/team-availability` — 60-day cap, employee×day matrix
+
+**Frontend** (`apps/web/src/app/(app)/leave/page.tsx`)
+- [x] 6-tab layout: Overview | Requests | Balances | Calendar | Team Availability | Setup
+- [x] Overview tab: 4 KPI cards + "On Leave Today" table + "Pending Approvals" table with inline approve/reject
+- [x] Balances tab: employee picker + progress-bar card per leave type
+- [x] Calendar tab: monthly grid of approved leaves with hover detail panel
+- [x] Team Availability tab: date-range picker, employee×day matrix (paid=blue, unpaid=amber)
+- [x] Setup tab: delegates to existing `LeaveSetupTab` component
+
+---
+
+#### Phase 2 — Workflow Hardening ✅ DONE
+
+**Backend**
+- [x] `bulkApproveLeaveRequests(ids[])` — batch approve, each runs the same approval transaction
+- [x] `bulkRejectLeaveRequests(ids[], reason)` — batch reject with shared reason
+- [x] `cancelApprovedLeaveRequest(id)` — transaction: APPROVED→CANCELLED + decrement `used` balance + revert ON_LEAVE attendance to ABSENT
+
+**Frontend**
+- [x] Requests tab: row checkboxes for PENDING rows + select-all + floating bulk-action bar
+- [x] Bulk reject modal (shared reason field)
+- [x] `LeaveDetailModal`: full employee card, dates, duration, reason, rejection reason, timeline, context-aware action buttons (Approve/Reject for PENDING, Cancel for APPROVED)
+- [x] View button per row opens the detail modal
+
+**What is still missing from Phase 2**
+- [ ] Multi-level approval chain (Reporting Manager → HR → Principal)
+- [ ] Leave delegation (employee delegates approval authority while on leave)
+- [ ] Auto-escalation if approval pending >N days
+- [ ] SMS/email notification on status change
+
+---
+
+#### Phase 3 — Balance Ledger, Adjustments & Encashment 🔲 NOT DONE
+
+**Schema** (models listed above)
+- [ ] `LeaveBalanceLedger` — immutable per-change audit trail
+- [ ] `LeaveAdjustment` — manual HR credit/debit
+- [ ] `LeaveEncashment` — encashment request workflow
+
+**Backend**
+- [ ] Backfill ledger entries when approving / cancelling leaves (write to `LeaveBalanceLedger` inside existing transactions)
+- [ ] `createLeaveAdjustment(dto)` — updates `LeaveBalance.allocated` + writes ledger entry
+- [ ] `getLeaveAdjustments(employeeId?, leaveTypeId?, academicYearId?)` — list with pagination
+- [ ] `getLeaveBalanceLedger(employeeId, leaveTypeId?, academicYearId?)` — full history per employee
+- [ ] `runCarryForward(fromAcademicYearId, toAcademicYearId)` — for each `LeaveType` with `carryForward=true`, compute `allocated - used` for fromYear, credit to toYear allocation, write ledger entries
+- [ ] `submitLeaveEncashment(dto)` — validates employee has enough unused days, deducts from balance, creates PENDING encashment
+- [ ] `approveLeaveEncashment(id, approverId)` — PENDING → APPROVED
+- [ ] `rejectLeaveEncashment(id, approverId, reason)` — PENDING → REJECTED + restores balance
+
+**Controller endpoints**
+```
+GET  /attendance/leave-balances/ledger?employeeId=&leaveTypeId=&academicYearId=
+POST /attendance/leave-adjustments
+GET  /attendance/leave-adjustments?employeeId=&leaveTypeId=&academicYearId=
+POST /attendance/leave/carry-forward
+POST /attendance/leave-encashments
+GET  /attendance/leave-encashments?employeeId=&status=
+POST /attendance/leave-encashments/:id/approve
+POST /attendance/leave-encashments/:id/reject
+```
+
+**Frontend**
+- [ ] New hooks: `useLeaveBalanceLedger`, `useLeaveAdjustments`, `useCreateLeaveAdjustment`, `useLeaveEncashments`, `useSubmitLeaveEncashment`, `useApproveLeaveEncashment`, `useRejectLeaveEncashment`
+- [ ] Balances tab: add "History" button per leave type that opens a ledger drawer/panel showing every credit and debit
+- [ ] Setup tab: add Adjustments section — employee + leave type + delta + reason form; table of past adjustments
+- [ ] New "Encashment" tab in leave page: submit form + HR queue with approve/reject buttons
+
+---
+
+#### Phase 4 — Cross-Module Integrations 🔲 NOT DONE
+
+- [ ] Payroll integration: approved encashments feed into monthly payroll calculation
+- [ ] Substitution integration: approving a leave auto-triggers substitution request creation for affected teaching periods
+- [ ] Notification engine: email/SMS/push on leave status changes
+- [ ] Document upload on leave request (medical certificate for sick leave)
+- [ ] Employee self-service portal: employees see own balance + request status without HR login
+
+---
+
+#### Phase 5 — Analytics & Reporting 🔲 NOT DONE
+
+- [ ] Leave utilization report: by department, by leave type, by month — exportable to CSV/PDF
+- [ ] Absenteeism heatmap: calendar view showing org-wide absence density
+- [ ] Balance expiry alerts: notify employees N days before year-end of unused balance
+- [ ] Leave pattern analysis: flag employees with suspicious leave patterns (always Mondays, always around holidays)
+- [ ] Year-end carry-forward report: how many days were carried forward per employee
+- [ ] Leave cost report: total approved leave days × daily cost per employee
+
+---
+
+### API Surface (complete)
+
+| Method | Path | Phase | Status |
+|---|---|---|---|
+| POST | `/attendance/leave-types` | 1 | ✅ |
+| GET | `/attendance/leave-types` | 1 | ✅ |
+| PATCH | `/attendance/leave-types/:id` | 1 | ✅ |
+| DELETE | `/attendance/leave-types/:id` | 1 | ✅ |
+| POST | `/attendance/leave-requests/:employeeId` | 1 | ✅ |
+| GET | `/attendance/leave-requests` | 1 | ✅ |
+| GET | `/attendance/leave-requests/:id` | 1 | ✅ |
+| POST | `/attendance/leave-requests/:id/approve` | 1 | ✅ |
+| POST | `/attendance/leave-requests/:id/reject` | 1 | ✅ |
+| POST | `/attendance/leave-requests/:id/cancel` | 1 | ✅ |
+| GET | `/attendance/leave-balances` | 1 | ✅ |
+| POST | `/attendance/leave-balances/allocate` | 1 | ✅ |
+| GET | `/attendance/leave/overview` | 1 | ✅ |
+| GET | `/attendance/leave/team-availability` | 1 | ✅ |
+| POST | `/attendance/leave-requests/bulk-approve` | 2 | ✅ |
+| POST | `/attendance/leave-requests/bulk-reject` | 2 | ✅ |
+| POST | `/attendance/leave-requests/:id/cancel-approved` | 2 | ✅ |
+| GET | `/attendance/leave-balances/ledger` | 3 | 🔲 |
+| POST | `/attendance/leave-adjustments` | 3 | 🔲 |
+| GET | `/attendance/leave-adjustments` | 3 | 🔲 |
+| POST | `/attendance/leave/carry-forward` | 3 | 🔲 |
+| POST | `/attendance/leave-encashments` | 3 | 🔲 |
+| GET | `/attendance/leave-encashments` | 3 | 🔲 |
+| POST | `/attendance/leave-encashments/:id/approve` | 3 | 🔲 |
+| POST | `/attendance/leave-encashments/:id/reject` | 3 | 🔲 |

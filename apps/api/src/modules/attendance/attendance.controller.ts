@@ -27,6 +27,10 @@ import { CreateSessionDto } from './dto/create-session.dto';
 import { CreateCorrectionDto } from './dto/create-correction.dto';
 import { RejectCorrectionDto } from './dto/reject-correction.dto';
 import { AllocateLeaveBalancesDto } from './dto/allocate-leave-balances.dto';
+import { CreateLeaveAdjustmentDto } from './dto/create-leave-adjustment.dto';
+import { SubmitLeaveEncashmentDto } from './dto/submit-leave-encashment.dto';
+import { RejectLeaveEncashmentDto } from './dto/reject-leave-encashment.dto';
+import { RunCarryForwardDto } from './dto/run-carry-forward.dto';
 
 @ApiTags('attendance')
 @ApiBearerAuth()
@@ -347,6 +351,118 @@ export class AttendanceController {
       id,
       user.userId,
     );
+  }
+
+  // ─── Leave Balance Ledger ─────────────────────────────────────
+
+  @ApiOperation({ summary: 'Get leave balance ledger (audit trail) for an employee' })
+  @ApiQuery({ name: 'employeeId', required: true })
+  @ApiQuery({ name: 'leaveTypeId', required: false })
+  @ApiQuery({ name: 'academicYearId', required: false })
+  @Get('leave-balances/ledger')
+  getLeaveBalanceLedger(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('employeeId') employeeId: string,
+    @Query('leaveTypeId') leaveTypeId?: string,
+    @Query('academicYearId') academicYearId?: string,
+  ) {
+    return this.attendanceService.getLeaveBalanceLedger(
+      user.organizationId,
+      employeeId,
+      leaveTypeId,
+      academicYearId,
+    );
+  }
+
+  // ─── Leave Adjustments ────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Create a manual leave balance adjustment' })
+  @Post('leave-adjustments')
+  createLeaveAdjustment(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: CreateLeaveAdjustmentDto,
+  ) {
+    return this.attendanceService.createLeaveAdjustment(user.organizationId, user.userId, dto);
+  }
+
+  @ApiOperation({ summary: 'List leave balance adjustments' })
+  @ApiQuery({ name: 'employeeId', required: false })
+  @ApiQuery({ name: 'leaveTypeId', required: false })
+  @ApiQuery({ name: 'academicYearId', required: false })
+  @Get('leave-adjustments')
+  getLeaveAdjustments(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('employeeId') employeeId?: string,
+    @Query('leaveTypeId') leaveTypeId?: string,
+    @Query('academicYearId') academicYearId?: string,
+  ) {
+    return this.attendanceService.getLeaveAdjustments(
+      user.organizationId,
+      employeeId,
+      leaveTypeId,
+      academicYearId,
+    );
+  }
+
+  // ─── Carry Forward ────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Run year-end carry-forward for leave balances' })
+  @Post('leave/carry-forward')
+  runCarryForward(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: RunCarryForwardDto,
+  ) {
+    return this.attendanceService.runCarryForward(user.organizationId, user.userId, dto);
+  }
+
+  // ─── Leave Encashment ─────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Submit a leave encashment request for an employee' })
+  @Post('leave-encashments/:employeeId')
+  submitLeaveEncashment(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('employeeId') employeeId: string,
+    @Body() dto: SubmitLeaveEncashmentDto,
+  ) {
+    return this.attendanceService.submitLeaveEncashment(
+      user.organizationId,
+      employeeId,
+      user.userId,
+      dto,
+    );
+  }
+
+  @ApiOperation({ summary: 'List leave encashment requests' })
+  @ApiQuery({ name: 'employeeId', required: false })
+  @ApiQuery({ name: 'status', required: false })
+  @Get('leave-encashments')
+  getLeaveEncashments(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('employeeId') employeeId?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.attendanceService.getLeaveEncashments(user.organizationId, employeeId, status);
+  }
+
+  @ApiOperation({ summary: 'Approve a leave encashment request' })
+  @HttpCode(HttpStatus.OK)
+  @Post('leave-encashments/:id/approve')
+  approveLeaveEncashment(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.attendanceService.approveLeaveEncashment(user.organizationId, id, user.userId);
+  }
+
+  @ApiOperation({ summary: 'Reject a leave encashment request' })
+  @HttpCode(HttpStatus.OK)
+  @Post('leave-encashments/:id/reject')
+  rejectLeaveEncashment(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: RejectLeaveEncashmentDto,
+  ) {
+    return this.attendanceService.rejectLeaveEncashment(user.organizationId, id, user.userId, dto);
   }
 
   @ApiOperation({ summary: 'Team leave availability for a date range (max 60 days)' })
