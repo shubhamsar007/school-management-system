@@ -1684,6 +1684,108 @@ model FeeRefund {
   @@schema("finance")
 }
 
+model LateFeePolicy {
+  id             String  @id @default(uuid())
+  organizationId String
+  name           String  @db.VarChar(100)
+  gracePeriodDays Int    @default(0)
+  fineType       String  @db.VarChar(20)   // FIXED, PERCENTAGE, PER_DAY, TIERED
+  fineAmount     Decimal @db.Decimal(12, 2) @default(0)
+  finePercentage Decimal @db.Decimal(5, 2)  @default(0)
+  isActive       Boolean @default(true)
+
+  @@map("late_fee_policies")
+  @@schema("finance")
+}
+
+model BillingSchedule {
+  id               String    @id @default(uuid())
+  organizationId   String
+  feeStructureId   String
+  name             String    @db.VarChar(200)
+  frequency        String    @db.VarChar(20)  // MONTHLY, QUARTERLY, HALF_YEARLY, ANNUALLY
+  startDate        DateTime  @db.Date
+  endDate          DateTime? @db.Date
+  dayOfMonth       Int       @default(1)
+  isActive         Boolean   @default(true)
+  lastRunAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@map("billing_schedules")
+  @@schema("finance")
+}
+
+model InstallmentPlan {
+  id               String        @id @default(uuid())
+  organizationId   String
+  studentId        String
+  enrollmentId     String
+  name             String        @db.VarChar(200)
+  totalAmount      Decimal       @db.Decimal(12, 2)
+  status           String        @default("ACTIVE")  // ACTIVE, COMPLETED, CANCELLED
+  approvedBy       String?
+  createdAt        DateTime      @default(now())
+
+  installments     Installment[]
+
+  @@map("installment_plans")
+  @@schema("finance")
+}
+
+model Installment {
+  id               String   @id @default(uuid())
+  planId           String
+  installmentNumber Int
+  amount           Decimal  @db.Decimal(12, 2)
+  dueDate          DateTime @db.Date
+  status           String   @default("PENDING")  // PENDING, PAID, OVERDUE
+  invoiceId        String?
+
+  plan InstallmentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@map("installments")
+  @@schema("finance")
+}
+
+model Concession {
+  id               String    @id @default(uuid())
+  organizationId   String
+  studentId        String
+  enrollmentId     String
+  type             String    @db.VarChar(30)   // DISCOUNT, WAIVER, SCHOLARSHIP
+  requestedAmount  Decimal   @db.Decimal(12, 2) @default(0)
+  requestedPercent Decimal   @db.Decimal(5, 2)  @default(0)
+  approvedAmount   Decimal   @db.Decimal(12, 2) @default(0)
+  reason           String
+  status           String    @default("PENDING")  // PENDING, APPROVED, REJECTED
+  requestedBy      String
+  approvedBy       String?
+  approvedAt       DateTime?
+  effectiveFrom    DateTime  @db.Date
+  effectiveTo      DateTime? @db.Date
+  createdAt        DateTime  @default(now())
+
+  @@map("concessions")
+  @@schema("finance")
+}
+
+model Scholarship {
+  id               String    @id @default(uuid())
+  organizationId   String
+  name             String    @db.VarChar(200)
+  type             String    @db.VarChar(30)   // MERIT, NEED_BASED, SPORTS, STAFF_CHILD, SIBLING, GOVERNMENT, CUSTOM
+  benefitType      String    @db.VarChar(20)   // PERCENTAGE, FIXED
+  benefitAmount    Decimal   @db.Decimal(12, 2) @default(0)
+  benefitPercent   Decimal   @db.Decimal(5, 2)  @default(0)
+  feeHeadId        String?
+  academicYearId   String?
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+
+  @@map("scholarships")
+  @@schema("finance")
+}
+
 // ─────────────────────────────────────────────
 // SCHEMA: hr (payroll extension)
 // ─────────────────────────────────────────────
