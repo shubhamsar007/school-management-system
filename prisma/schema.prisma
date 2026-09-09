@@ -1873,11 +1873,14 @@ model PayrollRecord {
   totalAdjustments     Decimal? @map("total_adjustments") @db.Decimal(12, 2)
   totalLoanDeductions  Decimal? @map("total_loan_deductions") @db.Decimal(12, 2)
   netSalary            Decimal  @map("net_salary") @db.Decimal(12, 2)
+  tdsAmount            Decimal? @map("tds_amount") @db.Decimal(12, 2)
+  taxRegime            String?  @map("tax_regime") @db.VarChar(10)
   status               String   @default("PENDING") @db.VarChar(20)
 
-  payrollRun  PayrollRun          @relation(fields: [payrollRunId], references: [id])
-  items       PayrollItem[]
-  adjustments PayrollAdjustment[]
+  payrollRun     PayrollRun          @relation(fields: [payrollRunId], references: [id])
+  items          PayrollItem[]
+  adjustments    PayrollAdjustment[]
+  taxCalculation TaxCalculation?
 
   @@map("payroll_records")
   @@schema("hr")
@@ -1965,6 +1968,54 @@ model LoanInstallment {
   loan EmployeeLoan @relation(fields: [loanId], references: [id])
 
   @@map("loan_installments")
+  @@schema("hr")
+}
+
+// ─── Tax Declarations & TDS ───────────────────────────────────────────────────
+
+model TaxDeclaration {
+  id               String   @id @default(uuid())
+  organizationId   String   @map("organization_id")
+  employeeId       String   @map("employee_id")
+  financialYear    String   @map("financial_year") @db.VarChar(9)
+  // e.g. "2026-2027" — April to March
+  taxRegime        String   @default("NEW") @map("tax_regime") @db.VarChar(10)
+  // OLD | NEW
+  section80C       Decimal  @default(0) @map("section_80c") @db.Decimal(12, 2)
+  // ELSS, PPF, LIC, etc. — capped at 150000 during computation
+  hraExemption     Decimal  @default(0) @map("hra_exemption") @db.Decimal(12, 2)
+  otherDeductions  Decimal  @default(0) @map("other_deductions") @db.Decimal(12, 2)
+  // 80D, 80E, etc.
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  taxCalculations TaxCalculation[]
+
+  @@unique([organizationId, employeeId, financialYear])
+  @@map("tax_declarations")
+  @@schema("hr")
+}
+
+model TaxCalculation {
+  id               String   @id @default(uuid())
+  payrollRecordId  String   @unique @map("payroll_record_id")
+  taxDeclarationId String?  @map("tax_declaration_id")
+  taxRegime        String   @map("tax_regime") @db.VarChar(10)
+  annualizedGross  Decimal  @map("annualized_gross") @db.Decimal(14, 2)
+  totalExemptions  Decimal  @default(0) @map("total_exemptions") @db.Decimal(12, 2)
+  taxableIncome    Decimal  @map("taxable_income") @db.Decimal(14, 2)
+  incomeTaxAnnual  Decimal  @map("income_tax_annual") @db.Decimal(12, 2)
+  rebate87A        Decimal  @default(0) @map("rebate_87a") @db.Decimal(12, 2)
+  surcharge        Decimal  @default(0) @db.Decimal(12, 2)
+  educationCess    Decimal  @map("education_cess") @db.Decimal(12, 2)
+  totalAnnualTax   Decimal  @map("total_annual_tax") @db.Decimal(12, 2)
+  monthlyTds       Decimal  @map("monthly_tds") @db.Decimal(12, 2)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  payrollRecord  PayrollRecord   @relation(fields: [payrollRecordId], references: [id], onDelete: Cascade)
+  taxDeclaration TaxDeclaration? @relation(fields: [taxDeclarationId], references: [id])
+
+  @@map("tax_calculations")
   @@schema("hr")
 }
 

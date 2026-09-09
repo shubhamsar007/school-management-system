@@ -3,12 +3,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Response } from 'express';
+import PDFDocument from 'pdfkit';
 import { PrismaService } from '../database/prisma.service';
 import { CreateSalaryComponentDto } from './dto/create-salary-component.dto';
 import { CreateSalaryStructureDto } from './dto/create-salary-structure.dto';
 import { CreatePayrollRunDto, ProcessPayrollRunDto } from './dto/create-payroll-run.dto';
 import { CreateAdjustmentDto, RejectAdjustmentDto } from './dto/create-adjustment.dto';
 import { CreateLoanDto } from './dto/create-loan.dto';
+import { UpsertTaxDeclarationDto } from './dto/upsert-tax-declaration.dto';
 import { Decimal } from '@prisma/client/runtime/library';
 
 // ─── Adjustment types that add to earnings vs deductions ─────────────────────
@@ -490,16 +493,31 @@ export class PayrollService {
         loanInstallments.push({ loanId: loan.id, amount: actualDeduction });
       }
 
-      // ── 9. Final net salary ───────────────────────────────────
+      // ── 9. TDS computation ────────────────────────────────────
+      const financialYear = this.deriveFinancialYear(new Date(run.periodStart));
+      const taxDecl = await this.prisma.taxDeclaration.findFirst({
+        where: { organizationId, employeeId: employee.id, financialYear },
+      });
+      const regime = ((taxDecl?.taxRegime ?? 'NEW') as 'OLD' | 'NEW');
+      const annualizedGross = proratedGross.times(12);
+      const taxResult = this.computeIncomeTax(annualizedGross, regime, {
+        section80C:      new Decimal(taxDecl?.section80C   ?? 0),
+        hraExemption:    new Decimal(taxDecl?.hraExemption  ?? 0),
+        otherDeductions: new Decimal(taxDecl?.otherDeductions ?? 0),
+      });
+      const tdsAmount = taxResult.monthlyTds;
+
+      // ── 10. Final net salary (including TDS) ──────────────────
       const netSalary = proratedGross
         .plus(totalAdjustmentEarnings)
         .minus(proratedDeductions)
         .minus(totalAdjustmentDeductions)
         .minus(lopAmount)
         .minus(totalLoanDeductions)
+        .minus(tdsAmount)
         .toDecimalPlaces(2);
 
-      // ── 10. Upsert PayrollRecord ──────────────────────────────
+      // ── 11. Upsert PayrollRecord ──────────────────────────────
       const recordData = {
         workingDays,
         presentDays:         presentDaysDecimal,
@@ -515,6 +533,8 @@ export class PayrollService {
         totalDeductions:     proratedDeductions,
         totalAdjustments,
         totalLoanDeductions: totalLoanDeductions.toDecimalPlaces(2),
+        tdsAmount:           tdsAmount.toDecimalPlaces(2),
+        taxRegime:           regime,
         netSalary,
         status:              'PENDING',
       };
@@ -541,7 +561,37 @@ export class PayrollService {
         recordId = record.id;
       }
 
-      // ── 11. PayrollItems (salary component level) ─────────────
+      // ── 12. Upsert TaxCalculation audit record ────────────────
+      await this.prisma.taxCalculation.upsert({
+        where: { payrollRecordId: recordId },
+        create: {
+          payrollRecordId:  recordId,
+          taxDeclarationId: taxDecl?.id ?? null,
+          taxRegime:        regime,
+          annualizedGross:  taxResult.annualizedGross,
+          totalExemptions:  taxResult.totalExemptions,
+          taxableIncome:    taxResult.taxableIncome,
+          incomeTaxAnnual:  taxResult.incomeTaxAnnual,
+          rebate87A:        taxResult.rebate87A,
+          educationCess:    taxResult.educationCess,
+          totalAnnualTax:   taxResult.totalAnnualTax,
+          monthlyTds:       taxResult.monthlyTds,
+        },
+        update: {
+          taxDeclarationId: taxDecl?.id ?? null,
+          taxRegime:        regime,
+          annualizedGross:  taxResult.annualizedGross,
+          totalExemptions:  taxResult.totalExemptions,
+          taxableIncome:    taxResult.taxableIncome,
+          incomeTaxAnnual:  taxResult.incomeTaxAnnual,
+          rebate87A:        taxResult.rebate87A,
+          educationCess:    taxResult.educationCess,
+          totalAnnualTax:   taxResult.totalAnnualTax,
+          monthlyTds:       taxResult.monthlyTds,
+        },
+      });
+
+      // ── 13. PayrollItems (salary component level) ─────────────
       await this.prisma.payrollItem.createMany({
         data: itemsData.map((item) => ({
           payrollRecordId:   recordId,
@@ -550,7 +600,7 @@ export class PayrollService {
         })),
       });
 
-      // ── 12. Mark adjustments as INCLUDED ─────────────────────
+      // ── 14. Mark adjustments as INCLUDED ─────────────────────
       if (approvedAdjustments.length > 0) {
         await this.prisma.payrollAdjustment.updateMany({
           where: { id: { in: approvedAdjustments.map((a) => a.id) } },
@@ -558,7 +608,7 @@ export class PayrollService {
         });
       }
 
-      // ── 13. Create loan installments + reduce outstanding ─────
+      // ── 15. Create loan installments + reduce outstanding ─────
       for (const inst of loanInstallments) {
         const alreadyExists = await this.prisma.loanInstallment.findFirst({
           where: { loanId: inst.loanId, payrollRunId: id },
@@ -696,8 +746,8 @@ export class PayrollService {
         organizationId,
         employeeId:      dto.employeeId,
         adjustmentType:  dto.adjustmentType,
-        subType:         dto.subType,
-        description:     dto.description,
+        ...(dto.subType      ? { subType:     dto.subType }     : {}),
+        ...(dto.description  ? { description: dto.description } : {}),
         amount:          dto.amount,
         effectivePeriod: dto.effectivePeriod,
         createdBy,
@@ -754,7 +804,11 @@ export class PayrollService {
     }
     return this.prisma.payrollAdjustment.update({
       where: { id: adjustmentId },
-      data: { status: 'REJECTED', approvedBy: rejectedBy, rejectionReason: dto.rejectionReason },
+      data: {
+        status:     'REJECTED',
+        approvedBy: rejectedBy,
+        ...(dto.rejectionReason ? { rejectionReason: dto.rejectionReason } : {}),
+      },
     });
   }
 
@@ -783,7 +837,7 @@ export class PayrollService {
         outstandingAmount: dto.principalAmount,
         monthlyDeduction: dto.monthlyDeduction,
         startDate:        new Date(dto.startDate),
-        reason:           dto.reason,
+        ...(dto.reason ? { reason: dto.reason } : {}),
         status:           'ACTIVE',
       },
     });
@@ -832,12 +886,348 @@ export class PayrollService {
     });
   }
 
+  // ─── Tax Declarations ────────────────────────────────────────
+
+  async upsertTaxDeclaration(organizationId: string, dto: UpsertTaxDeclarationDto) {
+    const employee = await this.prisma.employee.findFirst({
+      where: { id: dto.employeeId, organizationId },
+    });
+    if (!employee) throw new NotFoundException('Employee not found');
+
+    return this.prisma.taxDeclaration.upsert({
+      where: {
+        organizationId_employeeId_financialYear: {
+          organizationId,
+          employeeId: dto.employeeId,
+          financialYear: dto.financialYear,
+        },
+      },
+      create: {
+        organizationId,
+        employeeId:      dto.employeeId,
+        financialYear:   dto.financialYear,
+        taxRegime:       dto.taxRegime,
+        section80C:      dto.section80C,
+        hraExemption:    dto.hraExemption ?? 0,
+        otherDeductions: dto.otherDeductions ?? 0,
+      },
+      update: {
+        taxRegime:       dto.taxRegime,
+        section80C:      dto.section80C,
+        hraExemption:    dto.hraExemption ?? 0,
+        otherDeductions: dto.otherDeductions ?? 0,
+      },
+    });
+  }
+
+  async listTaxDeclarations(organizationId: string, financialYear?: string) {
+    return this.prisma.taxDeclaration.findMany({
+      where: {
+        organizationId,
+        ...(financialYear ? { financialYear } : {}),
+      },
+      orderBy: [{ financialYear: 'desc' }, { employeeId: 'asc' }],
+    });
+  }
+
+  async getTaxDeclaration(organizationId: string, employeeId: string, financialYear: string) {
+    return this.prisma.taxDeclaration.findFirst({
+      where: { organizationId, employeeId, financialYear },
+    });
+  }
+
+  // ─── Payslip PDF ─────────────────────────────────────────────
+
+  async generatePayslipPdf(
+    organizationId: string,
+    runId: string,
+    employeeId: string,
+    res: Response,
+  ): Promise<void> {
+    const payslip = await this.getPayslip(organizationId, runId, employeeId);
+
+    // Fetch TDS detail if available (cast to any until Prisma regenerates)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const record: any = await this.prisma.payrollRecord.findFirst({
+      where: { payrollRunId: runId, employeeId },
+    });
+
+    const tdsAmount   = record?.tdsAmount           ? Number(record.tdsAmount)           : 0;
+    const taxRegime   = (record?.taxRegime           ?? 'NEW') as string;
+    const loanDeduct  = record?.totalLoanDeductions  ? Number(record.totalLoanDeductions)  : 0;
+    const adjAmount   = record?.totalAdjustments     ? Number(record.totalAdjustments)     : 0;
+
+    const formatRs = (n: number | string | Decimal) =>
+      `₹${Number(n.toString()).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    // PDF setup
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="payslip-${employeeId.slice(0, 8)}.pdf"`,
+    );
+
+    const doc = new PDFDocument({ size: 'A4', margin: 45, bufferPages: true });
+    doc.pipe(res);
+
+    const W = 505; // usable width (595 - 45*2)
+    const GREEN  = '#4a9b6f';
+    const DARK   = '#2c322f';
+    const MUTED  = '#6d746e';
+    const LIGHT  = '#f4f1e9';
+    const WHITE  = '#ffffff';
+
+    // ── Header band ──────────────────────────────────────────────
+    doc.rect(45, 45, W, 52).fill(GREEN);
+    doc.fillColor(WHITE).fontSize(16).font('Helvetica-Bold')
+       .text('PAYSLIP', 55, 55);
+    doc.fontSize(9).font('Helvetica')
+       .text(`Pay Period: ${new Date(payslip.period.start).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}`, 55, 76);
+    doc.fillColor(WHITE).fontSize(9)
+       .text(`Generated: ${new Date().toLocaleDateString('en-IN')}`, 55, 89);
+
+    // ── Employee Info ─────────────────────────────────────────────
+    let y = 115;
+    doc.rect(45, y, W, 70).fill(LIGHT);
+    doc.fillColor(DARK).fontSize(11).font('Helvetica-Bold')
+       .text(payslip.employee.name, 55, y + 10);
+    doc.fontSize(9).font('Helvetica').fillColor(MUTED);
+    doc.text(`Employee No: ${payslip.employee.employeeNumber ?? '—'}`, 55, y + 26);
+    doc.text(`Designation: ${payslip.employee.designation ?? '—'}`, 55, y + 39);
+    doc.text(`Department:  ${payslip.employee.department  ?? '—'}`, 55, y + 52);
+    doc.text(`Tax Regime: ${taxRegime}`, 300, y + 26);
+    doc.text(`Period: ${new Date(payslip.period.start).toLocaleDateString('en-IN')} – ${new Date(payslip.period.end).toLocaleDateString('en-IN')}`, 300, y + 39);
+
+    // ── Attendance summary ────────────────────────────────────────
+    y += 84;
+    const attItems = [
+      { label: 'Working Days', value: String(payslip.attendance.workingDays ?? '—') },
+      { label: 'Present Days', value: String(payslip.attendance.presentDays ?? '—') },
+      { label: 'LOP Days',     value: String(payslip.lop?.lopDays ?? '0') },
+      { label: 'LOP Amount',   value: payslip.lop?.lopAmount ? formatRs(String(payslip.lop.lopAmount)) : '₹0.00' },
+    ];
+    doc.fillColor(DARK).fontSize(10).font('Helvetica-Bold').text('Attendance', 45, y);
+    y += 14;
+    doc.rect(45, y, W, 1).fill('#e2ddd5'); y += 6;
+    attItems.forEach((item, i) => {
+      const cx = 45 + (i % 4) * (W / 4);
+      if (i % 4 === 0 && i > 0) y += 22;
+      doc.fillColor(MUTED).fontSize(8).font('Helvetica').text(item.label, cx, y);
+      doc.fillColor(DARK).fontSize(9).font('Helvetica-Bold').text(item.value, cx, y + 10);
+    });
+
+    // ── Earnings & Deductions tables ──────────────────────────────
+    y += 36;
+    const colW = (W - 10) / 2;
+
+    const drawTable = (
+      title: string,
+      rows: { label: string; value: string; highlight?: boolean }[],
+      x: number,
+      startY: number,
+      titleColor: string,
+    ): number => {
+      let ty = startY;
+      doc.fillColor(titleColor).fontSize(10).font('Helvetica-Bold').text(title, x, ty);
+      ty += 14;
+      doc.rect(x, ty, colW, 1).fill('#e2ddd5'); ty += 5;
+      rows.forEach((row) => {
+        doc.fillColor(row.highlight ? DARK : MUTED).fontSize(8).font(row.highlight ? 'Helvetica-Bold' : 'Helvetica')
+           .text(row.label, x, ty);
+        doc.fillColor(DARK).fontSize(8).font(row.highlight ? 'Helvetica-Bold' : 'Helvetica')
+           .text(row.value, x + colW - 80, ty, { width: 80, align: 'right' });
+        ty += 14;
+      });
+      doc.rect(x, ty, colW, 1).fill('#e2ddd5');
+      return ty + 4;
+    };
+
+    const earningRows = [
+      ...payslip.earnings.map((e) => ({ label: e.name, value: formatRs(e.amount) })),
+      ...(adjAmount > 0 ? [{ label: 'Adjustments / Bonus', value: formatRs(adjAmount) }] : []),
+      { label: 'Total Earnings', value: formatRs(payslip.summary.gross), highlight: true },
+    ];
+
+    const lopAmt = payslip.lop?.lopAmount ? Number(payslip.lop.lopAmount) : 0;
+    const deductionRows = [
+      ...payslip.deductions.map((d) => ({ label: d.name, value: formatRs(d.amount) })),
+      ...(lopAmt    > 0 ? [{ label: 'Loss of Pay (LOP)',    value: formatRs(lopAmt)   }] : []),
+      ...(loanDeduct > 0 ? [{ label: 'Loan EMI Deduction',   value: formatRs(loanDeduct) }] : []),
+      ...(tdsAmount  > 0 ? [{ label: `TDS (${taxRegime} regime)`, value: formatRs(tdsAmount) }] : []),
+      { label: 'Total Deductions', value: formatRs(Number(payslip.summary.totalDeductions) + lopAmt + loanDeduct + tdsAmount), highlight: true },
+    ];
+
+    const endY1 = drawTable('Earnings',   earningRows,   45,    y, GREEN);
+    const endY2 = drawTable('Deductions', deductionRows, 45 + colW + 10, y, '#b04a3a');
+    y = Math.max(endY1, endY2) + 16;
+
+    // ── Net Salary box ────────────────────────────────────────────
+    doc.rect(45, y, W, 38).fill(GREEN);
+    doc.fillColor(WHITE).fontSize(10).font('Helvetica').text('NET SALARY', 55, y + 10);
+    doc.fillColor(WHITE).fontSize(16).font('Helvetica-Bold')
+       .text(formatRs(payslip.summary.netSalary), 55, y + 8, { align: 'right', width: W - 20 });
+
+    // ── Footer ────────────────────────────────────────────────────
+    y += 54;
+    doc.fillColor(MUTED).fontSize(8).font('Helvetica')
+       .text('This is a system-generated payslip and does not require a signature.', 45, y, { align: 'center', width: W });
+
+    doc.end();
+
+    await new Promise<void>((resolve, reject) => {
+      res.on('finish', resolve);
+      res.on('error', reject);
+    });
+  }
+
+  // ─── Bank Export CSV ─────────────────────────────────────────
+
+  async exportBankCsv(organizationId: string, runId: string, res: Response): Promise<void> {
+    const run = await this.getPayrollRunOrFail(organizationId, runId);
+    if (!['APPROVED', 'PAID'].includes(run.status)) {
+      throw new BadRequestException('Bank export is only available for APPROVED or PAID runs');
+    }
+
+    const records = await this.prisma.payrollRecord.findMany({
+      where: { payrollRunId: runId, status: { not: 'HELD' } },
+    });
+
+    const employeeIds = records.map((r) => r.employeeId);
+
+    const [employees, bankDetails] = await Promise.all([
+      this.prisma.employee.findMany({
+        where: { id: { in: employeeIds } },
+        include: { person: true },
+      }),
+      this.prisma.employeeBankDetail.findMany({
+        where: { employeeId: { in: employeeIds }, isPrimary: true },
+      }),
+    ]);
+
+    const empMap  = new Map(employees.map((e) => [e.id, e]));
+    const bankMap = new Map(bankDetails.map((b) => [b.employeeId, b]));
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="bank-export-${runId.slice(0, 8)}.csv"`);
+
+    const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+
+    res.write('Employee Name,Employee No,Account Number,IFSC Code,Bank Name,Account Type,Net Amount\n');
+    for (const record of records) {
+      const emp  = empMap.get(record.employeeId);
+      const bank = bankMap.get(record.employeeId);
+      const name = emp
+        ? `${emp.person?.firstName ?? ''} ${emp.person?.lastName ?? ''}`.trim()
+        : record.employeeId;
+      const empNo   = emp?.employeeNumber ?? '';
+      const acct    = bank?.accountNumber ?? '';
+      const ifsc    = bank?.ifscCode      ?? '';
+      const bankNm  = bank?.bankName      ?? '';
+      const acctType = bank?.accountType  ?? '';
+      const net     = Number(record.netSalary).toFixed(2);
+      res.write(`${escape(name)},${escape(empNo)},${escape(acct)},${escape(ifsc)},${escape(bankNm)},${escape(acctType)},${net}\n`);
+    }
+    res.end();
+  }
+
   // ─── Private helpers ──────────────────────────────────────────
 
   private async getPayrollRunOrFail(organizationId: string, id: string) {
     const run = await this.prisma.payrollRun.findFirst({ where: { id, organizationId } });
     if (!run) throw new NotFoundException('Payroll run not found');
     return run;
+  }
+
+  /** Derive financial year string (April–March) from a given date */
+  private deriveFinancialYear(date: Date): string {
+    const month = date.getMonth(); // 0-indexed
+    const year  = date.getFullYear();
+    return month >= 3 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+  }
+
+  /** Apply progressive tax slabs to taxable income */
+  private applySlabs(
+    income: Decimal,
+    slabs: { upTo: number; rate: number }[],
+  ): Decimal {
+    let tax = new Decimal(0);
+    let prev = 0;
+    for (const slab of slabs) {
+      if (income.lte(prev)) break;
+      const top    = slab.upTo === Infinity ? income : new Decimal(slab.upTo);
+      const band   = Decimal.min(income, top).minus(prev);
+      tax = tax.plus(band.times(slab.rate / 100));
+      prev = slab.upTo;
+    }
+    return tax;
+  }
+
+  /** Compute monthly TDS from annualized gross + declarations */
+  private computeIncomeTax(
+    annualizedGross: Decimal,
+    regime: 'OLD' | 'NEW',
+    exemptions: { section80C: Decimal; hraExemption: Decimal; otherDeductions: Decimal },
+  ) {
+    const STANDARD_DEDUCTION = new Decimal(50000);
+
+    let taxableIncome = annualizedGross.minus(STANDARD_DEDUCTION);
+
+    if (regime === 'OLD') {
+      const cap80C   = Decimal.min(exemptions.section80C, 150000);
+      taxableIncome  = taxableIncome
+        .minus(cap80C)
+        .minus(exemptions.hraExemption)
+        .minus(exemptions.otherDeductions);
+    }
+    taxableIncome = Decimal.max(taxableIncome, 0);
+
+    const totalExemptions = regime === 'OLD'
+      ? STANDARD_DEDUCTION
+          .plus(Decimal.min(exemptions.section80C, 150000))
+          .plus(exemptions.hraExemption)
+          .plus(exemptions.otherDeductions)
+      : STANDARD_DEDUCTION;
+
+    const oldSlabs = [
+      { upTo: 250000,   rate: 0  },
+      { upTo: 500000,   rate: 5  },
+      { upTo: 1000000,  rate: 20 },
+      { upTo: Infinity, rate: 30 },
+    ];
+    const newSlabs = [
+      { upTo: 300000,   rate: 0  },
+      { upTo: 600000,   rate: 5  },
+      { upTo: 900000,   rate: 10 },
+      { upTo: 1200000,  rate: 15 },
+      { upTo: 1500000,  rate: 20 },
+      { upTo: Infinity, rate: 30 },
+    ];
+
+    const incomeTaxAnnual = this.applySlabs(taxableIncome, regime === 'OLD' ? oldSlabs : newSlabs);
+
+    // 87A rebate
+    let rebate87A = new Decimal(0);
+    if (regime === 'OLD' && taxableIncome.lte(500000)) {
+      rebate87A = Decimal.min(incomeTaxAnnual, 12500);
+    } else if (regime === 'NEW' && taxableIncome.lte(700000)) {
+      rebate87A = Decimal.min(incomeTaxAnnual, 25000);
+    }
+
+    const taxAfterRebate  = Decimal.max(incomeTaxAnnual.minus(rebate87A), 0);
+    const educationCess   = taxAfterRebate.times(0.04).toDecimalPlaces(2);
+    const totalAnnualTax  = taxAfterRebate.plus(educationCess).toDecimalPlaces(2);
+    const monthlyTds      = totalAnnualTax.dividedBy(12).toDecimalPlaces(2);
+
+    return {
+      annualizedGross,
+      totalExemptions: totalExemptions.toDecimalPlaces(2),
+      taxableIncome:   taxableIncome.toDecimalPlaces(2),
+      incomeTaxAnnual: incomeTaxAnnual.toDecimalPlaces(2),
+      rebate87A:       rebate87A.toDecimalPlaces(2),
+      educationCess,
+      totalAnnualTax,
+      monthlyTds,
+    };
   }
 
   /** Count Mon–Fri weekdays between two dates inclusive */

@@ -2,17 +2,18 @@
 
 import * as React from 'react';
 import { PageHeader } from '@/components/layouts/page-header';
-import { Badge, Spinner, DataTable, EmptyState } from '@/components/ui';
+import { Badge, Spinner, Button, DataTable, EmptyState } from '@/components/ui';
 import type { ColumnDef } from '@/components/ui';
 import {
   payrollApi,
   formatCurrency,
   formatPeriod,
+  downloadPayslipPdf,
   type PayrollRun,
   type PayrollRunDetail,
   type PayrollRecord,
 } from '@/lib/payroll-api';
-import { FileText } from 'lucide-react';
+import { FileText, Download } from 'lucide-react';
 
 const RECORD_STATUS_BADGE: Record<PayrollRecord['status'], { variant: 'active' | 'pending' | 'default' | 'graduated' | 'left'; label: string }> = {
   PAID: { variant: 'active', label: 'Paid' },
@@ -39,6 +40,20 @@ export default function PayslipsPage() {
   const [detailError, setDetailError] = React.useState<string | null>(null);
 
   const [expandedRecordId, setExpandedRecordId] = React.useState<string | null>(null);
+  const [downloadingPdf, setDownloadingPdf]   = React.useState<string | null>(null);
+  const [pdfError, setPdfError]               = React.useState<string | null>(null);
+
+  async function handleDownloadPdf(runId: string, employeeId: string, recordId: string) {
+    setDownloadingPdf(recordId);
+    setPdfError(null);
+    try {
+      await downloadPayslipPdf(runId, employeeId);
+    } catch (e) {
+      setPdfError(e instanceof Error ? e.message : 'Failed to download PDF');
+    } finally {
+      setDownloadingPdf(null);
+    }
+  }
 
   React.useEffect(() => {
     async function loadRuns() {
@@ -122,6 +137,20 @@ export default function PayslipsPage() {
       ),
     },
     {
+      id: 'tds',
+      header: 'TDS',
+      align: 'right',
+      width: '90px',
+      cell: (row) => {
+        const tds = parseFloat(row.tdsAmount ?? '0');
+        return (
+          <span style={{ fontSize: 12, color: tds > 0 ? '#b3261e' : '#8a929b' }}>
+            {tds > 0 ? formatCurrency(tds) : '—'}
+          </span>
+        );
+      },
+    },
+    {
       id: 'net',
       header: 'Net',
       align: 'right',
@@ -141,24 +170,34 @@ export default function PayslipsPage() {
     },
     {
       id: 'actions',
-      header: 'Payslip',
-      width: '110px',
+      header: '',
+      width: '170px',
       align: 'right',
       cell: (row) => (
-        <button
-          style={{
-            fontSize: 12,
-            color: '#2b5fa8',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-          }}
-          onClick={() =>
-            setExpandedRecordId((prev) => (prev === row.id ? null : row.id))
-          }
-        >
-          {expandedRecordId === row.id ? 'Hide ▲' : 'View Payslip ▼'}
-        </button>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+          <button
+            style={{
+              fontSize: 12,
+              color: '#2b5fa8',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+            onClick={() => setExpandedRecordId((prev) => (prev === row.id ? null : row.id))}
+          >
+            {expandedRecordId === row.id ? 'Hide ▲' : 'View ▼'}
+          </button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={downloadingPdf === row.id}
+            onClick={() => selectedRunId && handleDownloadPdf(selectedRunId, row.employeeId, row.id)}
+            style={{ padding: '2px 8px', color: '#4a9b6f' }}
+          >
+            {downloadingPdf === row.id ? <Spinner size="sm" /> : <Download size={13} />}
+          </Button>
+        </div>
       ),
     },
   ];
@@ -284,6 +323,18 @@ export default function PayslipsPage() {
         </div>
       )}
 
+      {pdfError && (
+        <div
+          style={{
+            padding: '10px 14px', background: '#fef2f2',
+            border: '1px solid #fecaca', borderRadius: 8,
+            color: '#b04a3a', fontSize: 13, marginBottom: 12,
+          }}
+        >
+          {pdfError}
+        </div>
+      )}
+
       {selectedRunId && runDetail && !loadingDetail && (
         <div className="rounded-xl border border-[#e6e8eb] bg-white shadow-sm overflow-hidden">
           <div style={{ padding: '14px 20px', borderBottom: '1px solid #eef0f2' }}>
@@ -318,7 +369,7 @@ export default function PayslipsPage() {
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '130px 110px 110px 100px 110px 100px 90px 110px',
+                        gridTemplateColumns: '130px 110px 110px 100px 110px 90px 100px 90px 170px',
                         minHeight: 52,
                         alignItems: 'center',
                         background: isExpanded ? '#f8fdf9' : 'transparent',
@@ -429,6 +480,31 @@ export default function PayslipsPage() {
                             )}
                           </div>
                         </div>
+                        {/* LOP / Loan / TDS summary */}
+                        {(parseFloat(record.lopAmount ?? '0') > 0 ||
+                          parseFloat(record.totalLoanDeductions ?? '0') > 0 ||
+                          parseFloat(record.tdsAmount ?? '0') > 0) && (
+                          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {parseFloat(record.lopAmount ?? '0') > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7480' }}>
+                                <span>Loss of Pay (LOP)</span>
+                                <span style={{ color: '#b3261e' }}>−{formatCurrency(record.lopAmount!)}</span>
+                              </div>
+                            )}
+                            {parseFloat(record.totalLoanDeductions ?? '0') > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7480' }}>
+                                <span>Loan EMI</span>
+                                <span style={{ color: '#b3261e' }}>−{formatCurrency(record.totalLoanDeductions!)}</span>
+                              </div>
+                            )}
+                            {parseFloat(record.tdsAmount ?? '0') > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7480' }}>
+                                <span>TDS ({record.taxRegime ?? 'NEW'} regime)</span>
+                                <span style={{ color: '#b3261e' }}>−{formatCurrency(record.tdsAmount!)}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         <div
                           style={{
                             marginTop: 16,

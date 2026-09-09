@@ -10,8 +10,10 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Res,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { Response } from 'express';
 import { PayrollService } from './payroll.service';
 import { JwtAuthGuard } from '../identity/guards/jwt-auth.guard';
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
@@ -20,6 +22,7 @@ import { CreateSalaryStructureDto } from './dto/create-salary-structure.dto';
 import { CreatePayrollRunDto, ProcessPayrollRunDto } from './dto/create-payroll-run.dto';
 import { CreateAdjustmentDto, RejectAdjustmentDto } from './dto/create-adjustment.dto';
 import { CreateLoanDto } from './dto/create-loan.dto';
+import { UpsertTaxDeclarationDto } from './dto/upsert-tax-declaration.dto';
 
 @ApiTags('payroll')
 @ApiBearerAuth()
@@ -301,5 +304,66 @@ export class PayrollController {
     @Param('id') id: string,
   ) {
     return this.payrollService.closeLoan(user.organizationId, id);
+  }
+
+  // ─── Tax Declarations ─────────────────────────────────────────
+
+  @ApiOperation({
+    summary: 'Upsert an employee tax declaration (regime + investment deductions)',
+  })
+  @Post('tax-declarations')
+  upsertTaxDeclaration(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: UpsertTaxDeclarationDto,
+  ) {
+    return this.payrollService.upsertTaxDeclaration(user.organizationId, dto);
+  }
+
+  @ApiOperation({ summary: 'List tax declarations (all employees for a financial year)' })
+  @ApiQuery({ name: 'financialYear', required: false, description: 'e.g. 2026-2027' })
+  @Get('tax-declarations')
+  listTaxDeclarations(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('financialYear') financialYear?: string,
+  ) {
+    return this.payrollService.listTaxDeclarations(user.organizationId, financialYear);
+  }
+
+  @ApiOperation({ summary: 'Get a specific employee tax declaration for a financial year' })
+  @ApiQuery({ name: 'financialYear', required: true, description: 'e.g. 2026-2027' })
+  @Get('tax-declarations/:employeeId')
+  getTaxDeclaration(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('employeeId') employeeId: string,
+    @Query('financialYear') financialYear: string,
+  ) {
+    return this.payrollService.getTaxDeclaration(user.organizationId, employeeId, financialYear);
+  }
+
+  // ─── Payslip PDF ─────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Download a payslip as PDF' })
+  @Get('runs/:runId/payslips/:employeeId/pdf')
+  async getPayslipPdf(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('runId') runId: string,
+    @Param('employeeId') employeeId: string,
+    @Res() res: Response,
+  ) {
+    return this.payrollService.generatePayslipPdf(user.organizationId, runId, employeeId, res);
+  }
+
+  // ─── Bank Export CSV ─────────────────────────────────────────
+
+  @ApiOperation({
+    summary: 'Export payroll run as a bank-transfer CSV (APPROVED or PAID runs only)',
+  })
+  @Get('runs/:id/export/bank')
+  async exportBankFile(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    return this.payrollService.exportBankCsv(user.organizationId, id, res);
   }
 }

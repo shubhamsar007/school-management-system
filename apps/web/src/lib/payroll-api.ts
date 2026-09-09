@@ -59,7 +59,7 @@ export interface PayrollRecord {
   payrollRunId: string;
   employeeId: string;
   workingDays: number | null;
-  presentDays: string | null;   // Decimal — can be 0.5 for half-days
+  presentDays: string | null;       // Decimal — can be 0.5 for half-days
   absentDays: number | null;
   halfDayCount: number | null;
   paidLeaveDays: string | null;
@@ -70,6 +70,10 @@ export interface PayrollRecord {
   basic: string;
   gross: string;
   totalDeductions: string;
+  totalAdjustments: string | null;
+  totalLoanDeductions: string | null;
+  tdsAmount: string | null;
+  taxRegime: string | null;
   netSalary: string;
   status: 'PENDING' | 'PAID' | 'HELD';
   items: PayrollItem[];
@@ -126,6 +130,39 @@ export interface Payslip {
     netSalary: string;
   };
   status: string;
+}
+
+// ─── Tax & TDS types ─────────────────────────────────────────────────────────
+
+export type TaxRegime = 'OLD' | 'NEW';
+
+export interface TaxDeclaration {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  financialYear: string;
+  taxRegime: TaxRegime;
+  section80C: string;
+  hraExemption: string;
+  otherDeductions: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaxCalculation {
+  id: string;
+  payrollRecordId: string;
+  taxDeclarationId: string | null;
+  taxRegime: TaxRegime;
+  annualizedGross: string;
+  totalExemptions: string;
+  taxableIncome: string;
+  incomeTaxAnnual: string;
+  rebate87A: string;
+  educationCess: string;
+  totalAnnualTax: string;
+  monthlyTds: string;
+  createdAt: string;
 }
 
 // ─── Adjustment & Loan types ──────────────────────────────────────────────────
@@ -236,6 +273,15 @@ export interface CreateLoanData {
   reason?: string;
 }
 
+export interface UpsertTaxDeclarationData {
+  employeeId: string;
+  financialYear: string;     // YYYY-YYYY
+  taxRegime: TaxRegime;
+  section80C: number;
+  hraExemption?: number;
+  otherDeductions?: number;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function buildQuery(params?: Record<string, string | undefined>): string {
@@ -344,4 +390,64 @@ export const payrollApi = {
     close: (id: string) =>
       apiClient.patch<EmployeeLoan>(`/payroll/loans/${id}/close`, {}),
   },
+
+  tax: {
+    list: (params?: { financialYear?: string }) =>
+      apiClient.get<TaxDeclaration[]>(`/payroll/tax-declarations${buildQuery(params)}`),
+    getForEmployee: (employeeId: string, financialYear: string) =>
+      apiClient.get<TaxDeclaration | null>(
+        `/payroll/tax-declarations/${employeeId}${buildQuery({ financialYear })}`,
+      ),
+    upsert: (data: UpsertTaxDeclarationData) =>
+      apiClient.post<TaxDeclaration>('/payroll/tax-declarations', data),
+  },
 };
+
+// ─── File download helpers ────────────────────────────────────────────────────
+
+function getAuthHeaders(): HeadersInit {
+  if (typeof window === 'undefined') return {};
+  const token = localStorage.getItem('access_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function getApiBase(): string {
+  return process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+}
+
+export async function downloadPayslipPdf(runId: string, employeeId: string): Promise<void> {
+  const res = await fetch(
+    `${getApiBase()}/v1/payroll/runs/${runId}/payslips/${employeeId}/pdf`,
+    { headers: getAuthHeaders() },
+  );
+  if (!res.ok) throw new Error('Failed to download PDF');
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `payslip-${employeeId.slice(0, 8)}.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadBankExportCsv(runId: string): Promise<void> {
+  const res = await fetch(
+    `${getApiBase()}/v1/payroll/runs/${runId}/export/bank`,
+    { headers: getAuthHeaders() },
+  );
+  if (!res.ok) throw new Error('Failed to download bank export');
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `bank-export-${runId.slice(0, 8)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function currentFinancialYear(): string {
+  const now   = new Date();
+  const month = now.getMonth(); // 0-indexed
+  const year  = now.getFullYear();
+  return month >= 3 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+}

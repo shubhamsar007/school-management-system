@@ -14,19 +14,21 @@ import {
   Settings,
   TrendingUp,
   Landmark,
+  Receipt,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { label: 'Overview',          href: '/payroll',                  icon: LayoutDashboard },
-  { label: 'Payroll Runs',      href: '/payroll/runs',             icon: PlayCircle },
-  { label: 'Employees',         href: '/payroll/employees',        icon: Users },
+  { label: 'Overview',          href: '/payroll',                   icon: LayoutDashboard },
+  { label: 'Payroll Runs',      href: '/payroll/runs',              icon: PlayCircle },
+  { label: 'Employees',         href: '/payroll/employees',         icon: Users },
   { label: 'Salary Structures', href: '/payroll/salary-structures', icon: Layers },
   { label: 'Salary Components', href: '/payroll/salary-components', icon: Puzzle },
-  { label: 'Adjustments',       href: '/payroll/adjustments',      icon: TrendingUp },
-  { label: 'Loans & Advances',  href: '/payroll/loans',            icon: Landmark },
-  { label: 'Payslips',          href: '/payroll/payslips',         icon: FileText },
-  { label: 'Reports',           href: '/payroll/reports',          icon: BarChart2 },
-  { label: 'Configuration',     href: '/payroll/configuration',    icon: Settings },
+  { label: 'Adjustments',       href: '/payroll/adjustments',       icon: TrendingUp },
+  { label: 'Loans & Advances',  href: '/payroll/loans',             icon: Landmark },
+  { label: 'Tax / TDS',         href: '/payroll/tax',               icon: Receipt },
+  { label: 'Payslips',          href: '/payroll/payslips',          icon: FileText },
+  { label: 'Reports',           href: '/payroll/reports',           icon: BarChart2 },
+  { label: 'Configuration',     href: '/payroll/configuration',     icon: Settings },
 ];
 
 export function PayrollSubNav() {

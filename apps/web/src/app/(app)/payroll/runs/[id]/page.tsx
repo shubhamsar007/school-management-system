@@ -9,6 +9,7 @@ import {
   payrollApi,
   formatCurrency,
   formatPeriod,
+  downloadBankExportCsv,
   type PayrollRunDetail,
   type PayrollRecord,
   type ValidationReport,
@@ -367,6 +368,21 @@ export default function RunDetailPage() {
           {actionLoading === 'markpaid' ? 'Marking…' : 'Mark as Paid'}
         </Button>
       )}
+      {(run.status === 'APPROVED' || run.status === 'PAID') && (
+        <Button
+          variant="secondary"
+          disabled={actionLoading === 'bankexport'}
+          onClick={async () => {
+            setActionLoading('bankexport');
+            setActionError(null);
+            try { await downloadBankExportCsv(id); }
+            catch (e) { setActionError(e instanceof Error ? e.message : 'Bank export failed'); }
+            finally { setActionLoading(null); }
+          }}
+        >
+          {actionLoading === 'bankexport' ? 'Exporting…' : 'Export for Bank'}
+        </Button>
+      )}
     </div>
   );
 
@@ -444,6 +460,20 @@ export default function RunDetailPage() {
       cell: (row) => (
         <span style={{ fontSize: 12, color: '#b3261e' }}>{formatCurrency(row.totalDeductions)}</span>
       ),
+    },
+    {
+      id: 'tds',
+      header: 'TDS',
+      align: 'right',
+      width: '90px',
+      cell: (row) => {
+        const tds = parseFloat(row.tdsAmount ?? '0');
+        return (
+          <span style={{ fontSize: 12, color: tds > 0 ? '#b3261e' : '#8a929b' }}>
+            {tds > 0 ? formatCurrency(tds) : '—'}
+          </span>
+        );
+      },
     },
     {
       id: 'net',
