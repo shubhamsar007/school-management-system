@@ -1,128 +1,248 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { PageHeader } from '@/components/layouts/page-header';
-import { Button, Badge, Avatar, KpiCard, SearchBar, Dropdown, Pagination, Tabs, DataTable, ExportButton } from '@/components/ui';
+import { Button, KpiCard, Spinner, Badge, DataTable, ExportButton } from '@/components/ui';
 import type { ColumnDef } from '@/components/ui';
+import { payrollApi, formatCurrency, formatPeriod, type PayrollRun } from '@/lib/payroll-api';
+import { AlertTriangle, PlayCircle } from 'lucide-react';
 
-interface PayrollRun { id: string; runId: string; period: string; employees: number; gross: string; deductions: string; net: string; status: string; }
-interface Payslip { id: string; name: string; designation: string; employeeId: string; period: string; gross: string; deductions: string; net: string; status: string; }
-interface SalaryComponent { id: string; name: string; code: string; type: string; calculation: string; taxable: string; }
+const STATUS_BADGE: Record<PayrollRun['status'], { variant: 'active' | 'pending' | 'default' | 'graduated' | 'left'; label: string }> = {
+  PAID: { variant: 'active', label: 'Paid' },
+  APPROVED: { variant: 'graduated', label: 'Approved' },
+  COMPLETED: { variant: 'pending', label: 'Completed' },
+  PROCESSING: { variant: 'pending', label: 'Processing' },
+  DRAFT: { variant: 'default', label: 'Draft' },
+};
 
-const RUNS: PayrollRun[] = [
-  { id: '1', runId: 'RUN-2024-08', period: 'Aug 2024', employees: 82, gross: '₹21.2L', deductions: '₹2.8L', net: '₹18.4L', status: 'COMPLETED' },
-  { id: '2', runId: 'RUN-2024-07', period: 'Jul 2024', employees: 80, gross: '₹20.8L', deductions: '₹2.6L', net: '₹18.2L', status: 'COMPLETED' },
-  { id: '3', runId: 'RUN-2024-06', period: 'Jun 2024', employees: 80, gross: '₹20.8L', deductions: '₹2.6L', net: '₹18.2L', status: 'COMPLETED' },
-  { id: '4', runId: 'RUN-2024-05', period: 'May 2024', employees: 79, gross: '₹20.4L', deductions: '₹2.5L', net: '₹17.9L', status: 'COMPLETED' },
-  { id: '5', runId: 'RUN-2024-04', period: 'Apr 2024', employees: 79, gross: '₹20.4L', deductions: '₹2.5L', net: '₹17.9L', status: 'COMPLETED' },
-  { id: '6', runId: 'RUN-2024-09', period: 'Sep 2024', employees: 87, gross: '₹22.0L', deductions: '₹2.9L', net: '₹19.1L', status: 'DRAFT' },
-];
+function currentMonthYear() {
+  return new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+}
 
-const PAYSLIPS: Payslip[] = [
-  { id: '1', name: 'Priya Sharma', designation: 'Senior Teacher', employeeId: 'EMP-2019-0042', period: 'Aug 2024', gross: '₹62,000', deductions: '₹8,200', net: '₹53,800', status: 'PAID' },
-  { id: '2', name: 'Ravi Kumar', designation: 'Teacher', employeeId: 'EMP-2021-0078', period: 'Aug 2024', gross: '₹48,000', deductions: '₹6,400', net: '₹41,600', status: 'PAID' },
-  { id: '3', name: 'Ananya Das', designation: 'Teacher', employeeId: 'EMP-2020-0055', period: 'Aug 2024', gross: '₹52,000', deductions: '₹6,900', net: '₹45,100', status: 'PAID' },
-  { id: '4', name: 'Suresh Menon', designation: 'Senior Teacher', employeeId: 'EMP-2018-0023', period: 'Aug 2024', gross: '₹66,000', deductions: '₹8,700', net: '₹57,300', status: 'PAID' },
-  { id: '5', name: 'Lakshmi Nair', designation: 'Teacher', employeeId: 'EMP-2022-0091', period: 'Aug 2024', gross: '₹44,000', deductions: '₹5,900', net: '₹38,100', status: 'PAID' },
-  { id: '6', name: 'Amit Joshi', designation: 'Teacher', employeeId: 'EMP-2023-0104', period: 'Aug 2024', gross: '₹44,000', deductions: '₹5,900', net: '₹38,100', status: 'PENDING' },
-  { id: '7', name: 'Deepa Rao', designation: 'Senior Teacher', employeeId: 'EMP-2017-0011', period: 'Aug 2024', gross: '₹70,000', deductions: '₹9,200', net: '₹60,800', status: 'PAID' },
-  { id: '8', name: 'Kiran Bhat', designation: 'Teacher', employeeId: 'EMP-2024-0112', period: 'Aug 2024', gross: '₹40,000', deductions: '₹5,400', net: '₹34,600', status: 'PAID' },
-];
+export default function PayrollOverviewPage() {
+  const [runs, setRuns] = React.useState<PayrollRun[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-const COMPONENTS: SalaryComponent[] = [
-  { id: '1', name: 'Basic Salary', code: 'BASIC', type: 'EARNING', calculation: 'Fixed', taxable: 'YES' },
-  { id: '2', name: 'House Rent Allowance', code: 'HRA', type: 'EARNING', calculation: '40% of Basic', taxable: 'NO' },
-  { id: '3', name: 'Provident Fund', code: 'PF', type: 'DEDUCTION', calculation: '12% of Basic', taxable: 'NO' },
-  { id: '4', name: 'Professional Tax', code: 'PT', type: 'DEDUCTION', calculation: 'Fixed', taxable: 'YES' },
-  { id: '5', name: 'Medical Allowance', code: 'MED', type: 'EARNING', calculation: 'Fixed', taxable: 'NO' },
-  { id: '6', name: 'Transport Allowance', code: 'TA', type: 'EARNING', calculation: 'Fixed', taxable: 'NO' },
-  { id: '7', name: 'Income Tax (TDS)', code: 'TDS', type: 'DEDUCTION', calculation: '% of Gross', taxable: 'YES' },
-  { id: '8', name: 'Performance Bonus', code: 'BONUS', type: 'EARNING', calculation: 'Fixed', taxable: 'YES' },
-];
+  React.useEffect(() => {
+    async function load() {
+      try {
+        const data = await payrollApi.runs.list();
+        setRuns(data);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to load payroll data');
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
 
-const TABS = [{ id: 'runs', label: 'Payroll Runs', count: 8 }, { id: 'payslips', label: 'Payslips', count: 82 }, { id: 'components', label: 'Salary Components', count: 12 }];
-const RUN_BADGE: Record<string, 'active' | 'pending' | 'default' | 'left'> = { COMPLETED: 'active', PROCESSING: 'pending', DRAFT: 'default', FAILED: 'left' };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-32">
+        <Spinner />
+      </div>
+    );
+  }
 
-export default function PayrollPage() {
-  const [activeTab, setActiveTab] = React.useState('runs');
-  const [search, setSearch] = React.useState('');
-  const [page, setPage] = React.useState(1);
-  const [pageSize, setPageSize] = React.useState(25);
+  if (error) {
+    return (
+      <div>
+        <PageHeader title="Payroll" subtitle="Payroll command centre" />
+        <div
+          style={{
+            padding: '16px 20px',
+            background: '#fde8e7',
+            border: '1px solid #f5c6c6',
+            borderRadius: 10,
+            color: '#b3261e',
+            fontSize: 13,
+          }}
+        >
+          {error}
+        </div>
+      </div>
+    );
+  }
 
-  const runColumns: ColumnDef<PayrollRun>[] = [
-    { id: 'runId', header: 'RUN ID', width: '130px', cell: (r) => <span className="font-mono text-xs text-[#6b7480]">{r.runId}</span> },
-    { id: 'period', header: 'PERIOD', width: '120px', accessor: 'period' },
-    { id: 'employees', header: 'EMPLOYEES', width: '100px', align: 'center', accessor: (r) => r.employees },
-    { id: 'gross', header: 'GROSS', width: '90px', align: 'right', accessor: 'gross' },
-    { id: 'deductions', header: 'DEDUCTIONS', width: '110px', align: 'right', accessor: 'deductions' },
-    { id: 'net', header: 'NET', width: '90px', align: 'right', cell: (r) => <span className="font-semibold">{r.net}</span> },
-    { id: 'status', header: 'STATUS', width: '100px', cell: (r) => <Badge variant={RUN_BADGE[r.status] ?? 'default'}>{r.status}</Badge> },
-    { id: 'actions', header: 'ACTIONS', width: '100px', align: 'right', cell: () => <div className="flex justify-end gap-1.5 text-xs font-medium text-[#2b5fa8]"><button>View</button><span className="text-[#d7dce1]">|</span><button>Download</button></div> },
+  const isEmpty = runs.length === 0;
+  const latestCompletedRun = runs.find((r) => r.status === 'PAID' || r.status === 'APPROVED');
+  const pendingRunsCount = runs.filter((r) => r.status === 'DRAFT' || r.status === 'PROCESSING').length;
+  const draftRuns = runs.filter((r) => r.status === 'DRAFT');
+  const recentRuns = runs.slice(0, 6);
+
+  const columns: ColumnDef<PayrollRun>[] = [
+    {
+      id: 'period',
+      header: 'Period',
+      cell: (row) => (
+        <span style={{ fontSize: 12, color: '#14181c' }}>
+          {formatPeriod(row.periodStart, row.periodEnd)}
+        </span>
+      ),
+    },
+    {
+      id: 'employees',
+      header: 'Employees',
+      align: 'center',
+      cell: (row) => (
+        <span style={{ fontSize: 12, color: '#6b7480' }}>{row._count?.records ?? '—'}</span>
+      ),
+    },
+    {
+      id: 'gross',
+      header: 'Gross',
+      align: 'right',
+      cell: () => <span style={{ fontSize: 12, color: '#6b7480' }}>—</span>,
+    },
+    {
+      id: 'net',
+      header: 'Net',
+      align: 'right',
+      cell: () => <span style={{ fontSize: 12, color: '#6b7480' }}>—</span>,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (row) => {
+        const s = STATUS_BADGE[row.status] ?? { variant: 'default' as const, label: row.status };
+        return <Badge variant={s.variant}>{s.label}</Badge>;
+      },
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      align: 'right',
+      cell: (row) => (
+        <Link href={`/payroll/runs/${row.id}`}>
+          <Button variant="secondary" size="sm">View</Button>
+        </Link>
+      ),
+    },
   ];
-
-  const payslipColumns: ColumnDef<Payslip>[] = [
-    { id: 'name', header: 'EMPLOYEE', width: 'minmax(160px,1.4fr)', cell: (r) => <div className="flex items-center gap-2.5"><Avatar name={r.name} size="md" /><div><div className="text-sm font-medium">{r.name}</div><div className="text-[11px] text-[#8a929b]">{r.designation}</div></div></div> },
-    { id: 'employeeId', header: 'EMPLOYEE ID', width: '120px', cell: (r) => <span className="font-mono text-xs text-[#6b7480]">{r.employeeId}</span> },
-    { id: 'period', header: 'PERIOD', width: '100px', accessor: 'period' },
-    { id: 'gross', header: 'GROSS', width: '100px', align: 'right', accessor: 'gross' },
-    { id: 'deductions', header: 'DEDUCTIONS', width: '110px', align: 'right', accessor: 'deductions' },
-    { id: 'net', header: 'NET PAY', width: '100px', align: 'right', cell: (r) => <span className="font-semibold text-[#146b41]">{r.net}</span> },
-    { id: 'status', header: 'STATUS', width: '90px', cell: (r) => <Badge variant={r.status === 'PAID' ? 'active' : 'pending'}>{r.status}</Badge> },
-    { id: 'actions', header: 'ACTIONS', width: '100px', align: 'right', cell: () => <div className="flex justify-end gap-1.5 text-xs font-medium text-[#2b5fa8]"><button>View</button><span className="text-[#d7dce1]">|</span><button>Download</button></div> },
-  ];
-
-  const componentColumns: ColumnDef<SalaryComponent>[] = [
-    { id: 'name', header: 'COMPONENT NAME', width: '180px', accessor: 'name' },
-    { id: 'code', header: 'CODE', width: '80px', cell: (r) => <span className="font-mono text-xs text-[#6b7480]">{r.code}</span> },
-    { id: 'type', header: 'TYPE', width: '100px', cell: (r) => <Badge variant={r.type === 'EARNING' ? 'active' : 'left'}>{r.type}</Badge> },
-    { id: 'calculation', header: 'CALCULATION', width: '140px', accessor: 'calculation' },
-    { id: 'taxable', header: 'TAXABLE', width: '80px', cell: (r) => <Badge variant={r.taxable === 'YES' ? 'default' : 'graduated'}>{r.taxable}</Badge> },
-    { id: 'actions', header: 'ACTIONS', width: '90px', align: 'right', cell: () => <div className="flex justify-end gap-1.5 text-xs font-medium text-[#2b5fa8]"><button>Edit</button><span className="text-[#d7dce1]">|</span><button>Delete</button></div> },
-  ];
-
-  const filteredPayslips = PAYSLIPS.filter((p) => !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.employeeId.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div>
       <PageHeader
         title="Payroll"
-        subtitle="Salary runs, components, and payslips · 2024–25"
+        subtitle={`Payroll command centre · ${currentMonthYear()}`}
         actions={
           <div className="flex gap-2">
-            <ExportButton label="Export" data={RUNS} filename="payroll" formats={['csv', 'excel']}
-              columns={[{ header: 'Run ID', accessor: 'runId' }, { header: 'Period', accessor: 'period' }, { header: 'Net', accessor: 'net' }]} />
-            {activeTab === 'runs' && <Button variant="primary">Run Payroll</Button>}
+            <ExportButton
+              data={runs}
+              columns={[
+                { accessor: 'id', header: 'Run ID' },
+                { accessor: 'periodStart', header: 'Period Start' },
+                { accessor: 'periodEnd', header: 'Period End' },
+                { accessor: 'status', header: 'Status' },
+              ]}
+              filename="payroll-runs"
+            />
+            <Link href="/payroll/runs">
+              <Button variant="primary">
+                <PlayCircle size={14} style={{ marginRight: 6 }} />
+                Create Run
+              </Button>
+            </Link>
           </div>
         }
       />
 
-      <div className="grid grid-cols-4 gap-4 mb-4">
-        <KpiCard title="TOTAL DISBURSED" value="₹18.4L" subtitle="this month" />
-        <KpiCard title="EMPLOYEES PAID" value="82" trend="of 87" trendPositive subtitle="this run" />
-        <KpiCard title="PENDING" value="5" trend="₹1.2L" trendPositive={false} subtitle="pending" />
-        <KpiCard title="NEXT RUN" value="01 Sep" subtitle="2025" />
-      </div>
-
-      <Tabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} className="mb-4" />
-
-      <div className="overflow-hidden rounded-xl border border-[#e6e8eb] bg-white shadow-sm">
-        {activeTab === 'payslips' && (
-          <div className="flex items-center gap-2 border-b border-[#eef0f2] p-3.5">
-            <SearchBar placeholder="Search employee…" value={search} onChange={setSearch} className="w-64" />
-            <div className="flex-1" />
+      {isEmpty && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            padding: '16px 20px',
+            marginBottom: 16,
+            background: '#fffdf8',
+            border: '1px solid #e6e1d5',
+            borderRadius: 12,
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#2c322f', marginBottom: 2 }}>
+              Get started with Payroll
+            </div>
+            <div style={{ fontSize: 12, color: '#6d746e' }}>
+              Create salary components → assign salary structures → run payroll → approve &amp; pay
+            </div>
           </div>
-        )}
-
-        {activeTab === 'runs' && <DataTable columns={runColumns} data={RUNS} />}
-        {activeTab === 'payslips' && <DataTable columns={payslipColumns} data={filteredPayslips} />}
-        {activeTab === 'components' && <DataTable columns={componentColumns} data={COMPONENTS} />}
-
-        <div className="border-t border-[#eef0f2] p-3">
-          <Pagination page={page} pageSize={pageSize}
-            total={activeTab === 'runs' ? RUNS.length : activeTab === 'payslips' ? filteredPayslips.length : COMPONENTS.length}
-            onPageChange={setPage} onPageSizeChange={setPageSize} />
+          <Link href="/payroll/runs">
+            <Button variant="primary">Create First Payroll Run</Button>
+          </Link>
         </div>
+      )}
+
+      <div className="grid grid-cols-4 gap-4 mb-4">
+        <KpiCard
+          title="GROSS PAYROLL"
+          value={latestCompletedRun ? '—' : formatCurrency(0)}
+          subtitle={latestCompletedRun ? 'latest run' : 'no completed runs'}
+        />
+        <KpiCard
+          title="NET PAYROLL"
+          value={latestCompletedRun ? '—' : formatCurrency(0)}
+          subtitle={latestCompletedRun ? 'latest run' : 'no completed runs'}
+        />
+        <KpiCard
+          title="EMPLOYEES"
+          value={String(latestCompletedRun?._count?.records ?? 0)}
+          subtitle={latestCompletedRun ? 'latest run' : 'no runs yet'}
+        />
+        <KpiCard
+          title="PENDING RUNS"
+          value={String(pendingRunsCount)}
+          trendPositive={pendingRunsCount === 0}
+          subtitle="draft or processing"
+        />
       </div>
+
+      {draftRuns.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '12px 16px',
+            marginBottom: 16,
+            background: '#fff8e6',
+            border: '1px solid #ffe8a0',
+            borderRadius: 10,
+          }}
+        >
+          <AlertTriangle size={16} style={{ color: '#b07000', flexShrink: 0 }} />
+          <div style={{ fontSize: 13, color: '#b07000' }}>
+            <strong>{draftRuns.length}</strong> payroll run{draftRuns.length !== 1 ? 's' : ''} in Draft — process them to compute salaries.
+          </div>
+          <Link href="/payroll/runs" style={{ marginLeft: 'auto' }}>
+            <Button variant="secondary" size="sm">View Runs</Button>
+          </Link>
+        </div>
+      )}
+
+      {!isEmpty && (
+        <div className="rounded-xl border border-[#e6e8eb] bg-white shadow-sm overflow-hidden">
+          <div
+            style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid #eef0f2',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <h3 style={{ fontSize: 13, fontWeight: 600, color: '#2c322f' }}>Recent Payroll Runs</h3>
+            <Link href="/payroll/runs">
+              <span style={{ fontSize: 12, color: '#2b5fa8', cursor: 'pointer' }}>View all →</span>
+            </Link>
+          </div>
+          <DataTable<PayrollRun> columns={columns} data={recentRuns} />
+        </div>
+      )}
     </div>
   );
 }

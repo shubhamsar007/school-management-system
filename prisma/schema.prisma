@@ -1855,34 +1855,116 @@ model PayrollRun {
 }
 
 model PayrollRecord {
-  id               String  @id @default(uuid())
-  payrollRunId     String  @map("payroll_run_id")
-  employeeId       String  @map("employee_id")
-  workingDays      Int?    @map("working_days")
-  presentDays      Int?    @map("present_days")
-  basic            Decimal @db.Decimal(12, 2)
-  gross            Decimal @db.Decimal(12, 2)
-  totalDeductions  Decimal @map("total_deductions") @db.Decimal(12, 2)
-  netSalary        Decimal @map("net_salary") @db.Decimal(12, 2)
-  status           String  @default("PENDING") @db.VarChar(20)
+  id                String   @id @default(uuid())
+  payrollRunId      String   @map("payroll_run_id")
+  employeeId        String   @map("employee_id")
+  workingDays       Int?     @map("working_days")
+  presentDays       Decimal? @map("present_days") @db.Decimal(5, 2)
+  absentDays        Int?     @map("absent_days")
+  halfDayCount      Int?     @map("half_day_count")
+  paidLeaveDays     Decimal? @map("paid_leave_days") @db.Decimal(5, 2)
+  unpaidLeaveDays   Decimal? @map("unpaid_leave_days") @db.Decimal(5, 2)
+  lopDays           Decimal? @map("lop_days") @db.Decimal(5, 2)
+  lopAmount         Decimal? @map("lop_amount") @db.Decimal(12, 2)
+  overtimeHours     Decimal? @map("overtime_hours") @db.Decimal(6, 2)
+  basic             Decimal  @db.Decimal(12, 2)
+  gross                Decimal  @db.Decimal(12, 2)
+  totalDeductions      Decimal  @map("total_deductions") @db.Decimal(12, 2)
+  totalAdjustments     Decimal? @map("total_adjustments") @db.Decimal(12, 2)
+  totalLoanDeductions  Decimal? @map("total_loan_deductions") @db.Decimal(12, 2)
+  netSalary            Decimal  @map("net_salary") @db.Decimal(12, 2)
+  status               String   @default("PENDING") @db.VarChar(20)
 
-  payrollRun PayrollRun    @relation(fields: [payrollRunId], references: [id])
-  items      PayrollItem[]
+  payrollRun  PayrollRun          @relation(fields: [payrollRunId], references: [id])
+  items       PayrollItem[]
+  adjustments PayrollAdjustment[]
 
   @@map("payroll_records")
   @@schema("hr")
 }
 
 model PayrollItem {
-  id               String  @id @default(uuid())
-  payrollRecordId  String  @map("payroll_record_id")
-  salaryComponentId String @map("salary_component_id")
-  amount           Decimal @db.Decimal(12, 2)
+  id                String  @id @default(uuid())
+  payrollRecordId   String  @map("payroll_record_id")
+  salaryComponentId String  @map("salary_component_id")
+  amount            Decimal @db.Decimal(12, 2)
 
   payrollRecord   PayrollRecord   @relation(fields: [payrollRecordId], references: [id], onDelete: Cascade)
   salaryComponent SalaryComponent @relation(fields: [salaryComponentId], references: [id])
 
   @@map("payroll_items")
+  @@schema("hr")
+}
+
+// ─── Adjustments (bonuses, overtime pay, arrears, reimbursements, deductions) ─
+
+model PayrollAdjustment {
+  id               String    @id @default(uuid())
+  organizationId   String    @map("organization_id")
+  employeeId       String    @map("employee_id")
+  adjustmentType   String    @map("adjustment_type") @db.VarChar(30)
+  // BONUS | OVERTIME | ARREAR | REIMBURSEMENT | DEDUCTION | OTHER
+  subType          String?   @map("sub_type") @db.VarChar(50)
+  // e.g. PERFORMANCE / FESTIVAL / ANNUAL for BONUS
+  description      String?
+  amount           Decimal   @db.Decimal(12, 2)
+  effectivePeriod  String    @map("effective_period") @db.VarChar(7)
+  // YYYY-MM — the payroll month this should be included in
+  status           String    @default("PENDING") @db.VarChar(20)
+  // PENDING | APPROVED | REJECTED | INCLUDED
+  approvedBy       String?   @map("approved_by")
+  approvedAt       DateTime? @map("approved_at")
+  rejectionReason  String?   @map("rejection_reason")
+  payrollRecordId  String?   @map("payroll_record_id")
+  createdBy        String    @map("created_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  payrollRecord PayrollRecord? @relation(fields: [payrollRecordId], references: [id])
+
+  @@map("payroll_adjustments")
+  @@schema("hr")
+}
+
+// ─── Loans & Advances ─────────────────────────────────────────────────────────
+
+model EmployeeLoan {
+  id                String    @id @default(uuid())
+  organizationId    String    @map("organization_id")
+  employeeId        String    @map("employee_id")
+  loanType          String    @map("loan_type") @db.VarChar(30)
+  // SALARY_ADVANCE | PERSONAL_LOAN | VEHICLE_LOAN | OTHER
+  principalAmount   Decimal   @map("principal_amount") @db.Decimal(12, 2)
+  outstandingAmount Decimal   @map("outstanding_amount") @db.Decimal(12, 2)
+  monthlyDeduction  Decimal   @map("monthly_deduction") @db.Decimal(12, 2)
+  startDate         DateTime  @map("start_date") @db.Date
+  endDate           DateTime? @map("end_date") @db.Date
+  reason            String?
+  status            String    @default("ACTIVE") @db.VarChar(20)
+  // ACTIVE | COMPLETED | CANCELLED
+  approvedBy        String?   @map("approved_by")
+  approvedAt        DateTime? @map("approved_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  installments LoanInstallment[]
+
+  @@map("employee_loans")
+  @@schema("hr")
+}
+
+model LoanInstallment {
+  id           String    @id @default(uuid())
+  loanId       String    @map("loan_id")
+  payrollRunId String?   @map("payroll_run_id")
+  amount       Decimal   @db.Decimal(12, 2)
+  paidAt       DateTime? @map("paid_at")
+  status       String    @default("PENDING") @db.VarChar(20)
+  // PENDING | DEDUCTED | SKIPPED
+
+  loan EmployeeLoan @relation(fields: [loanId], references: [id])
+
+  @@map("loan_installments")
   @@schema("hr")
 }
 

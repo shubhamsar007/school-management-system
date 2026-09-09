@@ -18,6 +18,8 @@ import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current
 import { CreateSalaryComponentDto } from './dto/create-salary-component.dto';
 import { CreateSalaryStructureDto } from './dto/create-salary-structure.dto';
 import { CreatePayrollRunDto, ProcessPayrollRunDto } from './dto/create-payroll-run.dto';
+import { CreateAdjustmentDto, RejectAdjustmentDto } from './dto/create-adjustment.dto';
+import { CreateLoanDto } from './dto/create-loan.dto';
 
 @ApiTags('payroll')
 @ApiBearerAuth()
@@ -187,5 +189,117 @@ export class PayrollController {
     @Param('employeeId') employeeId: string,
   ) {
     return this.payrollService.getEmployeePayHistory(user.organizationId, employeeId);
+  }
+
+  // ─── Validation ───────────────────────────────────────────────
+
+  @ApiOperation({
+    summary:
+      'Pre-payroll validation — returns health report: missing salary structures, attendance gaps, etc.',
+  })
+  @Get('runs/:id/validate')
+  validatePayrollRun(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.payrollService.validatePayrollRun(user.organizationId, id);
+  }
+
+  // ─── Adjustments ─────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Create a payroll adjustment (bonus, deduction, etc.)' })
+  @Post('adjustments')
+  createAdjustment(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: CreateAdjustmentDto,
+  ) {
+    return this.payrollService.createAdjustment(user.organizationId, user.userId, dto);
+  }
+
+  @ApiOperation({ summary: 'List payroll adjustments with optional filters' })
+  @ApiQuery({ name: 'employeeId',     required: false })
+  @ApiQuery({ name: 'adjustmentType', required: false, description: 'BONUS | OVERTIME | ARREAR | REIMBURSEMENT | DEDUCTION | OTHER' })
+  @ApiQuery({ name: 'status',         required: false, description: 'PENDING | APPROVED | REJECTED | INCLUDED' })
+  @ApiQuery({ name: 'effectivePeriod', required: false, description: 'YYYY-MM' })
+  @Get('adjustments')
+  listAdjustments(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('employeeId')     employeeId?: string,
+    @Query('adjustmentType') adjustmentType?: string,
+    @Query('status')         status?: string,
+    @Query('effectivePeriod') effectivePeriod?: string,
+  ) {
+    const filters: { employeeId?: string; adjustmentType?: string; status?: string; effectivePeriod?: string } = {};
+    if (employeeId)      filters.employeeId      = employeeId;
+    if (adjustmentType)  filters.adjustmentType  = adjustmentType;
+    if (status)          filters.status          = status;
+    if (effectivePeriod) filters.effectivePeriod = effectivePeriod;
+    return this.payrollService.listAdjustments(user.organizationId, filters);
+  }
+
+  @ApiOperation({ summary: 'Approve a pending adjustment' })
+  @Patch('adjustments/:id/approve')
+  approveAdjustment(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.payrollService.approveAdjustment(user.organizationId, id, user.userId);
+  }
+
+  @ApiOperation({ summary: 'Reject a pending adjustment' })
+  @Patch('adjustments/:id/reject')
+  rejectAdjustment(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: RejectAdjustmentDto,
+  ) {
+    return this.payrollService.rejectAdjustment(user.organizationId, id, user.userId, dto);
+  }
+
+  // ─── Loans ────────────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Create an employee loan / salary advance' })
+  @Post('loans')
+  createLoan(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: CreateLoanDto,
+  ) {
+    return this.payrollService.createLoan(user.organizationId, dto);
+  }
+
+  @ApiOperation({ summary: 'List employee loans with optional filters' })
+  @ApiQuery({ name: 'employeeId', required: false })
+  @ApiQuery({ name: 'status',     required: false, description: 'ACTIVE | COMPLETED | CLOSED' })
+  @ApiQuery({ name: 'loanType',   required: false, description: 'SALARY_ADVANCE | PERSONAL_LOAN | VEHICLE_LOAN | OTHER' })
+  @Get('loans')
+  listLoans(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('employeeId') employeeId?: string,
+    @Query('status')     status?: string,
+    @Query('loanType')   loanType?: string,
+  ) {
+    const filters: { employeeId?: string; status?: string; loanType?: string } = {};
+    if (employeeId) filters.employeeId = employeeId;
+    if (status)     filters.status     = status;
+    if (loanType)   filters.loanType   = loanType;
+    return this.payrollService.listLoans(user.organizationId, filters);
+  }
+
+  @ApiOperation({ summary: 'Get loan detail with full installment history' })
+  @Get('loans/:id')
+  getLoanDetail(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.payrollService.getLoanDetail(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Close / write-off a loan early' })
+  @Patch('loans/:id/close')
+  closeLoan(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.payrollService.closeLoan(user.organizationId, id);
   }
 }
