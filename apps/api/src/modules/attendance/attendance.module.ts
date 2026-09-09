@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { AttendanceService } from './attendance.service';
 import { AttendanceController } from './attendance.controller';
+import { SubstitutionModule } from '../substitution/substitution.module';
 
 @Module({
+  imports: [SubstitutionModule],
   controllers: [AttendanceController],
   providers: [AttendanceService],
   exports: [AttendanceService],

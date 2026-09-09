@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
+import { SubstitutionService } from '../substitution/substitution.service';
 import { MarkStudentAttendanceDto } from './dto/mark-student-attendance.dto';
 import { UpdateStudentAttendanceDto } from './dto/update-student-attendance.dto';
 import { MarkEmployeeAttendanceDto } from './dto/mark-employee-attendance.dto';
@@ -23,7 +24,10 @@ import { RunCarryForwardDto } from './dto/run-carry-forward.dto';
 
 @Injectable()
 export class AttendanceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private substitutionService: SubstitutionService,
+  ) {}
 
   // ─── Student Attendance ───────────────────────────────────────
 
@@ -358,7 +362,7 @@ export class AttendanceService {
       throw new BadRequestException(`Leave request is already ${request.status.toLowerCase()}`);
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // 1. Update request status to APPROVED
       const updated = await tx.leaveRequest.update({
         where: { id: requestId },
@@ -443,6 +447,11 @@ export class AttendanceService {
 
       return updated;
     });
+
+    // Auto-trigger substitution requests (non-blocking — silently skipped if no timetable)
+    this.substitutionService.triggerForLeaveRequest(organizationId, requestId).catch(() => void 0);
+
+    return result;
   }
 
   async rejectLeaveRequest(
@@ -834,6 +843,39 @@ export class AttendanceService {
             }
           : null,
       };
+    });
+  }
+
+  // ─── Leave Document ───────────────────────────────────────────
+
+  async updateLeaveDocument(organizationId: string, requestId: string, documentUrl: string) {
+    const request = await this.prisma.leaveRequest.findFirst({
+      where: { id: requestId, organizationId },
+    });
+    if (!request) throw new NotFoundException('Leave request not found');
+
+    return this.prisma.leaveRequest.update({
+      where: { id: requestId },
+      data: { documentUrl },
+    });
+  }
+
+  // ─── Leave Substitutions ──────────────────────────────────────
+
+  async getLeaveSubstitutions(organizationId: string, leaveRequestId: string) {
+    return this.prisma.substitutionRequest.findMany({
+      where: { leaveRequestId, organizationId },
+      include: {
+        assignments: {
+          include: {
+            substitutionCandidates: {
+              orderBy: { totalScore: 'desc' },
+              take: 1,
+            },
+          },
+        },
+      },
+      orderBy: { date: 'asc' },
     });
   }
 

@@ -278,6 +278,25 @@ export class AttendanceController {
     return this.attendanceService.findLeaveRequest(user.organizationId, id);
   }
 
+  @ApiOperation({ summary: 'Attach a document URL to a leave request' })
+  @Patch('leave-requests/:id/document')
+  updateLeaveDocument(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body('documentUrl') documentUrl: string,
+  ) {
+    return this.attendanceService.updateLeaveDocument(user.organizationId, id, documentUrl);
+  }
+
+  @ApiOperation({ summary: 'Get substitution requests triggered for a leave' })
+  @Get('leave-requests/:id/substitutions')
+  getLeaveSubstitutions(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.attendanceService.getLeaveSubstitutions(user.organizationId, id);
+  }
+
   @ApiOperation({ summary: 'Approve a leave request' })
   @Post('leave-requests/:id/approve')
   @HttpCode(HttpStatus.OK)

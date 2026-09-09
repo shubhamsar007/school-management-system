@@ -12,6 +12,7 @@ import { CreatePayrollRunDto, ProcessPayrollRunDto } from './dto/create-payroll-
 import { CreateAdjustmentDto, RejectAdjustmentDto } from './dto/create-adjustment.dto';
 import { CreateLoanDto } from './dto/create-loan.dto';
 import { UpsertTaxDeclarationDto } from './dto/upsert-tax-declaration.dto';
+import { InitiateFnfDto } from './dto/initiate-fnf.dto';
 import { Decimal } from '@prisma/client/runtime/library';
 
 // ─── Adjustment types that add to earnings vs deductions ─────────────────────
@@ -493,7 +494,22 @@ export class PayrollService {
         loanInstallments.push({ loanId: loan.id, amount: actualDeduction });
       }
 
-      // ── 9. TDS computation ────────────────────────────────────
+      // ── 9. Approved leave encashments for this pay period ────────
+      const approvedEncashments = await this.prisma.leaveEncashment.findMany({
+        where: {
+          organizationId,
+          employeeId: employee.id,
+          status: 'APPROVED',
+          approvedAt: { gte: periodStart, lte: periodEnd },
+        },
+      });
+
+      const leaveEncashmentPayout = approvedEncashments.reduce(
+        (sum, e) => sum.plus(new Decimal(e.totalAmount)),
+        new Decimal(0),
+      ).toDecimalPlaces(2);
+
+      // ── 10. TDS computation ────────────────────────────────────
       const financialYear = this.deriveFinancialYear(new Date(run.periodStart));
       const taxDecl = await this.prisma.taxDeclaration.findFirst({
         where: { organizationId, employeeId: employee.id, financialYear },
@@ -507,9 +523,10 @@ export class PayrollService {
       });
       const tdsAmount = taxResult.monthlyTds;
 
-      // ── 10. Final net salary (including TDS) ──────────────────
+      // ── 11. Final net salary (including encashment payout) ───────
       const netSalary = proratedGross
         .plus(totalAdjustmentEarnings)
+        .plus(leaveEncashmentPayout)
         .minus(proratedDeductions)
         .minus(totalAdjustmentDeductions)
         .minus(lopAmount)
@@ -517,26 +534,27 @@ export class PayrollService {
         .minus(tdsAmount)
         .toDecimalPlaces(2);
 
-      // ── 11. Upsert PayrollRecord ──────────────────────────────
+      // ── 12. Upsert PayrollRecord ──────────────────────────────
       const recordData = {
         workingDays,
-        presentDays:         presentDaysDecimal,
-        absentDays:          absentCount,
+        presentDays:            presentDaysDecimal,
+        absentDays:             absentCount,
         halfDayCount,
         paidLeaveDays,
         unpaidLeaveDays,
         lopDays,
         lopAmount,
-        overtimeHours:       overtimeHours.toDecimalPlaces(2),
-        basic:               proratedBasic,
-        gross:               proratedGross,
-        totalDeductions:     proratedDeductions,
+        overtimeHours:          overtimeHours.toDecimalPlaces(2),
+        basic:                  proratedBasic,
+        gross:                  proratedGross,
+        totalDeductions:        proratedDeductions,
         totalAdjustments,
-        totalLoanDeductions: totalLoanDeductions.toDecimalPlaces(2),
-        tdsAmount:           tdsAmount.toDecimalPlaces(2),
-        taxRegime:           regime,
+        totalLoanDeductions:    totalLoanDeductions.toDecimalPlaces(2),
+        leaveEncashmentAmount:  leaveEncashmentPayout,
+        tdsAmount:              tdsAmount.toDecimalPlaces(2),
+        taxRegime:              regime,
         netSalary,
-        status:              'PENDING',
+        status:                 'PENDING',
       };
 
       const existingRecord = await this.prisma.payrollRecord.findFirst({
@@ -608,7 +626,15 @@ export class PayrollService {
         });
       }
 
-      // ── 15. Create loan installments + reduce outstanding ─────
+      // ── 15. Mark encashments as DISBURSED ────────────────────
+      if (approvedEncashments.length > 0) {
+        await this.prisma.leaveEncashment.updateMany({
+          where: { id: { in: approvedEncashments.map((e) => e.id) } },
+          data:  { status: 'DISBURSED' },
+        });
+      }
+
+      // ── 16. Create loan installments + reduce outstanding ─────
       for (const inst of loanInstallments) {
         const alreadyExists = await this.prisma.loanInstallment.findFirst({
           where: { loanId: inst.loanId, payrollRunId: id },
@@ -1139,7 +1165,7 @@ export class PayrollService {
   }
 
   /** Derive financial year string (April–March) from a given date */
-  private deriveFinancialYear(date: Date): string {
+  public deriveFinancialYear(date: Date): string {
     const month = date.getMonth(); // 0-indexed
     const year  = date.getFullYear();
     return month >= 3 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
@@ -1246,5 +1272,360 @@ export class PayrollService {
   private countCalendarDays(start: Date, end: Date): number {
     const ms = end.getTime() - start.getTime();
     return Math.max(1, Math.floor(ms / 86_400_000) + 1);
+  }
+
+  // ─── Full & Final Settlements ─────────────────────────────────
+
+  async initiateFnf(organizationId: string, createdBy: string, dto: InitiateFnfDto) {
+    // Fetch employee to get joining date, current salary structure, and active loans
+    const employee = await (this.prisma as any).employee.findFirst({
+      where: { id: dto.employeeId, organizationId },
+      include: {
+        person: true,
+        salaryStructures: {
+          where: { status: 'ACTIVE' },
+          include: { items: { include: { component: true } } },
+          orderBy: { effectiveFrom: 'desc' },
+          take: 1,
+        },
+      },
+    });
+    if (!employee) throw new NotFoundException('Employee not found');
+
+    const lastWorkingDay  = new Date(dto.lastWorkingDay);
+    const separationDate  = new Date(dto.separationDate);
+
+    // 1. Partial month salary: days from 1st of LWD month to LWD
+    const lwdMonth       = new Date(lastWorkingDay.getFullYear(), lastWorkingDay.getMonth(), 1);
+    const daysInMonth    = new Date(lastWorkingDay.getFullYear(), lastWorkingDay.getMonth() + 1, 0).getDate();
+    const partialDays    = lastWorkingDay.getDate();
+    const activeStruct   = employee.salaryStructures?.[0];
+    const monthlyCTC     = activeStruct
+      ? (activeStruct.items as any[]).reduce((sum: number, item: any) => sum + Number(item.amount), 0)
+      : 0;
+    const partialMonthSalary = new Decimal(monthlyCTC)
+      .times(partialDays)
+      .dividedBy(daysInMonth)
+      .toDecimalPlaces(2);
+
+    // 2. Leave encashment
+    const pendingLeaveDays   = new Decimal(dto.pendingLeaveDays ?? 0);
+    const dailyRate          = new Decimal(monthlyCTC).dividedBy(26);
+    const leaveEncashmentAmount = pendingLeaveDays.times(dailyRate).toDecimalPlaces(2);
+
+    // 3. Gratuity (eligible if ≥ 5 years of service)
+    let gratuityAmount = new Decimal(0);
+    if (employee.joiningDate) {
+      const joiningDate   = new Date(employee.joiningDate);
+      const yearsOfService = (separationDate.getTime() - joiningDate.getTime()) / (365.25 * 24 * 3600 * 1000);
+      if (yearsOfService >= 5) {
+        // Formula: (last drawn monthly salary / 26) × 15 × years
+        const gratuityYears = Math.floor(yearsOfService);
+        gratuityAmount = dailyRate.times(15).times(gratuityYears).toDecimalPlaces(2);
+      }
+    }
+
+    // 4. Loan recovery: sum outstanding balance of all active loans
+    const activeLoans = await (this.prisma as any).employeeLoan.findMany({
+      where: { organizationId, employeeId: dto.employeeId, status: 'ACTIVE' },
+    });
+    const loanRecoveryAmount = activeLoans.reduce(
+      (sum: Decimal, loan: any) => sum.plus(new Decimal(String(loan.outstandingBalance))),
+      new Decimal(0),
+    ).toDecimalPlaces(2);
+
+    // 5. Totals
+    const totalPayable    = partialMonthSalary.plus(leaveEncashmentAmount).plus(gratuityAmount).toDecimalPlaces(2);
+    const totalDeductions = loanRecoveryAmount.toDecimalPlaces(2);
+    const netSettlement   = totalPayable.minus(totalDeductions).toDecimalPlaces(2);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const settlement = await (this.prisma as any).fnfSettlement.create({
+      data: {
+        organizationId,
+        employeeId:           dto.employeeId,
+        separationDate:       separationDate,
+        separationType:       dto.separationType,
+        lastWorkingDay:       lastWorkingDay,
+        noticePeriodDays:     dto.noticePeriodDays ?? 0,
+        partialMonthDays:     partialDays,
+        partialMonthSalary,
+        pendingLeaveDays,
+        leaveEncashmentAmount,
+        gratuityAmount,
+        loanRecoveryAmount,
+        totalPayable,
+        totalDeductions,
+        netSettlement,
+        status:               'DRAFT',
+        createdBy,
+        ...(dto.notes ? { notes: dto.notes } : {}),
+      },
+    });
+
+    return settlement;
+  }
+
+  async listFnfSettlements(organizationId: string, status?: string) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const settlements: any[] = await (this.prisma as any).fnfSettlement.findMany({
+      where: {
+        organizationId,
+        ...(status ? { status } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Two-step: fetch employees separately
+    const employeeIds = [...new Set(settlements.map((s: any) => s.employeeId as string))];
+    const employees   = employeeIds.length
+      ? await (this.prisma as any).employee.findMany({
+          where: { id: { in: employeeIds }, organizationId },
+          include: { person: { select: { firstName: true, lastName: true } } },
+        })
+      : [];
+    const empMap = new Map(employees.map((e: any) => [e.id, e]));
+
+    return settlements.map((s: any) => ({
+      ...s,
+      employee: empMap.get(s.employeeId) ?? null,
+    }));
+  }
+
+  async getFnfSettlement(organizationId: string, id: string) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const settlement: any = await (this.prisma as any).fnfSettlement.findFirst({
+      where: { id, organizationId },
+    });
+    if (!settlement) throw new NotFoundException('FnF settlement not found');
+
+    const employee = await (this.prisma as any).employee.findFirst({
+      where: { id: settlement.employeeId, organizationId },
+      include: {
+        person: { select: { firstName: true, lastName: true } },
+        department: { select: { name: true } },
+      },
+    });
+
+    return { ...settlement, employee: employee ?? null };
+  }
+
+  async approveFnfSettlement(organizationId: string, id: string, approvedBy: string) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const settlement: any = await (this.prisma as any).fnfSettlement.findFirst({
+      where: { id, organizationId },
+    });
+    if (!settlement) throw new NotFoundException('FnF settlement not found');
+    if (settlement.status !== 'DRAFT') {
+      throw new BadRequestException(`Cannot approve settlement in status '${settlement.status}'`);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (this.prisma as any).fnfSettlement.update({
+      where: { id },
+      data: { status: 'APPROVED', approvedBy, approvedAt: new Date() },
+    });
+  }
+
+  async markFnfPaid(organizationId: string, id: string) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const settlement: any = await (this.prisma as any).fnfSettlement.findFirst({
+      where: { id, organizationId },
+    });
+    if (!settlement) throw new NotFoundException('FnF settlement not found');
+    if (settlement.status !== 'APPROVED') {
+      throw new BadRequestException(`Cannot mark as paid from status '${settlement.status}'. Must be APPROVED.`);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (this.prisma as any).fnfSettlement.update({
+      where: { id },
+      data: { status: 'PAID' },
+    });
+  }
+
+  // ─── Analytics ────────────────────────────────────────────────
+
+  async getPayrollAnalyticsOverview(organizationId: string, financialYear: string) {
+    // Fetch all COMPLETED/APPROVED/PAID runs in the financial year
+    const [fyStart, fyEnd] = this.fyToDateRange(financialYear);
+
+    const runs = await this.prisma.payrollRun.findMany({
+      where: {
+        organizationId,
+        periodStart: { gte: fyStart, lte: fyEnd },
+        status: { in: ['COMPLETED', 'APPROVED', 'PAID'] },
+      },
+      include: { records: true },
+      orderBy: { periodStart: 'asc' },
+    });
+
+    let totalGross      = new Decimal(0);
+    let totalDeductions = new Decimal(0);
+    let totalNet        = new Decimal(0);
+    let totalTds        = new Decimal(0);
+    let totalEmp        = new Set<string>();
+
+    for (const run of runs) {
+      for (const r of run.records) {
+        if (r.status === 'HELD') continue;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rec: any  = r;
+        totalGross      = totalGross.plus(new Decimal(String(rec.grossSalary)));
+        totalDeductions = totalDeductions.plus(new Decimal(String(rec.totalDeductions)));
+        totalNet        = totalNet.plus(new Decimal(String(rec.netSalary)));
+        if (rec.tdsAmount) totalTds = totalTds.plus(new Decimal(String(rec.tdsAmount)));
+        totalEmp.add(rec.employeeId);
+      }
+    }
+
+    return {
+      financialYear,
+      totalRuns:       runs.length,
+      totalEmployees:  totalEmp.size,
+      totalGross:      totalGross.toDecimalPlaces(2),
+      totalDeductions: totalDeductions.toDecimalPlaces(2),
+      totalNet:        totalNet.toDecimalPlaces(2),
+      totalTds:        totalTds.toDecimalPlaces(2),
+    };
+  }
+
+  async getPayrollAnalyticsByDepartment(organizationId: string, financialYear: string) {
+    const [fyStart, fyEnd] = this.fyToDateRange(financialYear);
+
+    const runs = await this.prisma.payrollRun.findMany({
+      where: {
+        organizationId,
+        periodStart: { gte: fyStart, lte: fyEnd },
+        status: { in: ['COMPLETED', 'APPROVED', 'PAID'] },
+      },
+      include: { records: true },
+    });
+
+    // group records by employeeId; then enrich with department
+    const recordsByEmployee = new Map<string, { gross: Decimal; net: Decimal; tds: Decimal }>();
+    for (const run of runs) {
+      for (const r of run.records) {
+        if (r.status === 'HELD') continue;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rec: any = r;
+        const cur = recordsByEmployee.get(rec.employeeId) ?? { gross: new Decimal(0), net: new Decimal(0), tds: new Decimal(0) };
+        cur.gross = cur.gross.plus(new Decimal(String(rec.grossSalary)));
+        cur.net   = cur.net.plus(new Decimal(String(rec.netSalary)));
+        if (rec.tdsAmount) cur.tds = cur.tds.plus(new Decimal(String(rec.tdsAmount)));
+        recordsByEmployee.set(rec.employeeId, cur);
+      }
+    }
+
+    const empIds = [...recordsByEmployee.keys()];
+    const employees = empIds.length
+      ? await (this.prisma as any).employee.findMany({
+          where: { id: { in: empIds }, organizationId },
+          include: { department: { select: { id: true, name: true } } },
+        })
+      : [];
+
+    const deptMap = new Map<string, { departmentName: string; employeeCount: number; totalGross: Decimal; totalNet: Decimal; totalTds: Decimal }>();
+    for (const emp of employees) {
+      const deptId   = emp.departmentId ?? '__no_dept__';
+      const deptName = emp.department?.name ?? 'Unassigned';
+      const recs     = recordsByEmployee.get(emp.id)!;
+      const cur      = deptMap.get(deptId) ?? { departmentName: deptName, employeeCount: 0, totalGross: new Decimal(0), totalNet: new Decimal(0), totalTds: new Decimal(0) };
+      cur.employeeCount++;
+      cur.totalGross = cur.totalGross.plus(recs.gross);
+      cur.totalNet   = cur.totalNet.plus(recs.net);
+      cur.totalTds   = cur.totalTds.plus(recs.tds);
+      deptMap.set(deptId, cur);
+    }
+
+    return [...deptMap.values()].map((d) => ({
+      ...d,
+      totalGross: d.totalGross.toDecimalPlaces(2),
+      totalNet:   d.totalNet.toDecimalPlaces(2),
+      totalTds:   d.totalTds.toDecimalPlaces(2),
+    }));
+  }
+
+  async getPayrollAnalyticsMonthTrend(organizationId: string, financialYear: string) {
+    const [fyStart, fyEnd] = this.fyToDateRange(financialYear);
+
+    const runs = await this.prisma.payrollRun.findMany({
+      where: {
+        organizationId,
+        periodStart: { gte: fyStart, lte: fyEnd },
+        status: { in: ['COMPLETED', 'APPROVED', 'PAID'] },
+      },
+      include: { records: true },
+      orderBy: { periodStart: 'asc' },
+    });
+
+    return runs.map((run) => {
+      let gross = new Decimal(0), net = new Decimal(0), tds = new Decimal(0);
+      let headcount = 0;
+      for (const r of run.records) {
+        if (r.status === 'HELD') continue;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rec: any = r;
+        gross = gross.plus(new Decimal(String(rec.grossSalary)));
+        net   = net.plus(new Decimal(String(rec.netSalary)));
+        if (rec.tdsAmount) tds = tds.plus(new Decimal(String(rec.tdsAmount)));
+        headcount++;
+      }
+      return {
+        period:    run.periodStart.toISOString().slice(0, 7),
+        runId:     run.id,
+        status:    run.status,
+        headcount,
+        totalGross: gross.toDecimalPlaces(2),
+        totalNet:   net.toDecimalPlaces(2),
+        totalTds:   tds.toDecimalPlaces(2),
+      };
+    });
+  }
+
+  async getPayrollAnalyticsTdsSummary(organizationId: string, financialYear: string) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const declarations: any[] = await (this.prisma as any).taxDeclaration.findMany({
+      where: { organizationId, financialYear },
+      include: {
+        taxCalculations: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+
+    const empIds = declarations.map((d: any) => d.employeeId as string);
+    const employees = empIds.length
+      ? await (this.prisma as any).employee.findMany({
+          where: { id: { in: empIds }, organizationId },
+          include: { person: { select: { firstName: true, lastName: true } } },
+        })
+      : [];
+    const empMap = new Map(employees.map((e: any) => [e.id as string, e]));
+
+    return declarations.map((d: any) => {
+      const emp: any  = empMap.get(d.employeeId);
+      const lastCal   = d.taxCalculations?.[0];
+      return {
+        employeeId:      d.employeeId,
+        employeeName:    emp ? `${emp.person?.firstName ?? ''} ${emp.person?.lastName ?? ''}`.trim() : d.employeeId,
+        taxRegime:       d.taxRegime,
+        section80C:      d.section80C,
+        hraExemption:    d.hraExemption,
+        otherDeductions: d.otherDeductions,
+        annualTax:       lastCal?.totalAnnualTax ?? 0,
+        monthlyTds:      lastCal?.monthlyTds ?? 0,
+        taxableIncome:   lastCal?.taxableIncome ?? 0,
+      };
+    });
+  }
+
+  /** Convert "YYYY-YYYY" financial year to [startDate, endDate] */
+  private fyToDateRange(financialYear: string): [Date, Date] {
+    const parts     = financialYear.split('-').map(Number);
+    const startYear = parts[0] ?? new Date().getFullYear();
+    return [
+      new Date(`${startYear}-04-01`),
+      new Date(`${startYear + 1}-03-31`),
+    ];
   }
 }

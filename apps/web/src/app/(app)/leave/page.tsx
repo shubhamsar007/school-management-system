@@ -35,10 +35,13 @@ import {
   useLeaveEncashments,
   useApproveLeaveEncashment,
   useRejectLeaveEncashment,
+  useLeaveSubstitutions,
+  useUpdateLeaveDocument,
   type LeaveRequest,
   type LeaveBalance,
   type LeaveEncashment,
   type LeaveBalanceLedgerEntry,
+  type LeaveSubstitutionRequest,
   type LeaveOverviewPending,
   type LeaveOverviewAbsence,
   type TeamAvailabilityDay,
@@ -143,7 +146,16 @@ function LeaveDetailModal({ request, onClose }: LeaveDetailModalProps) {
   const toast = useToast();
   const approve = useApproveLeaveRequest();
   const cancelApproved = useCancelApprovedLeaveRequest();
+  const updateDoc = useUpdateLeaveDocument();
   const [rejectOpen, setRejectOpen] = React.useState(false);
+  const [docUrl, setDocUrl] = React.useState('');
+  const [docEditing, setDocEditing] = React.useState(false);
+
+  const { data: substitutions = [] } = useLeaveSubstitutions(request?.id);
+
+  React.useEffect(() => {
+    if (request) setDocUrl((request as LeaveRequest & { documentUrl?: string }).documentUrl ?? '');
+  }, [request?.id]);
 
   if (!request) return null;
 
@@ -293,6 +305,67 @@ function LeaveDetailModal({ request, onClose }: LeaveDetailModalProps) {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Substitution requests (auto-created on approval) */}
+          {(substitutions as LeaveSubstitutionRequest[]).length > 0 && (
+            <div>
+              <div style={labelStyle}>Substitution Requests</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                {(substitutions as LeaveSubstitutionRequest[]).map((sub) => (
+                  <div key={sub.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: 6, background: '#f8f9fa', border: '1px solid #e6e8eb' }}>
+                    <span style={{ fontSize: '13px', color: '#14181c' }}>{fmt(sub.date)}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: '12px', color: '#8a929b' }}>{sub.assignments.length} period{sub.assignments.length !== 1 ? 's' : ''}</span>
+                      <Badge variant={sub.status === 'COVERED' ? 'active' : sub.status === 'PENDING' ? 'pending' : 'default'}>{sub.status}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Document attachment */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={labelStyle}>Supporting Document</div>
+              {!docEditing && (
+                <button onClick={() => setDocEditing(true)} style={{ fontSize: '11px', color: '#3f6152', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                  {docUrl ? 'Change' : '+ Add URL'}
+                </button>
+              )}
+            </div>
+            {docEditing ? (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="url"
+                  value={docUrl}
+                  onChange={(e) => setDocUrl(e.target.value)}
+                  placeholder="https://drive.google.com/…"
+                  autoFocus
+                  style={{ flex: 1, height: 34, border: '1px solid #d7dce1', borderRadius: 6, padding: '0 10px', fontSize: '13px', color: '#14181c' }}
+                />
+                <button
+                  onClick={() => updateDoc.mutate({ id: request.id, documentUrl: docUrl }, {
+                    onSuccess: () => { toast.success('Document saved'); setDocEditing(false); },
+                    onError: () => toast.error('Failed to save'),
+                  })}
+                  disabled={updateDoc.isPending}
+                  style={{ height: 34, padding: '0 14px', borderRadius: 6, border: 'none', background: '#3f4f45', color: '#fff', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Save
+                </button>
+                <button onClick={() => setDocEditing(false)} style={{ height: 34, padding: '0 12px', borderRadius: 6, border: '1px solid #d7dce1', background: '#fff', fontSize: '12px', color: '#6b7480', cursor: 'pointer' }}>
+                  Cancel
+                </button>
+              </div>
+            ) : docUrl ? (
+              <a href={docUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '13px', color: '#3f6152', wordBreak: 'break-all' }}>
+                {docUrl}
+              </a>
+            ) : (
+              <div style={{ fontSize: '13px', color: '#8a929b' }}>No document attached.</div>
+            )}
           </div>
         </div>
       </Modal>

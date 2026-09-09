@@ -1094,6 +1094,48 @@ export function useApproveLeaveEncashment() {
   });
 }
 
+// ─── Leave Substitutions ──────────────────────────────────────
+
+export interface LeaveSubstitutionAssignment {
+  id: string;
+  timetableEntryId: string;
+  originalTeacherId: string;
+  substituteEmployeeId: string | null;
+  status: string;
+}
+
+export interface LeaveSubstitutionRequest {
+  id: string;
+  leaveRequestId: string;
+  date: string;
+  status: string;
+  assignments: LeaveSubstitutionAssignment[];
+}
+
+export function useLeaveSubstitutions(leaveRequestId?: string) {
+  return useQuery({
+    queryKey: ['leave', 'substitutions', leaveRequestId],
+    queryFn: () =>
+      apiClient.get<LeaveSubstitutionRequest[]>(
+        `/attendance/leave-requests/${leaveRequestId}/substitutions`,
+      ),
+    enabled: !!leaveRequestId,
+  });
+}
+
+// ─── Update Leave Document ────────────────────────────────────
+
+export function useUpdateLeaveDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, documentUrl }: { id: string; documentUrl: string }) =>
+      apiClient.patch(`/attendance/leave-requests/${id}/document`, { documentUrl }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['attendance', 'leave-requests'] });
+    },
+  });
+}
+
 export function useRejectLeaveEncashment() {
   const qc = useQueryClient();
   return useMutation({
