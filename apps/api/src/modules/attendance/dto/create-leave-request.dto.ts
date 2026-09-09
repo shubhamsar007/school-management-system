@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsUUID,
   IsDateString,
@@ -9,22 +9,24 @@ import {
 } from 'class-validator';
 
 export class CreateLeaveRequestDto {
-  @ApiProperty()
+  @ApiPropertyOptional()
   @IsUUID()
   leaveTypeId: string;
 
-  @ApiProperty({ example: '2024-08-05' })
+  @ApiPropertyOptional({ example: '2024-08-05' })
   @IsDateString()
   startDate: string;
 
-  @ApiProperty({ example: '2024-08-07' })
+  @ApiPropertyOptional({ example: '2024-08-07' })
   @IsDateString()
   endDate: string;
 
-  @ApiProperty({ description: 'Number of leave days being requested' })
+  /** Server computes the working-day count; this field is accepted but ignored. */
+  @ApiPropertyOptional({ description: 'Client hint — server always recomputes' })
   @IsInt()
   @Min(1)
-  totalDays: number;
+  @IsOptional()
+  totalDays?: number;
 
   @ApiPropertyOptional()
   @IsString()

@@ -296,8 +296,66 @@ export class AttendanceService {
 
     const start = new Date(dto.startDate);
     const end = new Date(dto.endDate);
+    start.setUTCHours(0, 0, 0, 0);
+    end.setUTCHours(0, 0, 0, 0);
     if (end < start) {
       throw new BadRequestException('End date must be on or after start date');
+    }
+
+    // ── Server-side working-day calculation (Mon–Sat, skip Sundays) ──────────────
+    const totalDays = this.countWorkingDays(start, end);
+
+    // ── Overlap detection ─────────────────────────────────────────────────────────
+    const overlapping = await this.prisma.leaveRequest.findFirst({
+      where: {
+        employeeId,
+        status: { in: ['PENDING', 'APPROVED'] },
+        startDate: { lte: end },
+        endDate: { gte: start },
+      },
+      select: { id: true, status: true, startDate: true, endDate: true },
+    });
+    if (overlapping) {
+      throw new ConflictException(
+        `Leave dates overlap with an existing ${overlapping.status.toLowerCase()} request ` +
+          `(${overlapping.startDate.toISOString().slice(0, 10)} – ${overlapping.endDate.toISOString().slice(0, 10)})`,
+      );
+    }
+
+    // ── Balance validation (only when a balance record exists for this year) ──────
+    const academicYear = await this.prisma.academicYear.findFirst({
+      where: {
+        organizationId,
+        startDate: { lte: start },
+        endDate: { gte: start },
+      },
+      select: { id: true },
+    });
+    if (academicYear) {
+      const balance = await this.prisma.leaveBalance.findFirst({
+        where: {
+          employeeId,
+          leaveTypeId: dto.leaveTypeId,
+          academicYearId: academicYear.id,
+        },
+      });
+      if (balance) {
+        const { _sum } = await this.prisma.leaveRequest.aggregate({
+          _sum: { totalDays: true },
+          where: {
+            employeeId,
+            leaveTypeId: dto.leaveTypeId,
+            status: { in: ['PENDING', 'APPROVED'] },
+          },
+        });
+        const committed = balance.used + (_sum.totalDays ?? 0);
+        const available = balance.allocated - committed;
+        if (available < totalDays) {
+          throw new BadRequestException(
+            `Insufficient leave balance. Available: ${Math.max(0, available)} day(s), requested: ${totalDays} day(s).`,
+          );
+        }
+      }
     }
 
     return this.prisma.leaveRequest.create({
@@ -307,7 +365,7 @@ export class AttendanceService {
         leaveTypeId: dto.leaveTypeId,
         startDate: start,
         endDate: end,
-        totalDays: dto.totalDays,
+        totalDays,
         reason: dto.reason ?? null,
       },
       include: {
@@ -487,6 +545,84 @@ export class AttendanceService {
         employee: { include: { person: true } },
       },
     });
+  }
+
+  // ─── Leave Overview (HR dashboard) ────────────────────────────────
+
+  async getLeaveOverview(organizationId: string, date?: string) {
+    const today = date ? new Date(date) : new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
+    const now = new Date();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59));
+
+    const [onLeaveToday, pendingCount, approvedThisMonth, rejectedThisMonth, pendingList] =
+      await Promise.all([
+        this.prisma.leaveRequest.findMany({
+          where: {
+            organizationId,
+            status: 'APPROVED',
+            startDate: { lte: today },
+            endDate: { gte: today },
+          },
+          include: { employee: { include: { person: true } }, leaveType: true },
+          orderBy: { startDate: 'asc' },
+        }),
+        this.prisma.leaveRequest.count({ where: { organizationId, status: 'PENDING' } }),
+        this.prisma.leaveRequest.count({
+          where: {
+            organizationId,
+            status: 'APPROVED',
+            approvedAt: { gte: monthStart, lte: monthEnd },
+          },
+        }),
+        this.prisma.leaveRequest.count({
+          where: {
+            organizationId,
+            status: 'REJECTED',
+            approvedAt: { gte: monthStart, lte: monthEnd },
+          },
+        }),
+        this.prisma.leaveRequest.findMany({
+          where: { organizationId, status: 'PENDING' },
+          include: { employee: { include: { person: true } }, leaveType: true },
+          orderBy: { createdAt: 'asc' },
+          take: 20,
+        }),
+      ]);
+
+    return {
+      date: today.toISOString().slice(0, 10),
+      kpis: {
+        onLeaveToday: onLeaveToday.length,
+        pendingRequests: pendingCount,
+        approvedThisMonth,
+        rejectedThisMonth,
+      },
+      todaysAbsences: onLeaveToday.map((r) => ({
+        employeeId: r.employeeId,
+        name: `${r.employee.person.firstName} ${r.employee.person.lastName}`,
+        leaveType: r.leaveType.name,
+        isPaid: r.leaveType.isPaid,
+        startDate: r.startDate.toISOString().slice(0, 10),
+        endDate: r.endDate.toISOString().slice(0, 10),
+        totalDays: r.totalDays,
+      })),
+      pendingApprovals: pendingList.map((r) => ({
+        id: r.id,
+        employeeId: r.employeeId,
+        employeeName: `${r.employee.person.firstName} ${r.employee.person.lastName}`,
+        employeeNumber: r.employee.employeeNumber,
+        leaveType: r.leaveType.name,
+        isPaid: r.leaveType.isPaid,
+        startDate: r.startDate.toISOString().slice(0, 10),
+        endDate: r.endDate.toISOString().slice(0, 10),
+        totalDays: r.totalDays,
+        reason: r.reason,
+        createdAt: r.createdAt.toISOString(),
+      })),
+    };
   }
 
   // ─── Overview ─────────────────────────────────────────────────
@@ -1420,5 +1556,19 @@ export class AttendanceService {
     const [hours, minutes] = timeStr.split(':').map(Number);
     const d = new Date(1970, 0, 1, hours, minutes, 0);
     return d;
+  }
+
+  // Count Mon–Sat working days (exclude Sundays). School-week default.
+  private countWorkingDays(start: Date, end: Date): number {
+    let count = 0;
+    const cur = new Date(start);
+    cur.setUTCHours(0, 0, 0, 0);
+    const fin = new Date(end);
+    fin.setUTCHours(0, 0, 0, 0);
+    while (cur <= fin) {
+      if (cur.getUTCDay() !== 0) count++; // skip Sunday
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+    return Math.max(count, 1);
   }
 }

@@ -85,6 +85,16 @@ export class AttendanceController {
     return this.attendanceService.getLeaveBalances(user.organizationId, employeeId, academicYearId);
   }
 
+  @ApiOperation({ summary: 'Leave management overview — KPIs, today\'s absences, pending approvals' })
+  @ApiQuery({ name: 'date', required: false, description: 'YYYY-MM-DD (defaults to today)' })
+  @Get('leave/overview')
+  getLeaveOverview(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('date') date?: string,
+  ) {
+    return this.attendanceService.getLeaveOverview(user.organizationId, date);
+  }
+
   // ─── Health Alerts ─────────────────────────────────────────────
 
   @ApiOperation({ summary: 'Get student attendance health alerts' })

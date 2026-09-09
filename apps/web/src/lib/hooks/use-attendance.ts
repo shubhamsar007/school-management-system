@@ -341,6 +341,7 @@ export function useApproveLeaveRequest() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['attendance', 'leave-requests'] });
       void qc.invalidateQueries({ queryKey: ['attendance', 'overview'] });
+      void qc.invalidateQueries({ queryKey: ['leave', 'overview'] });
     },
   });
 }
@@ -355,6 +356,7 @@ export function useRejectLeaveRequest() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['attendance', 'leave-requests'] });
       void qc.invalidateQueries({ queryKey: ['attendance', 'overview'] });
+      void qc.invalidateQueries({ queryKey: ['leave', 'overview'] });
     },
   });
 }
@@ -815,5 +817,55 @@ export function useAllocateLeaveBalances() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['attendance', 'leave-balances'] });
     },
+  });
+}
+
+// ─── Leave Overview (HR Dashboard) ────────────────────────────────────────────
+
+export interface LeaveOverviewAbsence {
+  employeeId: string;
+  name: string;
+  leaveType: string;
+  isPaid: boolean;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+}
+
+export interface LeaveOverviewPending {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  employeeNumber: string;
+  leaveType: string;
+  isPaid: boolean;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  reason: string | null;
+  createdAt: string;
+}
+
+export interface LeaveOverview {
+  date: string;
+  kpis: {
+    onLeaveToday: number;
+    pendingRequests: number;
+    approvedThisMonth: number;
+    rejectedThisMonth: number;
+  };
+  todaysAbsences: LeaveOverviewAbsence[];
+  pendingApprovals: LeaveOverviewPending[];
+}
+
+export function useLeaveOverview(date?: string) {
+  return useQuery<LeaveOverview>({
+    queryKey: ['leave', 'overview', date],
+    queryFn: () =>
+      apiClient.get<LeaveOverview>(
+        `/attendance/leave/overview${toQS({ ...(date ? { date } : {}) })}`,
+      ),
+    staleTime: 30_000,
+    retry: 1,
   });
 }
