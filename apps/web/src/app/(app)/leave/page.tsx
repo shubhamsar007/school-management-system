@@ -37,11 +37,21 @@ import {
   useRejectLeaveEncashment,
   useLeaveSubstitutions,
   useUpdateLeaveDocument,
+  useLeaveUtilizationReport,
+  useAbsenteeismHeatmap,
+  useExpiringBalances,
+  useLeavePatternAnalysis,
+  useCarryForwardReport,
+  useLeaveCostReport,
   type LeaveRequest,
   type LeaveBalance,
   type LeaveEncashment,
   type LeaveBalanceLedgerEntry,
   type LeaveSubstitutionRequest,
+  type LeaveUtilizationReport,
+  type HeatmapDay,
+  type LeavePatternFlag,
+  type LeaveCostRow,
   type LeaveOverviewPending,
   type LeaveOverviewAbsence,
   type TeamAvailabilityDay,
@@ -1468,6 +1478,308 @@ function TeamAvailabilityTab() {
   );
 }
 
+// ─── Tab: Analytics ───────────────────────────────────────────────────────────
+
+const FLAG_META: Record<string, { label: string; color: string; bg: string }> = {
+  MONDAY_HEAVY:     { label: 'Monday Heavy', color: '#6d28d9', bg: '#ede9fe' },
+  FRIDAY_HEAVY:     { label: 'Friday Heavy', color: '#b45309', bg: '#fef3c7' },
+  WEEKEND_ADJACENT: { label: 'Weekend Adjacent', color: '#0369a1', bg: '#e0f2fe' },
+};
+
+function AnalyticsTab({ academicYearId }: { academicYearId: string }) {
+  const [heatmapYear, setHeatmapYear] = React.useState(() => new Date().getFullYear());
+  const [heatmapMonth, setHeatmapMonth] = React.useState(() => new Date().getMonth() + 1);
+  const [cfYearId, setCfYearId] = React.useState(academicYearId);
+
+  const { data: utilization, isLoading: uLoading } = useLeaveUtilizationReport(academicYearId || undefined);
+  const { data: heatmapDays = [], isLoading: hLoading } = useAbsenteeismHeatmap(heatmapYear, heatmapMonth);
+  const { data: expiring, isLoading: eLoading } = useExpiringBalances(academicYearId || undefined);
+  const { data: patterns, isLoading: pLoading } = useLeavePatternAnalysis(academicYearId || undefined);
+  const { data: cfReport, isLoading: cfLoading } = useCarryForwardReport(cfYearId || undefined);
+  const { data: costReport, isLoading: cLoading } = useLeaveCostReport(academicYearId || undefined);
+
+  const cardStyle: React.CSSProperties = {
+    borderRadius: 10, border: '1px solid #e6e8eb', background: '#fff',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden',
+  };
+  const headStyle: React.CSSProperties = {
+    padding: '14px 20px', borderBottom: '1px solid #f0f1f3',
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+  };
+  const thStyle: React.CSSProperties = {
+    padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#6b7480',
+    fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em',
+    borderBottom: '1px solid #f0f1f3', whiteSpace: 'nowrap',
+  };
+  const tdStyle: React.CSSProperties = { padding: '10px 16px', borderTop: '1px solid #f0f1f3' };
+  const empty = (msg: string) => (
+    <div style={{ padding: '32px', textAlign: 'center', color: '#8a929b', fontSize: '13px' }}>{msg}</div>
+  );
+  const loading = (
+    <div style={{ padding: '24px', textAlign: 'center', color: '#8a929b', fontSize: '13px' }}>Loading…</div>
+  );
+
+  // Build heatmap grid
+  const heatmapMap = new Map((heatmapDays as HeatmapDay[]).map((d) => [d.date, d.count]));
+  const maxCount = Math.max(1, ...(heatmapDays as HeatmapDay[]).map((d) => d.count));
+  const daysInMonth = new Date(heatmapYear, heatmapMonth, 0).getDate();
+  const firstDow = (new Date(heatmapYear, heatmapMonth - 1, 1).getDay() + 6) % 7; // Mon=0
+  const cells: Array<number | null> = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const MONTH_NAMES_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* ── Utilization Summary ── */}
+      <div style={cardStyle}>
+        <div style={headStyle}>
+          <div style={{ fontSize: '14px', fontWeight: 600, color: '#14181c' }}>Leave Utilization</div>
+          {utilization && (
+            <div style={{ fontSize: '12px', color: '#8a929b' }}>
+              {utilization.totalRequests} requests · {utilization.totalDays} days total
+            </div>
+          )}
+        </div>
+        {uLoading ? loading : !utilization ? empty('No data.') : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
+            {/* By type */}
+            <div style={{ borderRight: '1px solid #f0f1f3' }}>
+              <div style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, color: '#6b7480', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #f0f1f3' }}>By Leave Type</div>
+              {(utilization as LeaveUtilizationReport).byType.length === 0 ? empty('No data') : (utilization as LeaveUtilizationReport).byType.map((t) => (
+                <div key={t.id} style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f0f1f3' }}>
+                  <div>
+                    <div style={{ fontSize: '13px', color: '#14181c' }}>{t.name}</div>
+                    <div style={{ fontSize: '11px', color: '#8a929b' }}>{t.count} requests</div>
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: '15px', color: '#14181c' }}>{t.totalDays}d</div>
+                </div>
+              ))}
+            </div>
+            {/* By department */}
+            <div>
+              <div style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 600, color: '#6b7480', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #f0f1f3' }}>By Department</div>
+              {(utilization as LeaveUtilizationReport).byDepartment.length === 0 ? empty('No data') : (utilization as LeaveUtilizationReport).byDepartment.map((d) => (
+                <div key={d.id} style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f0f1f3' }}>
+                  <div>
+                    <div style={{ fontSize: '13px', color: '#14181c' }}>{d.name}</div>
+                    <div style={{ fontSize: '11px', color: '#8a929b' }}>{d.count} requests</div>
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: '15px', color: '#14181c' }}>{d.totalDays}d</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Month trend bar chart (simple CSS bars) */}
+        {utilization && (utilization as LeaveUtilizationReport).byMonth.length > 0 && (
+          <div style={{ padding: '16px 20px', borderTop: '1px solid #f0f1f3' }}>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: '#6b7480', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 12 }}>Monthly Trend</div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', height: 80 }}>
+              {(utilization as LeaveUtilizationReport).byMonth.map((m) => {
+                const maxDays = Math.max(1, ...(utilization as LeaveUtilizationReport).byMonth.map((x) => x.totalDays));
+                const pct = (m.totalDays / maxDays) * 100;
+                return (
+                  <div key={m.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                    <div style={{ fontSize: '10px', color: '#8a929b', fontWeight: 600 }}>{m.totalDays}</div>
+                    <div style={{ width: '100%', background: '#d8e9de', borderRadius: '3px 3px 0 0', height: `${Math.max(4, pct)}%` }} />
+                    <div style={{ fontSize: '9px', color: '#8a929b' }}>{m.label.slice(0, 3)}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Absenteeism Heatmap ── */}
+      <div style={cardStyle}>
+        <div style={headStyle}>
+          <div style={{ fontSize: '14px', fontWeight: 600, color: '#14181c' }}>Absenteeism Heatmap</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <select value={heatmapYear} onChange={(e) => setHeatmapYear(Number(e.target.value))}
+              style={{ height: 30, border: '1px solid #d7dce1', borderRadius: 6, padding: '0 8px', fontSize: '12px', color: '#14181c' }}>
+              {[new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1].map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+            <select value={heatmapMonth} onChange={(e) => setHeatmapMonth(Number(e.target.value))}
+              style={{ height: 30, border: '1px solid #d7dce1', borderRadius: 6, padding: '0 8px', fontSize: '12px', color: '#14181c' }}>
+              {MONTH_NAMES_SHORT.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+            </select>
+          </div>
+        </div>
+        {hLoading ? loading : (
+          <div style={{ padding: '16px 20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 8 }}>
+              {DAY_LABELS.map((d) => (
+                <div key={d} style={{ textAlign: 'center', fontSize: '10px', color: '#8a929b', fontWeight: 600 }}>{d}</div>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+              {cells.map((day, i) => {
+                if (!day) return <div key={i} />;
+                const dateStr = `${heatmapYear}-${String(heatmapMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const count = heatmapMap.get(dateStr) ?? 0;
+                const intensity = count / maxCount;
+                const bg = count === 0
+                  ? '#f0f1f3'
+                  : `rgba(180, 28, 28, ${0.15 + intensity * 0.75})`;
+                return (
+                  <div key={i} title={count > 0 ? `${count} absent` : undefined}
+                    style={{ aspectRatio: '1', borderRadius: 4, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: '10px', color: count > 3 ? '#fff' : '#6b7480' }}>{day}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, fontSize: '11px', color: '#8a929b' }}>
+              <span>Low</span>
+              {[0.15, 0.35, 0.55, 0.75, 0.9].map((v) => (
+                <div key={v} style={{ width: 14, height: 14, borderRadius: 3, background: `rgba(180,28,28,${v})` }} />
+              ))}
+              <span>High</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Pattern Flags ── */}
+      <div style={cardStyle}>
+        <div style={headStyle}>
+          <div style={{ fontSize: '14px', fontWeight: 600, color: '#14181c' }}>Leave Pattern Flags</div>
+          <div style={{ fontSize: '12px', color: '#8a929b' }}>Employees with suspicious leave day patterns</div>
+        </div>
+        {pLoading ? loading : !patterns || (patterns.flags as LeavePatternFlag[]).length === 0
+          ? empty('No suspicious patterns detected.')
+          : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: '#f8f9fa' }}>
+                  {['Employee', 'Pattern', 'Detail'].map((h) => <th key={h} style={thStyle}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {(patterns.flags as LeavePatternFlag[]).map((f, i) => {
+                  const meta = FLAG_META[f.flag] ?? { label: f.flag, color: '#6b7480', bg: '#f0f1f3' };
+                  return (
+                    <tr key={i}>
+                      <td style={{ ...tdStyle, fontWeight: 500, color: '#14181c' }}>{f.employeeName}</td>
+                      <td style={tdStyle}>
+                        <span style={{ padding: '2px 10px', borderRadius: 10, background: meta.bg, color: meta.color, fontSize: '11px', fontWeight: 600 }}>
+                          {meta.label}
+                        </span>
+                      </td>
+                      <td style={{ ...tdStyle, color: '#6b7480' }}>{f.detail}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+      </div>
+
+      {/* ── Expiring Balances ── */}
+      <div style={cardStyle}>
+        <div style={headStyle}>
+          <div style={{ fontSize: '14px', fontWeight: 600, color: '#14181c' }}>Expiring Balances</div>
+          {expiring && <div style={{ fontSize: '12px', color: expiring.daysLeft <= 14 ? '#b91c1c' : '#f59e0b', fontWeight: 600 }}>{expiring.daysLeft} days until year end</div>}
+        </div>
+        {eLoading ? loading : !expiring || expiring.expiring.length === 0
+          ? empty('No balances expiring without carry-forward.')
+          : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: '#f8f9fa' }}>
+                  {['Employee ID', 'Leave Type', 'Allocated', 'Used', 'Expiring'].map((h) => <th key={h} style={thStyle}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {expiring.expiring.map((b) => (
+                  <tr key={b.id}>
+                    <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '12px', color: '#6b7480' }}>{b.employeeId.slice(0, 8)}…</td>
+                    <td style={{ ...tdStyle, color: '#14181c' }}>{b.leaveType.name}</td>
+                    <td style={{ ...tdStyle, color: '#14181c' }}>{b.allocated}</td>
+                    <td style={{ ...tdStyle, color: '#14181c' }}>{b.used}</td>
+                    <td style={{ ...tdStyle, fontWeight: 700, color: '#b91c1c' }}>{b.remaining}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+      </div>
+
+      {/* ── Cost Report ── */}
+      <div style={cardStyle}>
+        <div style={headStyle}>
+          <div style={{ fontSize: '14px', fontWeight: 600, color: '#14181c' }}>Leave Cost Report</div>
+          {costReport && (
+            <div style={{ fontSize: '12px', color: '#8a929b' }}>
+              {costReport.totalPaidLeaveDays} paid days · ₹{Number(costReport.totalEstimatedCost).toLocaleString('en-IN')} est. cost
+            </div>
+          )}
+        </div>
+        {cLoading ? loading : !costReport || costReport.rows.length === 0
+          ? empty('No data.')
+          : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: '#f8f9fa' }}>
+                  {['Employee', 'Department', 'Paid Leave Days', 'Est. Cost'].map((h) => <th key={h} style={thStyle}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {(costReport.rows as LeaveCostRow[]).map((r) => (
+                  <tr key={r.employeeId}>
+                    <td style={{ ...tdStyle, fontWeight: 500, color: '#14181c' }}>{r.name}</td>
+                    <td style={{ ...tdStyle, color: '#6b7480' }}>{r.department}</td>
+                    <td style={{ ...tdStyle, color: '#14181c' }}>{r.paidLeaveDays}</td>
+                    <td style={{ ...tdStyle, fontWeight: 600, color: '#14181c' }}>₹{r.estimatedCost.toLocaleString('en-IN')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+      </div>
+
+      {/* ── Carry-Forward Report ── */}
+      <div style={cardStyle}>
+        <div style={headStyle}>
+          <div style={{ fontSize: '14px', fontWeight: 600, color: '#14181c' }}>Carry-Forward Report</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {cfReport && <span style={{ fontSize: '12px', color: '#8a929b' }}>{cfReport.employeeCount} employees · {cfReport.totalDaysCarried} days carried</span>}
+          </div>
+        </div>
+        {cfLoading ? loading : !cfReport || cfReport.details.length === 0
+          ? empty('No carry-forward entries for this year.')
+          : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: '#f8f9fa' }}>
+                  {['Employee ID', 'Leave Type', 'Days Carried', 'Date'].map((h) => <th key={h} style={thStyle}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {cfReport.details.map((e) => (
+                  <tr key={e.id}>
+                    <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '12px', color: '#6b7480' }}>{e.employeeId.slice(0, 8)}…</td>
+                    <td style={{ ...tdStyle, color: '#14181c' }}>{e.leaveType.name}</td>
+                    <td style={{ ...tdStyle, fontWeight: 600, color: '#146b41' }}>+{e.delta}</td>
+                    <td style={{ ...tdStyle, color: '#6b7480' }}>{fmt(e.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+      </div>
+
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -1477,6 +1789,7 @@ const TABS = [
   { id: 'calendar', label: 'Calendar' },
   { id: 'team', label: 'Team Availability' },
   { id: 'encashment', label: 'Encashment' },
+  { id: 'analytics', label: 'Analytics' },
   { id: 'setup', label: 'Setup' },
 ];
 
@@ -1546,6 +1859,7 @@ export default function LeavePage() {
       {activeTab === 'calendar' && <CalendarTab />}
       {activeTab === 'team' && <TeamAvailabilityTab />}
       {activeTab === 'encashment' && <EncashmentTab />}
+      {activeTab === 'analytics' && <AnalyticsTab academicYearId={academicYearId} />}
       {activeTab === 'setup' && academicYearId && <LeaveSetupTab academicYearId={academicYearId} />}
 
       <LeaveRequestModal

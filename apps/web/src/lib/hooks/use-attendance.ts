@@ -1094,6 +1094,124 @@ export function useApproveLeaveEncashment() {
   });
 }
 
+// ─── Leave Analytics ─────────────────────────────────────────
+
+export interface LeaveUtilizationByType {
+  id: string; name: string; code: string; isPaid: boolean; totalDays: number; count: number;
+}
+export interface LeaveUtilizationByDept {
+  id: string; name: string; totalDays: number; count: number;
+}
+export interface LeaveUtilizationByMonth {
+  month: string; label: string; totalDays: number; count: number;
+}
+export interface LeaveUtilizationReport {
+  totalRequests: number;
+  totalDays: number;
+  byType: LeaveUtilizationByType[];
+  byDepartment: LeaveUtilizationByDept[];
+  byMonth: LeaveUtilizationByMonth[];
+}
+
+export function useLeaveUtilizationReport(academicYearId?: string, leaveTypeId?: string) {
+  return useQuery({
+    queryKey: ['leave', 'analytics', 'utilization', academicYearId, leaveTypeId],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (academicYearId) params.set('academicYearId', academicYearId);
+      if (leaveTypeId) params.set('leaveTypeId', leaveTypeId);
+      return apiClient.get<LeaveUtilizationReport>(`/attendance/leave/analytics/utilization?${params.toString()}`);
+    },
+  });
+}
+
+export interface HeatmapDay { date: string; count: number; }
+
+export function useAbsenteeismHeatmap(year: number, month?: number) {
+  return useQuery({
+    queryKey: ['leave', 'analytics', 'heatmap', year, month],
+    queryFn: () => {
+      const params = new URLSearchParams({ year: String(year) });
+      if (month) params.set('month', String(month));
+      return apiClient.get<HeatmapDay[]>(`/attendance/leave/analytics/heatmap?${params.toString()}`);
+    },
+  });
+}
+
+export interface ExpiringBalance {
+  id: string; employeeId: string; leaveTypeId: string; academicYearId: string;
+  allocated: number; used: number; remaining: number;
+  leaveType: { name: string; code: string; carryForward: boolean };
+}
+export interface ExpiringBalancesResult { daysLeft: number; expiring: ExpiringBalance[]; }
+
+export function useExpiringBalances(academicYearId?: string, daysThreshold?: number) {
+  return useQuery({
+    queryKey: ['leave', 'analytics', 'expiring', academicYearId, daysThreshold],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (academicYearId) params.set('academicYearId', academicYearId);
+      if (daysThreshold) params.set('daysThreshold', String(daysThreshold));
+      return apiClient.get<ExpiringBalancesResult>(`/attendance/leave/analytics/expiring-balances?${params.toString()}`);
+    },
+    enabled: !!academicYearId,
+  });
+}
+
+export interface LeavePatternFlag {
+  employeeId: string; employeeName: string;
+  flag: 'MONDAY_HEAVY' | 'FRIDAY_HEAVY' | 'WEEKEND_ADJACENT';
+  detail: string;
+}
+export interface LeavePatternResult { flags: LeavePatternFlag[]; }
+
+export function useLeavePatternAnalysis(academicYearId?: string) {
+  return useQuery({
+    queryKey: ['leave', 'analytics', 'patterns', academicYearId],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (academicYearId) params.set('academicYearId', academicYearId);
+      return apiClient.get<LeavePatternResult>(`/attendance/leave/analytics/patterns?${params.toString()}`);
+    },
+  });
+}
+
+export interface CarryForwardDetail {
+  id: string; employeeId: string; leaveTypeId: string; delta: number; createdAt: string;
+  leaveType: { name: string; code: string };
+}
+export interface CarryForwardReport {
+  toAcademicYearId: string; employeeCount: number; totalDaysCarried: number;
+  details: CarryForwardDetail[];
+}
+
+export function useCarryForwardReport(toAcademicYearId?: string) {
+  return useQuery({
+    queryKey: ['leave', 'analytics', 'carry-forward', toAcademicYearId],
+    queryFn: () =>
+      apiClient.get<CarryForwardReport>(`/attendance/leave/analytics/carry-forward-report?toAcademicYearId=${toAcademicYearId}`),
+    enabled: !!toAcademicYearId,
+  });
+}
+
+export interface LeaveCostRow {
+  employeeId: string; name: string; department: string; paidLeaveDays: number; estimatedCost: number;
+}
+export interface LeaveCostReport {
+  totalPaidLeaveDays: number; totalEstimatedCost: number; rows: LeaveCostRow[];
+}
+
+export function useLeaveCostReport(academicYearId?: string) {
+  return useQuery({
+    queryKey: ['leave', 'analytics', 'cost', academicYearId],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (academicYearId) params.set('academicYearId', academicYearId);
+      return apiClient.get<LeaveCostReport>(`/attendance/leave/analytics/cost-report?${params.toString()}`);
+    },
+  });
+}
+
 // ─── Leave Substitutions ──────────────────────────────────────
 
 export interface LeaveSubstitutionAssignment {

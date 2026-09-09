@@ -484,6 +484,82 @@ export class AttendanceController {
     return this.attendanceService.rejectLeaveEncashment(user.organizationId, id, user.userId, dto);
   }
 
+  // ─── Leave Analytics ─────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Leave utilization report — by type, department, month' })
+  @ApiQuery({ name: 'academicYearId', required: false })
+  @ApiQuery({ name: 'leaveTypeId', required: false })
+  @Get('leave/analytics/utilization')
+  getLeaveUtilizationReport(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('academicYearId') academicYearId?: string,
+    @Query('leaveTypeId') leaveTypeId?: string,
+  ) {
+    return this.attendanceService.getLeaveUtilizationReport(user.organizationId, academicYearId, leaveTypeId);
+  }
+
+  @ApiOperation({ summary: 'Absenteeism heatmap — absence count per day' })
+  @ApiQuery({ name: 'year', required: true })
+  @ApiQuery({ name: 'month', required: false, description: '1–12, omit for full year' })
+  @Get('leave/analytics/heatmap')
+  getAbsenteeismHeatmap(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('year') year: string,
+    @Query('month') month?: string,
+  ) {
+    return this.attendanceService.getAbsenteeismHeatmap(
+      user.organizationId,
+      parseInt(year, 10),
+      month ? parseInt(month, 10) : undefined,
+    );
+  }
+
+  @ApiOperation({ summary: 'Expiring leave balances — employees with unused non-carry-forward leave' })
+  @ApiQuery({ name: 'academicYearId', required: true })
+  @ApiQuery({ name: 'daysThreshold', required: false, description: 'Alert N days before year end (default 30)' })
+  @Get('leave/analytics/expiring-balances')
+  getExpiringBalances(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('academicYearId') academicYearId: string,
+    @Query('daysThreshold') daysThreshold?: string,
+  ) {
+    return this.attendanceService.getExpiringBalances(
+      user.organizationId,
+      academicYearId,
+      daysThreshold ? parseInt(daysThreshold, 10) : 30,
+    );
+  }
+
+  @ApiOperation({ summary: 'Leave pattern analysis — flag employees with Monday/Friday-heavy patterns' })
+  @ApiQuery({ name: 'academicYearId', required: false })
+  @Get('leave/analytics/patterns')
+  getLeavePatternAnalysis(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('academicYearId') academicYearId?: string,
+  ) {
+    return this.attendanceService.getLeavePatternAnalysis(user.organizationId, academicYearId);
+  }
+
+  @ApiOperation({ summary: 'Year-end carry-forward report' })
+  @ApiQuery({ name: 'toAcademicYearId', required: true })
+  @Get('leave/analytics/carry-forward-report')
+  getCarryForwardReport(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('toAcademicYearId') toAcademicYearId: string,
+  ) {
+    return this.attendanceService.getCarryForwardReport(user.organizationId, toAcademicYearId);
+  }
+
+  @ApiOperation({ summary: 'Leave cost report — paid leave days × daily rate per employee' })
+  @ApiQuery({ name: 'academicYearId', required: false })
+  @Get('leave/analytics/cost-report')
+  getLeaveCostReport(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('academicYearId') academicYearId?: string,
+  ) {
+    return this.attendanceService.getLeaveCostReport(user.organizationId, academicYearId);
+  }
+
   @ApiOperation({ summary: 'Team leave availability for a date range (max 60 days)' })
   @ApiQuery({ name: 'from', required: true, description: 'YYYY-MM-DD' })
   @ApiQuery({ name: 'to', required: true, description: 'YYYY-MM-DD' })

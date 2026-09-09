@@ -1717,6 +1717,328 @@ export class AttendanceService {
     });
   }
 
+  // ─── Leave Analytics ──────────────────────────────────────────
+
+  async getLeaveUtilizationReport(
+    organizationId: string,
+    academicYearId?: string,
+    leaveTypeId?: string,
+  ) {
+    const requests = await this.prisma.leaveRequest.findMany({
+      where: {
+        organizationId,
+        status: 'APPROVED',
+        ...(leaveTypeId ? { leaveTypeId } : {}),
+        ...(academicYearId
+          ? {
+              employee: {
+                leaveBalances: {
+                  some: { academicYearId },
+                },
+              },
+            }
+          : {}),
+      },
+      include: {
+        leaveType: { select: { id: true, name: true, code: true, isPaid: true } },
+        employee: {
+          select: {
+            id: true,
+            person: { select: { firstName: true, lastName: true } },
+            department: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+
+    // By leave type
+    const byType = new Map<string, { id: string; name: string; code: string; isPaid: boolean; totalDays: number; count: number }>();
+    // By department
+    const byDept = new Map<string, { id: string; name: string; totalDays: number; count: number }>();
+    // By month (YYYY-MM)
+    const byMonth = new Map<string, { month: string; label: string; totalDays: number; count: number }>();
+
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    for (const req of requests) {
+      // Type aggregation
+      const typeKey = req.leaveTypeId;
+      if (!byType.has(typeKey)) {
+        byType.set(typeKey, { id: req.leaveType.id, name: req.leaveType.name, code: req.leaveType.code, isPaid: req.leaveType.isPaid, totalDays: 0, count: 0 });
+      }
+      const t = byType.get(typeKey)!;
+      t.totalDays += req.totalDays;
+      t.count++;
+
+      // Department aggregation
+      const deptId = req.employee.department?.id ?? 'unassigned';
+      const deptName = req.employee.department?.name ?? 'Unassigned';
+      if (!byDept.has(deptId)) byDept.set(deptId, { id: deptId, name: deptName, totalDays: 0, count: 0 });
+      const d = byDept.get(deptId)!;
+      d.totalDays += req.totalDays;
+      d.count++;
+
+      // Month aggregation (by startDate)
+      const start = new Date(req.startDate);
+      const monthKey = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, '0')}`;
+      const monthLabel = `${MONTHS[start.getUTCMonth()]} ${start.getUTCFullYear()}`;
+      if (!byMonth.has(monthKey)) byMonth.set(monthKey, { month: monthKey, label: monthLabel, totalDays: 0, count: 0 });
+      const m = byMonth.get(monthKey)!;
+      m.totalDays += req.totalDays;
+      m.count++;
+    }
+
+    return {
+      totalRequests: requests.length,
+      totalDays: requests.reduce((s, r) => s + r.totalDays, 0),
+      byType: [...byType.values()].sort((a, b) => b.totalDays - a.totalDays),
+      byDepartment: [...byDept.values()].sort((a, b) => b.totalDays - a.totalDays),
+      byMonth: [...byMonth.values()].sort((a, b) => a.month.localeCompare(b.month)),
+    };
+  }
+
+  async getAbsenteeismHeatmap(organizationId: string, year: number, month?: number) {
+    const start = month
+      ? new Date(Date.UTC(year, month - 1, 1))
+      : new Date(Date.UTC(year, 0, 1));
+    const end = month
+      ? new Date(Date.UTC(year, month, 0, 23, 59, 59))
+      : new Date(Date.UTC(year, 11, 31, 23, 59, 59));
+
+    const records = await this.prisma.employeeAttendance.groupBy({
+      by: ['date'],
+      _count: { date: true },
+      where: {
+        employee: { organizationId, deletedAt: null },
+        status: 'ABSENT',
+        date: { gte: start, lte: end },
+      },
+      orderBy: { date: 'asc' },
+    });
+
+    return records.map((r) => ({
+      date: r.date.toISOString().slice(0, 10),
+      count: r._count.date,
+    }));
+  }
+
+  async getExpiringBalances(organizationId: string, academicYearId: string, daysThreshold = 30) {
+    const academicYear = await this.prisma.academicYear.findFirst({
+      where: { id: academicYearId, organizationId },
+      select: { endDate: true },
+    });
+    if (!academicYear) throw new NotFoundException('Academic year not found');
+
+    const daysLeft = Math.ceil(
+      (new Date(academicYear.endDate).getTime() - Date.now()) / 86400000,
+    );
+
+    if (daysLeft > daysThreshold) return { daysLeft, expiring: [] };
+
+    const balances = await this.prisma.leaveBalance.findMany({
+      where: {
+        academicYearId,
+        leaveType: { organizationId },
+        allocated: { gt: 0 },
+      },
+      include: {
+        leaveType: { select: { name: true, code: true, carryForward: true } },
+      },
+    });
+
+    const expiring = balances
+      .map((b) => ({ ...b, remaining: b.allocated - b.used }))
+      .filter((b) => b.remaining > 0 && !b.leaveType.carryForward);
+
+    return { daysLeft, expiring };
+  }
+
+  async getLeavePatternAnalysis(organizationId: string, academicYearId?: string) {
+    const requests = await this.prisma.leaveRequest.findMany({
+      where: {
+        organizationId,
+        status: 'APPROVED',
+        ...(academicYearId
+          ? {
+              employee: { leaveBalances: { some: { academicYearId } } },
+            }
+          : {}),
+      },
+      select: {
+        employeeId: true,
+        startDate: true,
+        totalDays: true,
+        employee: {
+          select: { person: { select: { firstName: true, lastName: true } } },
+        },
+      },
+    });
+
+    // Count per employee per day-of-week
+    const empDow = new Map<string, { name: string; dow: number[] }>();
+
+    for (const req of requests) {
+      if (!empDow.has(req.employeeId)) {
+        empDow.set(req.employeeId, {
+          name: `${req.employee.person.firstName} ${req.employee.person.lastName}`,
+          dow: [0, 0, 0, 0, 0, 0, 0],
+        });
+      }
+      const dow = new Date(req.startDate).getUTCDay(); // 0=Sun, 1=Mon
+      empDow.get(req.employeeId)!.dow[dow]++;
+    }
+
+    const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const flags: Array<{
+      employeeId: string;
+      employeeName: string;
+      flag: string;
+      detail: string;
+    }> = [];
+
+    for (const [employeeId, data] of empDow) {
+      const total = data.dow.reduce((a, b) => a + b, 0);
+      if (total < 3) continue; // not enough data
+
+      // Monday-heavy: Mon >= 40% of all leaves
+      const monPct = total > 0 ? data.dow[1] / total : 0;
+      if (monPct >= 0.4) {
+        flags.push({
+          employeeId,
+          employeeName: data.name,
+          flag: 'MONDAY_HEAVY',
+          detail: `${Math.round(monPct * 100)}% of leaves start on Monday (${data.dow[1]} of ${total})`,
+        });
+      }
+
+      // Friday-heavy: Fri >= 40%
+      const friPct = total > 0 ? data.dow[5] / total : 0;
+      if (friPct >= 0.4) {
+        flags.push({
+          employeeId,
+          employeeName: data.name,
+          flag: 'FRIDAY_HEAVY',
+          detail: `${Math.round(friPct * 100)}% of leaves start on Friday (${data.dow[5]} of ${total})`,
+        });
+      }
+
+      // Weekend-adjacent: Mon + Fri combined >= 60%
+      const weekendAdj = data.dow[1] + data.dow[5];
+      const weekendAdjPct = total > 0 ? weekendAdj / total : 0;
+      if (weekendAdjPct >= 0.6 && monPct < 0.4 && friPct < 0.4) {
+        flags.push({
+          employeeId,
+          employeeName: data.name,
+          flag: 'WEEKEND_ADJACENT',
+          detail: `${Math.round(weekendAdjPct * 100)}% of leaves are Mon or Fri (${weekendAdj} of ${total})`,
+        });
+      }
+    }
+
+    return { flags };
+  }
+
+  async getCarryForwardReport(organizationId: string, toAcademicYearId: string) {
+    const ledgerEntries = await this.prisma.leaveBalanceLedger.findMany({
+      where: {
+        academicYearId: toAcademicYearId,
+        source: 'CARRY_FORWARD',
+        leaveType: { organizationId },
+      },
+      include: {
+        leaveType: { select: { name: true, code: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Group by employee
+    const byEmployee = new Map<string, { employeeId: string; totalCarried: number; entries: typeof ledgerEntries }>();
+    for (const entry of ledgerEntries) {
+      if (!byEmployee.has(entry.employeeId)) {
+        byEmployee.set(entry.employeeId, { employeeId: entry.employeeId, totalCarried: 0, entries: [] });
+      }
+      const e = byEmployee.get(entry.employeeId)!;
+      e.totalCarried += entry.delta;
+      e.entries.push(entry);
+    }
+
+    return {
+      toAcademicYearId,
+      employeeCount: byEmployee.size,
+      totalDaysCarried: ledgerEntries.reduce((s, e) => s + e.delta, 0),
+      details: ledgerEntries,
+    };
+  }
+
+  async getLeaveCostReport(organizationId: string, academicYearId?: string) {
+    const requests = await this.prisma.leaveRequest.findMany({
+      where: {
+        organizationId,
+        status: 'APPROVED',
+        leaveType: { isPaid: true },
+      },
+      select: {
+        employeeId: true,
+        totalDays: true,
+        employee: {
+          select: {
+            person: { select: { firstName: true, lastName: true } },
+            department: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    // Fetch active salary structures for all involved employees
+    const employeeIds = [...new Set(requests.map((r) => r.employeeId))];
+    const salaryStructures = await this.prisma.salaryStructure.findMany({
+      where: { employeeId: { in: employeeIds }, status: 'ACTIVE' },
+      select: { employeeId: true, grossSalary: true },
+    });
+    const salaryMap = new Map<string, number>(
+      salaryStructures.map((s) => [s.employeeId, Number(s.grossSalary)]),
+    );
+
+    const WORKING_DAYS_PER_MONTH = 26;
+
+    const byEmployee = new Map<string, {
+      employeeId: string;
+      name: string;
+      department: string;
+      paidLeaveDays: number;
+      estimatedCost: number;
+    }>();
+
+    for (const req of requests) {
+      const grossSalary = salaryMap.get(req.employeeId) ?? 0;
+      const dailyRate = grossSalary / WORKING_DAYS_PER_MONTH;
+      const cost = req.totalDays * dailyRate;
+
+      if (!byEmployee.has(req.employeeId)) {
+        byEmployee.set(req.employeeId, {
+          employeeId: req.employeeId,
+          name: `${req.employee.person.firstName} ${req.employee.person.lastName}`,
+          department: req.employee.department?.name ?? 'Unassigned',
+          paidLeaveDays: 0,
+          estimatedCost: 0,
+        });
+      }
+      const e = byEmployee.get(req.employeeId)!;
+      e.paidLeaveDays += req.totalDays;
+      e.estimatedCost += cost;
+    }
+
+    const rows = [...byEmployee.values()]
+      .map((r) => ({ ...r, estimatedCost: Math.round(r.estimatedCost * 100) / 100 }))
+      .sort((a, b) => b.estimatedCost - a.estimatedCost);
+
+    return {
+      totalPaidLeaveDays: rows.reduce((s, r) => s + r.paidLeaveDays, 0),
+      totalEstimatedCost: Math.round(rows.reduce((s, r) => s + r.estimatedCost, 0) * 100) / 100,
+      rows,
+    };
+  }
+
   // ─── Health Alerts ────────────────────────────────────────────
 
   async getStudentHealthAlerts(
