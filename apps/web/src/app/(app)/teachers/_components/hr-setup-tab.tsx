@@ -68,7 +68,7 @@ export function HrSetupTab() {
 
   async function handleAddDept(data: Record<string, string>) {
     try {
-      await createDept.mutateAsync(data);
+      await createDept.mutateAsync(data as unknown as Parameters<typeof createDept.mutateAsync>[0]);
       toast.success('Department created successfully');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to create department';
@@ -107,7 +107,7 @@ export function HrSetupTab() {
 
   async function handleAddDesig(data: Record<string, string>) {
     try {
-      await createDesig.mutateAsync(data);
+      await createDesig.mutateAsync(data as unknown as Parameters<typeof createDesig.mutateAsync>[0]);
       toast.success('Designation created successfully');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to create designation';
@@ -146,7 +146,7 @@ export function HrSetupTab() {
 
   async function handleAddEt(data: Record<string, string>) {
     try {
-      await createEt.mutateAsync(data);
+      await createEt.mutateAsync(data as unknown as Parameters<typeof createEt.mutateAsync>[0]);
       toast.success('Employee type created successfully');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to create employee type';

@@ -324,6 +324,8 @@ export class AttendanceService {
       throw new BadRequestException('End date must be on or after start date');
     }
 
+    const totalDays = dto.totalDays ?? (Math.ceil((end.getTime() - start.getTime()) / 86400000) + 1);
+
     return this.prisma.leaveRequest.create({
       data: {
         organizationId,
@@ -331,7 +333,7 @@ export class AttendanceService {
         leaveTypeId: dto.leaveTypeId,
         startDate: start,
         endDate: end,
-        totalDays: dto.totalDays,
+        totalDays,
         reason: dto.reason ?? null,
       },
       include: {
@@ -581,9 +583,9 @@ export class AttendanceService {
 
     for (const id of ids) {
       try {
-        await this.rejectLeaveRequest(organizationId, id, approverId, {
-          rejectionReason,
-        });
+        await this.rejectLeaveRequest(organizationId, id, approverId,
+          rejectionReason !== undefined ? { rejectionReason } : {},
+        );
         rejected.push(id);
       } catch (e: any) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -913,14 +915,7 @@ export class AttendanceService {
     return this.prisma.substitutionRequest.findMany({
       where: { leaveRequestId, organizationId },
       include: {
-        assignments: {
-          include: {
-            substitutionCandidates: {
-              orderBy: { totalScore: 'desc' },
-              take: 1,
-            },
-          },
-        },
+        assignments: true,
       },
       orderBy: { date: 'asc' },
     });
@@ -1771,20 +1766,18 @@ export class AttendanceService {
     academicYearId?: string,
     leaveTypeId?: string,
   ) {
+    const empIdsForYear = academicYearId
+      ? (await this.prisma.leaveBalance.findMany({ where: { academicYearId }, select: { employeeId: true } })).map(
+          (b) => b.employeeId,
+        )
+      : undefined;
+
     const requests = await this.prisma.leaveRequest.findMany({
       where: {
         organizationId,
         status: 'APPROVED',
         ...(leaveTypeId ? { leaveTypeId } : {}),
-        ...(academicYearId
-          ? {
-              employee: {
-                leaveBalances: {
-                  some: { academicYearId },
-                },
-              },
-            }
-          : {}),
+        ...(empIdsForYear ? { employeeId: { in: empIdsForYear } } : {}),
       },
       include: {
         leaveType: { select: { id: true, name: true, code: true, isPaid: true } },
@@ -1901,15 +1894,17 @@ export class AttendanceService {
   }
 
   async getLeavePatternAnalysis(organizationId: string, academicYearId?: string) {
+    const patternEmpIds = academicYearId
+      ? (await this.prisma.leaveBalance.findMany({ where: { academicYearId }, select: { employeeId: true } })).map(
+          (b) => b.employeeId,
+        )
+      : undefined;
+
     const requests = await this.prisma.leaveRequest.findMany({
       where: {
         organizationId,
         status: 'APPROVED',
-        ...(academicYearId
-          ? {
-              employee: { leaveBalances: { some: { academicYearId } } },
-            }
-          : {}),
+        ...(patternEmpIds ? { employeeId: { in: patternEmpIds } } : {}),
       },
       select: {
         employeeId: true,
@@ -1932,7 +1927,8 @@ export class AttendanceService {
         });
       }
       const dow = new Date(req.startDate).getUTCDay(); // 0=Sun, 1=Mon
-      empDow.get(req.employeeId)!.dow[dow]++;
+      const entry = empDow.get(req.employeeId)!;
+      entry.dow[dow] = (entry.dow[dow] ?? 0) + 1;
     }
 
     const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1948,29 +1944,31 @@ export class AttendanceService {
       if (total < 3) continue; // not enough data
 
       // Monday-heavy: Mon >= 40% of all leaves
-      const monPct = total > 0 ? data.dow[1] / total : 0;
+      const monCount = data.dow[1] ?? 0;
+      const friCount = data.dow[5] ?? 0;
+      const monPct = total > 0 ? monCount / total : 0;
       if (monPct >= 0.4) {
         flags.push({
           employeeId,
           employeeName: data.name,
           flag: 'MONDAY_HEAVY',
-          detail: `${Math.round(monPct * 100)}% of leaves start on Monday (${data.dow[1]} of ${total})`,
+          detail: `${Math.round(monPct * 100)}% of leaves start on Monday (${monCount} of ${total})`,
         });
       }
 
       // Friday-heavy: Fri >= 40%
-      const friPct = total > 0 ? data.dow[5] / total : 0;
+      const friPct = total > 0 ? friCount / total : 0;
       if (friPct >= 0.4) {
         flags.push({
           employeeId,
           employeeName: data.name,
           flag: 'FRIDAY_HEAVY',
-          detail: `${Math.round(friPct * 100)}% of leaves start on Friday (${data.dow[5]} of ${total})`,
+          detail: `${Math.round(friPct * 100)}% of leaves start on Friday (${friCount} of ${total})`,
         });
       }
 
       // Weekend-adjacent: Mon + Fri combined >= 60%
-      const weekendAdj = data.dow[1] + data.dow[5];
+      const weekendAdj = monCount + friCount;
       const weekendAdjPct = total > 0 ? weekendAdj / total : 0;
       if (weekendAdjPct >= 0.6 && monPct < 0.4 && friPct < 0.4) {
         flags.push({
@@ -2184,7 +2182,7 @@ export class AttendanceService {
           studentId,
           studentName: nameMap.get(studentId) ?? studentId,
           count: lastThree.length,
-          lastDate: sorted[0].date.toISOString().slice(0, 10),
+          lastDate: sorted[0]!.date.toISOString().slice(0, 10),
         });
       }
     }
@@ -2293,7 +2291,7 @@ export class AttendanceService {
           employeeId,
           employeeName: empNameMap.get(employeeId) ?? employeeId,
           count: lastThree.length,
-          lastDate: sorted[0].date.toISOString().slice(0, 10),
+          lastDate: sorted[0]!.date.toISOString().slice(0, 10),
         });
       }
     }

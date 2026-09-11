@@ -14,16 +14,16 @@ const VARIANTS: Record<KpiVariant, { bg: string; border: string; labelFg: string
 interface KpiCardProps {
   title: string;
   value: string;
-  trend?: string;
-  trendPositive?: boolean;
-  subtitle?: string;
+  trend?: string | undefined;
+  trendPositive?: boolean | undefined;
+  subtitle?: string | undefined;
   /** Secondary info line shown below the value — e.g. "1,141 / 1,248 present" */
-  detail?: string;
+  detail?: string | undefined;
   /** Makes the entire card a clickable link */
-  href?: string;
-  onClick?: () => void;
-  variant?: KpiVariant;
-  className?: string;
+  href?: string | undefined;
+  onClick?: (() => void) | undefined;
+  variant?: KpiVariant | undefined;
+  className?: string | undefined;
 }
 
 function KpiCard({

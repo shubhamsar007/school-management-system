@@ -151,11 +151,11 @@ export function useCreateTemplate() {
   return useMutation({
     mutationFn: (dto: {
       name: string;
-      description?: string;
+      description?: string | undefined;
       eventType: string;
       channel: string;
-      language?: string;
-      subject?: string;
+      language?: string | undefined;
+      subject?: string | undefined;
       body: string;
     }) => apiClient.post<NotificationTemplate>('/comms/templates', dto),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['comms', 'templates'] }),
@@ -167,13 +167,13 @@ export function useUpdateTemplate() {
   return useMutation({
     mutationFn: ({ id, ...dto }: {
       id: string;
-      name?: string;
-      description?: string;
-      eventType?: string;
-      channel?: string;
-      language?: string;
-      subject?: string;
-      body?: string;
+      name?: string | undefined;
+      description?: string | undefined;
+      eventType?: string | undefined;
+      channel?: string | undefined;
+      language?: string | undefined;
+      subject?: string | undefined;
+      body?: string | undefined;
     }) => apiClient.patch<NotificationTemplate>(`/comms/templates/${id}`, dto),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['comms', 'templates'] }),
   });
@@ -695,9 +695,9 @@ export function useSendNotification() {
       title: string;
       message: string;
       channel: string;
-      entityType?: string;
-      entityId?: string;
-      actionUrl?: string;
+      entityType?: string | undefined;
+      entityId?: string | undefined;
+      actionUrl?: string | undefined;
     }) => apiClient.post<AppNotification>('/comms/notifications', dto),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['comms', 'notifications'] });

@@ -54,7 +54,7 @@ const STEPS = ['Personal', 'Admission', 'Enrollment', 'Guardian'];
 
 // ─── Shared field primitives ──────────────────────────────────────────────────
 
-function Label({ children, required }: { children: React.ReactNode; required?: boolean }) {
+function Label({ children, required }: { children: React.ReactNode; required?: boolean | undefined }) {
   return (
     <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#6b7480', marginBottom: 5 }}>
       {children}{required && <span style={{ color: '#b3261e', marginLeft: 2 }}>*</span>}

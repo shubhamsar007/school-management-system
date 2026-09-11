@@ -204,7 +204,7 @@ export const substitutionApi = {
   getTodayCoverage: () =>
     apiClient.get<TodayCoverage>('/substitutions/today'),
 
-  getRequests: (params: { status?: string; date?: string; leaveRequestId?: string; page?: number; limit?: number } = {}) => {
+  getRequests: (params: { status?: string | undefined; date?: string | undefined; leaveRequestId?: string | undefined; page?: number | undefined; limit?: number | undefined } = {}) => {
     const qs = new URLSearchParams();
     if (params.status) qs.set('status', params.status);
     if (params.date) qs.set('date', params.date);
@@ -227,7 +227,7 @@ export const substitutionApi = {
   retryScoring: (requestId: string) =>
     apiClient.post<{ message: string; requestId: string }>(`/substitutions/requests/${requestId}/retry`, {}),
 
-  getAssignments: (params: { status?: string; date?: string; teacherId?: string; page?: number; limit?: number } = {}) => {
+  getAssignments: (params: { status?: string | undefined; date?: string | undefined; teacherId?: string | undefined; page?: number | undefined; limit?: number | undefined } = {}) => {
     const qs = new URLSearchParams();
     if (params.status) qs.set('status', params.status);
     if (params.date) qs.set('date', params.date);
@@ -253,7 +253,7 @@ export const substitutionApi = {
   escalateRequest: (requestId: string) =>
     apiClient.post<SubstitutionRequest>(`/substitutions/requests/${requestId}/escalate`, {}),
 
-  createManual: (body: { employeeId: string; date: string; reason?: string; periodIds?: string[]; leaveRequestId?: string }) =>
+  createManual: (body: { employeeId: string; date: string; reason?: string | undefined; periodIds?: string[] | undefined; leaveRequestId?: string | undefined }) =>
     apiClient.post<SubstitutionRequest>('/substitutions/manual', body),
 
   getPolicy: () =>
@@ -297,7 +297,7 @@ export const substitutionApi = {
   listUnavailabilityOverrides: (employeeId: string) =>
     apiClient.get<UnavailabilityOverride[]>(`/substitutions/unavailability/${employeeId}`),
 
-  createUnavailabilityOverride: (dto: { employeeId: string; startDate: string; endDate: string; reason?: string }) =>
+  createUnavailabilityOverride: (dto: { employeeId: string; startDate: string; endDate: string; reason?: string | undefined }) =>
     apiClient.post<UnavailabilityOverride>('/substitutions/unavailability', dto),
 
   deleteUnavailabilityOverride: (id: string) =>
@@ -376,7 +376,7 @@ export function useConfirmAssignment() {
 export function useDeclineAssignment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ assignmentId, reason }: { assignmentId: string; reason?: string }) =>
+    mutationFn: ({ assignmentId, reason }: { assignmentId: string; reason?: string | undefined }) =>
       substitutionApi.declineAssignment(assignmentId, reason),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: SUBSTITUTION_KEYS.all });
@@ -560,7 +560,7 @@ export function useUnavailabilityOverrides(employeeId: string, enabled = true) {
 export function useCreateUnavailabilityOverride() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (dto: { employeeId: string; startDate: string; endDate: string; reason?: string }) =>
+    mutationFn: (dto: { employeeId: string; startDate: string; endDate: string; reason?: string | undefined }) =>
       substitutionApi.createUnavailabilityOverride(dto),
     onSuccess: (_d, vars) => {
       void qc.invalidateQueries({ queryKey: SUBSTITUTION_KEYS.overrides(vars.employeeId) });

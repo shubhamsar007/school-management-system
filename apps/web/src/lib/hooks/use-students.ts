@@ -143,43 +143,43 @@ export function useDeleteStudent() {
 
 export interface CreateStudentPayload {
   firstName: string;
-  middleName?: string;
+  middleName?: string | undefined;
   lastName: string;
-  dateOfBirth?: string;
-  gender?: string;
-  email?: string;
-  phone?: string;
-  alternatePhone?: string;
-  bloodGroup?: string;
-  nationality?: string;
-  preferredName?: string;
-  motherTongue?: string;
-  religion?: string;
-  category?: string;
-  caste?: string;
-  studentType?: string;
-  admissionSource?: string;
+  dateOfBirth?: string | undefined;
+  gender?: string | undefined;
+  email?: string | undefined;
+  phone?: string | undefined;
+  alternatePhone?: string | undefined;
+  bloodGroup?: string | undefined;
+  nationality?: string | undefined;
+  preferredName?: string | undefined;
+  motherTongue?: string | undefined;
+  religion?: string | undefined;
+  category?: string | undefined;
+  caste?: string | undefined;
+  studentType?: string | undefined;
+  admissionSource?: string | undefined;
   permanentAddress?: {
-    line1?: string;
-    line2?: string;
-    city?: string;
-    state?: string;
-    country?: string;
-    postalCode?: string;
-  };
+    line1?: string | undefined;
+    line2?: string | undefined;
+    city?: string | undefined;
+    state?: string | undefined;
+    country?: string | undefined;
+    postalCode?: string | undefined;
+  } | undefined;
   currentAddress?: {
-    line1?: string;
-    line2?: string;
-    city?: string;
-    state?: string;
-    country?: string;
-    postalCode?: string;
-  };
+    line1?: string | undefined;
+    line2?: string | undefined;
+    city?: string | undefined;
+    state?: string | undefined;
+    country?: string | undefined;
+    postalCode?: string | undefined;
+  } | undefined;
   admissionNumber: string;
-  registrationNumber?: string;
+  registrationNumber?: string | undefined;
   admissionDate: string;
-  joiningDate?: string;
-  currentCampusId?: string;
+  joiningDate?: string | undefined;
+  currentCampusId?: string | undefined;
 }
 
 export interface CreateEnrollmentPayload {

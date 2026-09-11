@@ -133,60 +133,60 @@ export interface ApplicationListResponse {
 // ─── Params ───────────────────────────────────────────────────────────────────
 
 export interface EnquiryListParams {
-  status?: string;
-  assignedTo?: string;
-  campusId?: string;
-  search?: string;
-  page?: number;
-  limit?: number;
+  status?: string | undefined;
+  assignedTo?: string | undefined;
+  campusId?: string | undefined;
+  search?: string | undefined;
+  page?: number | undefined;
+  limit?: number | undefined;
 }
 
 export interface ApplicationListParams {
-  status?: string;
-  academicYearId?: string;
-  classId?: string;
-  search?: string;
-  page?: number;
-  limit?: number;
+  status?: string | undefined;
+  academicYearId?: string | undefined;
+  classId?: string | undefined;
+  search?: string | undefined;
+  page?: number | undefined;
+  limit?: number | undefined;
 }
 
 // ─── Payload Types ────────────────────────────────────────────────────────────
 
 export interface CreateEnquiryPayload {
   studentName: string;
-  parentName?: string;
+  parentName?: string | undefined;
   phone: string;
-  email?: string;
-  campusId?: string;
-  academicYearId?: string;
-  classInterestedId?: string;
+  email?: string | undefined;
+  campusId?: string | undefined;
+  academicYearId?: string | undefined;
+  classInterestedId?: string | undefined;
   source: string;
-  notes?: string;
-  assignedTo?: string;
+  notes?: string | undefined;
+  assignedTo?: string | undefined;
 }
 
 export interface UpdateEnquiryPayload {
-  studentName?: string;
-  parentName?: string;
-  phone?: string;
-  email?: string;
-  classInterestedId?: string;
-  source?: string;
-  status?: string;
-  notes?: string;
-  assignedTo?: string;
+  studentName?: string | undefined;
+  parentName?: string | undefined;
+  phone?: string | undefined;
+  email?: string | undefined;
+  classInterestedId?: string | undefined;
+  source?: string | undefined;
+  status?: string | undefined;
+  notes?: string | undefined;
+  assignedTo?: string | undefined;
 }
 
 export interface CreateApplicationPayload {
   applicationNumber: string;
   academicYearId: string;
   classId: string;
-  enquiryId?: string;
-  studentPersonId?: string;
+  enquiryId?: string | undefined;
+  studentPersonId?: string | undefined;
 }
 
 export interface RejectApplicationPayload {
-  rejectionReason?: string;
+  rejectionReason?: string | undefined;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -525,9 +525,9 @@ export interface EnrollApplicationPayload {
   admissionNumber: string;
   firstName: string;
   lastName: string;
-  rollNumber?: string;
-  joiningDate?: string;
-  enrollmentDate?: string;
+  rollNumber?: string | undefined;
+  joiningDate?: string | undefined;
+  enrollmentDate?: string | undefined;
 }
 
 export interface EnrollApplicationResult {
@@ -538,7 +538,7 @@ export interface EnrollApplicationResult {
 }
 
 export interface DocumentActionPayload {
-  remarks?: string;
+  remarks?: string | undefined;
 }
 
 export function useEnrollApplication() {
@@ -615,35 +615,35 @@ export interface Interview {
 
 export interface CreateFollowUpPayload {
   scheduledAt: string;
-  method?: string;
-  notes?: string;
+  method?: string | undefined;
+  notes?: string | undefined;
 }
 
 export interface UpdateFollowUpPayload {
-  scheduledAt?: string;
-  completedAt?: string;
-  method?: string;
-  outcome?: string;
-  notes?: string;
+  scheduledAt?: string | undefined;
+  completedAt?: string | undefined;
+  method?: string | undefined;
+  outcome?: string | undefined;
+  notes?: string | undefined;
 }
 
 export interface CreateInterviewPayload {
   scheduledAt: string;
-  format?: string;
-  conductedBy?: string;
-  notes?: string;
+  format?: string | undefined;
+  conductedBy?: string | undefined;
+  notes?: string | undefined;
 }
 
 export interface UpdateInterviewPayload {
-  scheduledAt?: string;
-  completedAt?: string;
-  status?: string;
-  format?: string;
-  score?: number;
-  maxScore?: number;
-  recommendation?: string;
-  conductedBy?: string;
-  notes?: string;
+  scheduledAt?: string | undefined;
+  completedAt?: string | undefined;
+  status?: string | undefined;
+  format?: string | undefined;
+  score?: number | undefined;
+  maxScore?: number | undefined;
+  recommendation?: string | undefined;
+  conductedBy?: string | undefined;
+  notes?: string | undefined;
 }
 
 export function useRejectDocument() {
@@ -676,7 +676,7 @@ export function useRejectDocument() {
 export function useWithdrawApplication() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+    mutationFn: ({ id, reason }: { id: string; reason?: string | undefined }) =>
       apiClient.post<Application>(`/admissions/applications/${id}/withdraw`, { reason }),
     onSuccess: (_, { id }) => {
       void qc.invalidateQueries({ queryKey: ['admissions', 'applications'] });

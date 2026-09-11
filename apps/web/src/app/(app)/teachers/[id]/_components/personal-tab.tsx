@@ -9,7 +9,7 @@ function formatDate(iso: string | undefined) {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
 }
 
-function Field({ label, value }: { label: string; value?: string | null }) {
+function Field({ label, value }: { label: string; value?: string | null | undefined }) {
   return (
     <div>
       <p style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: '#8a929b', marginBottom: 4 }}>

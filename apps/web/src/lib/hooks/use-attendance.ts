@@ -916,7 +916,7 @@ export function useBulkApproveLeaveRequests() {
 export function useBulkRejectLeaveRequests() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ ids, rejectionReason }: { ids: string[]; rejectionReason?: string }) =>
+    mutationFn: ({ ids, rejectionReason }: { ids: string[]; rejectionReason?: string | undefined }) =>
       apiClient.post<{ rejected: number; failed: Array<{ id: string; reason: string }> }>(
         '/attendance/leave-requests/bulk-reject',
         { ids, ...(rejectionReason ? { rejectionReason } : {}) },

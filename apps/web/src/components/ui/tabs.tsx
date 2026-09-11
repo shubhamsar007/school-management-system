@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 interface TabItem {
   id: string;
   label: string;
-  count?: number;
+  count?: number | undefined;
 }
 
 interface TabsProps {

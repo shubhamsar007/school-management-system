@@ -745,6 +745,7 @@ export interface DesignationItem {
   description?: string;
   status: string;
   employeeCount: number;
+  [key: string]: unknown;
 }
 
 export interface CreateDesignationPayload {
@@ -810,6 +811,7 @@ export interface EmployeeTypeItem {
   category: string;
   status: string;
   employeeCount: number;
+  [key: string]: unknown;
 }
 
 export interface CreateEmployeeTypePayload {

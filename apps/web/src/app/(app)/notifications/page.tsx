@@ -137,7 +137,7 @@ function NotificationDetailModal({
   onMarkRead: (n: AppNotification) => void;
 }) {
   const router = useRouter();
-  const priority = PRIORITY_STYLE[notification.priority] ?? PRIORITY_STYLE.NORMAL;
+  const priority = PRIORITY_STYLE[notification.priority] ?? { color: '#374151', bg: '#f3f4f6', label: 'Normal' };
   const catColor = CATEGORY_COLOR[notification.category] ?? '#9ca3af';
 
   return (
@@ -545,7 +545,7 @@ export default function NotificationsPage() {
       width: '80px',
       cell: (r) => {
         if (r.priority === 'NORMAL' || r.priority === 'LOW') return null;
-        const p = PRIORITY_STYLE[r.priority];
+        const p = PRIORITY_STYLE[r.priority] ?? { color: '#374151', bg: '#f3f4f6', label: r.priority };
         return (
           <span style={{
             fontSize: 11, fontWeight: 600, color: p.color, background: p.bg,

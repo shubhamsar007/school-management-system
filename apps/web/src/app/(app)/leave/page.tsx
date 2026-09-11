@@ -232,7 +232,7 @@ function LeaveDetailModal({ request, onClose }: LeaveDetailModalProps) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Employee */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: '#f8f9fa', borderRadius: 8 }}>
-            <Avatar name={empName} size="lg" />
+            <Avatar name={empName} size="md" />
             <div>
               <div style={{ fontSize: '15px', fontWeight: 600, color: '#14181c' }}>{empName}</div>
               <div style={{ fontSize: '12px', color: '#8a929b', marginTop: 2 }}>{request.employee.employeeNumber}</div>

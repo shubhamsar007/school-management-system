@@ -542,7 +542,7 @@ export default function ApplicationDetailPage() {
     const name = application!.enquiry?.studentName ?? '';
     const parts = name.trim().split(/\s+/);
     setEnrollFirstName(parts[0] ?? '');
-    setEnrollLastName(parts.slice(1).join(' ') || parts[0] ?? '');
+    setEnrollLastName((parts.slice(1).join(' ') || parts[0]) ?? '');
     setEnrollAdmissionNumber('');
     setEnrollSectionId('');
     setEnrollRollNumber('');

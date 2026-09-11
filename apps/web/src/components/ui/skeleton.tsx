@@ -7,15 +7,17 @@ interface SkeletonProps {
   className?: string;
   width?: string | number;
   height?: string | number;
+  style?: React.CSSProperties;
 }
 
-function Skeleton({ className, width, height }: SkeletonProps) {
+function Skeleton({ className, width, height, style }: SkeletonProps) {
   return (
     <div
       className={cn('animate-pulse rounded-md bg-[#eef0f2]', className)}
       style={{
         width: width !== undefined ? (typeof width === 'number' ? `${width}px` : width) : undefined,
         height: height !== undefined ? (typeof height === 'number' ? `${height}px` : height) : undefined,
+        ...style,
       }}
     />
   );

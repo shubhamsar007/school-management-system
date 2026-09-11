@@ -1417,7 +1417,7 @@ export class SubstitutionService {
 
   async createPool(organizationId: string, dto: { name: string; description?: string; isActive?: boolean; poolBonusPts?: number }) {
     return this.prisma.substitutePool.create({
-      data: { organizationId, name: dto.name, description: dto.description, isActive: dto.isActive ?? true, poolBonusPts: dto.poolBonusPts ?? 5 },
+      data: { organizationId, name: dto.name, description: dto.description ?? null, isActive: dto.isActive ?? true, poolBonusPts: dto.poolBonusPts ?? 5 },
       include: { members: true },
     });
   }
@@ -1498,7 +1498,7 @@ export class SubstitutionService {
         employeeId: dto.employeeId,
         startDate: new Date(dto.startDate),
         endDate: new Date(dto.endDate),
-        reason: dto.reason,
+        reason: dto.reason ?? null,
       },
     });
   }

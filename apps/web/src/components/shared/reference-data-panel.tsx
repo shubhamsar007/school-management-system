@@ -12,10 +12,10 @@ import { Badge } from '@/components/ui/badge';
 export interface ReferenceItem {
   id: string;
   name: string;
-  code: string;
-  description?: string;
+  code?: string | undefined;
+  description?: string | undefined;
   status: string;
-  employeeCount?: number;
+  employeeCount?: number | undefined;
   [key: string]: unknown;
 }
 

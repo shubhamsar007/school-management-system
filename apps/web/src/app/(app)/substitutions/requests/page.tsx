@@ -55,7 +55,7 @@ function CandidateCard({ score, rank, onAssign, isPending, autoThreshold }: {
   rank: number;
   onAssign: (teacherId: string) => void;
   isPending: boolean;
-  autoThreshold?: number;
+  autoThreshold?: number | undefined;
 }) {
   const isDisqualified = !!score.disqualifiedReason;
   const total = Math.round(Number(score.totalScore));

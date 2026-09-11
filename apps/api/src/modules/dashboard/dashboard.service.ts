@@ -359,11 +359,16 @@ export class DashboardService {
     });
 
     // Enrich with subject names
-    const subjectIds = await this.prisma.examSubject.findMany({
+    const examSubjectRows = await this.prisma.examSubject.findMany({
       where: { id: { in: latestSubjectMarks.map((r) => r.examSubjectId) } },
-      include: { subject: { select: { name: true } } },
+      select: { id: true, subjectId: true },
     });
-    const subjectMap = new Map(subjectIds.map((s) => [s.id, s.subject.name]));
+    const subjectRows = await this.prisma.subject.findMany({
+      where: { id: { in: [...new Set(examSubjectRows.map((s) => s.subjectId))] } },
+      select: { id: true, name: true },
+    });
+    const subjectNameById = new Map(subjectRows.map((s) => [s.id, s.name]));
+    const subjectMap = new Map(examSubjectRows.map((s) => [s.id, subjectNameById.get(s.subjectId) ?? 'Unknown']));
 
     // Aggregate by subject name (same subject may appear for multiple classes)
     const subjectAgg = new Map<string, { sum: number; count: number }>();
@@ -388,22 +393,18 @@ export class DashboardService {
     // Class-level average from ExamResult for latest exam
     const classResults = await this.prisma.examResult.findMany({
       where: { examId: latestExam.id },
-      include: {
-        student: {
-          include: {
-            enrollments: {
-              where: { status: 'ACTIVE' },
-              include: { class: { select: { name: true } } },
-              take: 1,
-            },
-          },
-        },
-      },
+      select: { studentId: true, percentage: true, resultStatus: true },
     });
+
+    const studentEnrollments = await this.prisma.studentEnrollment.findMany({
+      where: { studentId: { in: classResults.map((r) => r.studentId) }, status: 'ACTIVE' },
+      include: { class: { select: { name: true } } },
+    });
+    const studentClassMap = new Map(studentEnrollments.map((e) => [e.studentId, e.class?.name ?? 'Unknown']));
 
     const classAgg = new Map<string, { sum: number; count: number; pass: number }>();
     for (const r of classResults) {
-      const className = r.student.enrollments[0]?.class?.name ?? 'Unknown';
+      const className = studentClassMap.get(r.studentId) ?? 'Unknown';
       const prev = classAgg.get(className) ?? { sum: 0, count: 0, pass: 0 };
       classAgg.set(className, {
         sum: prev.sum + Number(r.percentage ?? 0),
@@ -486,11 +487,10 @@ export class DashboardService {
     // 3. Declining marks — compare last 2 ExamResult % for each student
     const recentResults = await this.prisma.examResult.findMany({
       where: {
-        student: { organizationId },
-        exam: { status: 'COMPLETED' },
+        exam: { organizationId, status: 'COMPLETED' },
       },
-      orderBy: { createdAt: 'desc' },
-      select: { studentId: true, percentage: true, examId: true, createdAt: true },
+      orderBy: { exam: { startDate: 'desc' } },
+      select: { studentId: true, percentage: true, examId: true },
     });
 
     // Keep last 2 results per student
@@ -529,6 +529,7 @@ export class DashboardService {
     const atRiskStudents = await this.prisma.student.findMany({
       where: { id: { in: [...allAtRiskIds].slice(0, 20) }, organizationId },
       include: {
+        person: { select: { firstName: true, lastName: true } },
         enrollments: {
           where: { status: 'ACTIVE' },
           include: { class: { select: { name: true } } },
@@ -546,7 +547,7 @@ export class DashboardService {
 
       return {
         id: s.id,
-        name: `${s.firstName} ${s.lastName}`,
+        name: `${s.person.firstName} ${s.person.lastName}`,
         class: s.enrollments[0]?.class?.name ?? null,
         flags,
         attendanceRate: attendanceRateMap.get(s.id) ?? null,
@@ -578,7 +579,7 @@ export class DashboardService {
 
     const weeklyAssignments = await this.prisma.substitutionAssignment.findMany({
       where: {
-        request: { organizationId },
+        substitutionRequest: { organizationId },
         createdAt: { gte: sevenDaysAgo },
         status: { not: 'CANCELLED' },
       },

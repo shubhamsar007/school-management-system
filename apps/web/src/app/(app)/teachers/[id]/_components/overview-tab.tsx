@@ -29,7 +29,7 @@ function statusVariant(status: string): BadgeProps['variant'] {
   }
 }
 
-function InfoRow({ label, value }: { label: string; value?: string | null }) {
+function InfoRow({ label, value }: { label: string; value?: string | null | undefined }) {
   return (
     <div className="flex items-start justify-between py-2.5" style={{ borderBottom: '1px solid #f5f6f7' }}>
       <span style={{ fontSize: '12.5px', color: '#8a929b', minWidth: 140 }}>{label}</span>
