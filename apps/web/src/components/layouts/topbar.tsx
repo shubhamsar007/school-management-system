@@ -7,7 +7,7 @@ import { ChevronDown, Check, Bell, User, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SearchDropdown } from '@/components/ui/search-dropdown';
 import { useCurrentUser } from '@/lib/hooks/use-identity';
-import { useNotifications, useMarkNotificationRead } from '@/lib/hooks/use-comms';
+import { useNotifications, useMarkNotificationRead, useMarkAllRead, useUnreadCount } from '@/lib/hooks/use-comms';
 
 // ─── Term selector ────────────────────────────────────────────────────────────
 
@@ -111,11 +111,15 @@ function NotificationsPanel() {
   const { data: currentUser } = useCurrentUser();
   const { data: notifications = [] } = useNotifications(
     currentUser?.id ? { recipientUserId: currentUser.id } : undefined,
+    // Near-real-time polling: refetch every 15 seconds
+    { refetchInterval: 15_000 },
   );
+  const { data: unreadData } = useUnreadCount({ refetchInterval: 15_000 });
   const markRead = useMarkNotificationRead();
+  const markAllRead = useMarkAllRead();
 
-  const unread = notifications.filter((n) => !n.readAt).length;
-  const preview = notifications.slice(0, 5);
+  const unread = unreadData?.count ?? notifications.filter((n) => !n.readAt).length;
+  const preview = notifications.slice(0, 6);
 
   React.useEffect(() => {
     function handle(e: MouseEvent) {
@@ -169,11 +173,23 @@ function NotificationsPanel() {
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px 8px', borderBottom: '1px solid #f0f2f4' }}>
             <p style={{ fontSize: 13, fontWeight: 600, color: '#14181c' }}>Notifications</p>
-            {unread > 0 ? (
-              <span style={{ fontSize: 11, color: '#b3563a', fontWeight: 600 }}>{unread} unread</span>
-            ) : (
-              <p style={{ fontSize: 11, color: '#8a929b' }}>All caught up</p>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {unread > 0 ? (
+                <>
+                  <span style={{ fontSize: 11, color: '#b3563a', fontWeight: 600 }}>{unread} unread</span>
+                  <button
+                    type="button"
+                    onClick={() => markAllRead.mutate()}
+                    disabled={markAllRead.isPending}
+                    style={{ fontSize: 11, color: '#2b5fa8', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  >
+                    Mark all read
+                  </button>
+                </>
+              ) : (
+                <p style={{ fontSize: 11, color: '#8a929b' }}>All caught up</p>
+              )}
+            </div>
           </div>
 
           {preview.length === 0 ? (

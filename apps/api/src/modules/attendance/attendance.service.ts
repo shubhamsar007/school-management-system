@@ -4,6 +4,7 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../database/prisma.service';
 import { SubstitutionService } from '../substitution/substitution.service';
 import { MarkStudentAttendanceDto } from './dto/mark-student-attendance.dto';
@@ -27,6 +28,7 @@ export class AttendanceService {
   constructor(
     private prisma: PrismaService,
     private substitutionService: SubstitutionService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   // ─── Student Attendance ───────────────────────────────────────
@@ -62,6 +64,20 @@ export class AttendanceService {
         }),
       ),
     );
+
+    // Fire STUDENT_ABSENT events for absent students (fire-and-forget)
+    const absentEntries = dto.entries.filter((e) => e.status === 'ABSENT');
+    for (const entry of absentEntries) {
+      this.eventEmitter.emit('notification.dispatch', {
+        eventType: 'STUDENT_ABSENT',
+        organizationId,
+        subjectId: entry.studentId,
+        payload: {
+          studentId: entry.studentId,
+          date: dto.date,
+        },
+      });
+    }
 
     return { count: results.length, date: dto.date, records: results };
   }
@@ -451,6 +467,21 @@ export class AttendanceService {
     // Auto-trigger substitution requests (non-blocking — silently skipped if no timetable)
     this.substitutionService.triggerForLeaveRequest(organizationId, requestId).catch(() => void 0);
 
+    // Fire notification event (fire-and-forget)
+    const emp = result.employee;
+    this.eventEmitter.emit('notification.dispatch', {
+      eventType: 'LEAVE_APPROVED',
+      organizationId,
+      subjectId: emp.id,
+      payload: {
+        employeeName: `${emp.person.firstName} ${emp.person.lastName}`,
+        leaveType: result.leaveType.name,
+        startDate: result.startDate.toISOString().slice(0, 10),
+        endDate: result.endDate.toISOString().slice(0, 10),
+        totalDays: String(result.totalDays),
+      },
+    });
+
     return result;
   }
 
@@ -466,7 +497,7 @@ export class AttendanceService {
       throw new BadRequestException(`Leave request is already ${request.status.toLowerCase()}`);
     }
 
-    return this.prisma.leaveRequest.update({
+    const rejected = await this.prisma.leaveRequest.update({
       where: { id: requestId },
       data: {
         status: 'REJECTED',
@@ -479,6 +510,22 @@ export class AttendanceService {
         employee: { include: { person: true } },
       },
     });
+
+    const emp = rejected.employee;
+    this.eventEmitter.emit('notification.dispatch', {
+      eventType: 'LEAVE_REJECTED',
+      organizationId,
+      subjectId: emp.id,
+      payload: {
+        employeeName: `${emp.person.firstName} ${emp.person.lastName}`,
+        leaveType: rejected.leaveType.name,
+        startDate: rejected.startDate.toISOString().slice(0, 10),
+        endDate: rejected.endDate.toISOString().slice(0, 10),
+        reason: dto.rejectionReason ?? 'No reason provided',
+      },
+    });
+
+    return rejected;
   }
 
   async cancelLeaveRequest(organizationId: string, requestId: string, employeeId: string) {

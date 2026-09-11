@@ -18,6 +18,10 @@ import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { UpdateAnnouncementDto } from './dto/update-announcement.dto';
 import { SendNotificationDto } from './dto/send-notification.dto';
+import { CreateTemplateDto } from './dto/create-template.dto';
+import { UpdateTemplateDto } from './dto/update-template.dto';
+import { CreateRuleDto } from './dto/create-rule.dto';
+import { UpdateRuleDto } from './dto/update-rule.dto';
 import { CreatePtmScheduleDto } from './dto/create-ptm-schedule.dto';
 import { CreatePtmTeacherSlotDto } from './dto/create-ptm-teacher-slot.dto';
 import { CreatePtmBookingDto } from './dto/create-ptm-booking.dto';
@@ -28,6 +32,152 @@ import { CreatePtmBookingDto } from './dto/create-ptm-booking.dto';
 @Controller({ path: 'comms', version: '1' })
 export class CommsController {
   constructor(private readonly commsService: CommsService) {}
+
+  // ─── Notification Templates ───────────────────────────────────
+
+  @ApiOperation({ summary: 'List notification templates' })
+  @ApiQuery({ name: 'eventType', required: false })
+  @ApiQuery({ name: 'channel', required: false })
+  @ApiQuery({ name: 'language', required: false })
+  @ApiQuery({ name: 'status', required: false, description: 'ACTIVE | INACTIVE' })
+  @Get('templates')
+  listTemplates(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('eventType') eventType?: string,
+    @Query('channel') channel?: string,
+    @Query('language') language?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.commsService.listTemplates(user.organizationId, {
+      ...(eventType ? { eventType } : {}),
+      ...(channel ? { channel } : {}),
+      ...(language ? { language } : {}),
+      ...(status ? { status } : {}),
+    });
+  }
+
+  @ApiOperation({ summary: 'Create a notification template' })
+  @Post('templates')
+  createTemplate(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: CreateTemplateDto,
+  ) {
+    return this.commsService.createTemplate(user.organizationId, dto);
+  }
+
+  @ApiOperation({ summary: 'Get a notification template by ID' })
+  @Get('templates/:id')
+  getTemplate(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.commsService.getTemplate(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Update a notification template' })
+  @Patch('templates/:id')
+  updateTemplate(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateTemplateDto,
+  ) {
+    return this.commsService.updateTemplate(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Activate a notification template' })
+  @Post('templates/:id/activate')
+  @HttpCode(HttpStatus.OK)
+  activateTemplate(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.commsService.activateTemplate(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Deactivate a notification template' })
+  @Post('templates/:id/deactivate')
+  @HttpCode(HttpStatus.OK)
+  deactivateTemplate(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.commsService.deactivateTemplate(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Delete an inactive notification template' })
+  @Delete('templates/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteTemplate(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.commsService.deleteTemplate(user.organizationId, id);
+  }
+
+  // ─── Notification Rules ───────────────────────────────────────
+
+  @ApiOperation({ summary: 'List automation rules' })
+  @ApiQuery({ name: 'eventType', required: false })
+  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
+  @Get('rules')
+  listRules(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('eventType') eventType?: string,
+    @Query('isActive') isActive?: string,
+  ) {
+    return this.commsService.listRules(user.organizationId, {
+      ...(eventType ? { eventType } : {}),
+      ...(isActive !== undefined ? { isActive: isActive === 'true' } : {}),
+    });
+  }
+
+  @ApiOperation({ summary: 'Create an automation rule' })
+  @Post('rules')
+  createRule(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: CreateRuleDto,
+  ) {
+    return this.commsService.createRule(user.organizationId, dto);
+  }
+
+  @ApiOperation({ summary: 'Get a single automation rule' })
+  @Get('rules/:id')
+  getRule(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.commsService.getRule(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Update an automation rule' })
+  @Patch('rules/:id')
+  updateRule(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateRuleDto,
+  ) {
+    return this.commsService.updateRule(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Toggle a rule active / inactive' })
+  @Post('rules/:id/toggle')
+  @HttpCode(HttpStatus.OK)
+  toggleRule(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.commsService.toggleRule(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Delete an automation rule' })
+  @Delete('rules/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteRule(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.commsService.deleteRule(user.organizationId, id);
+  }
 
   // ─── Announcements ────────────────────────────────────────────
 
@@ -151,6 +301,178 @@ export class CommsController {
     return this.commsService.markNotificationRead(user.organizationId, id);
   }
 
+  // ─── Analytics ────────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Analytics overview KPIs' })
+  @ApiQuery({ name: 'days', required: false, description: '7 | 14 | 30 | 90' })
+  @Get('analytics/overview')
+  getAnalyticsOverview(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('days') days?: string,
+  ) {
+    return this.commsService.getAnalyticsOverview(user.organizationId, days ? Number(days) : 30);
+  }
+
+  @ApiOperation({ summary: 'Analytics by delivery channel' })
+  @ApiQuery({ name: 'days', required: false })
+  @Get('analytics/by-channel')
+  getAnalyticsByChannel(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('days') days?: string,
+  ) {
+    return this.commsService.getAnalyticsByChannel(user.organizationId, days ? Number(days) : 30);
+  }
+
+  @ApiOperation({ summary: 'Analytics by event type (top 15)' })
+  @ApiQuery({ name: 'days', required: false })
+  @Get('analytics/by-event-type')
+  getAnalyticsByEventType(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('days') days?: string,
+  ) {
+    return this.commsService.getAnalyticsByEventType(user.organizationId, days ? Number(days) : 30);
+  }
+
+  @ApiOperation({ summary: 'Analytics by notification category' })
+  @ApiQuery({ name: 'days', required: false })
+  @Get('analytics/by-category')
+  getAnalyticsByCategory(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('days') days?: string,
+  ) {
+    return this.commsService.getAnalyticsByCategory(user.organizationId, days ? Number(days) : 30);
+  }
+
+  @ApiOperation({ summary: 'Daily notification timeline (sent / failed / read per day)' })
+  @ApiQuery({ name: 'days', required: false, description: '7 | 14 | 30' })
+  @Get('analytics/timeline')
+  getAnalyticsTimeline(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('days') days?: string,
+  ) {
+    return this.commsService.getAnalyticsTimeline(user.organizationId, days ? Number(days) : 30);
+  }
+
+  @ApiOperation({ summary: 'Failure analysis — top errors, permanent fails, by channel' })
+  @ApiQuery({ name: 'days', required: false })
+  @Get('analytics/failures')
+  getAnalyticsFailures(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('days') days?: string,
+  ) {
+    return this.commsService.getAnalyticsFailures(user.organizationId, days ? Number(days) : 30);
+  }
+
+  // ─── Preferences ──────────────────────────────────────────────
+
+  @ApiOperation({ summary: "Get the authenticated user's notification preferences" })
+  @Get('preferences/me')
+  getPreferences(@CurrentUser() user: CurrentUserPayload) {
+    return this.commsService.getPreferences(user.organizationId, user.userId);
+  }
+
+  @ApiOperation({ summary: "Update the authenticated user's notification preferences" })
+  @Patch('preferences/me')
+  updatePreferences(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: {
+      inAppEnabled?: boolean;
+      emailEnabled?: boolean;
+      smsEnabled?: boolean;
+      whatsappEnabled?: boolean;
+      pushEnabled?: boolean;
+      language?: string;
+      quietHoursEnabled?: boolean;
+      quietHoursStart?: string | null;
+      quietHoursEnd?: string | null;
+      quietDays?: string[];
+      mutedCategories?: string[];
+    },
+  ) {
+    return this.commsService.updatePreferences(user.organizationId, user.userId, dto);
+  }
+
+  @ApiOperation({ summary: 'Mark all notifications as read for the current user' })
+  @Post('notifications/mark-all-read')
+  @HttpCode(HttpStatus.OK)
+  markAllNotificationsRead(@CurrentUser() user: CurrentUserPayload) {
+    return this.commsService.markAllNotificationsRead(user.organizationId, user.userId);
+  }
+
+  // ─── Delivery Logs ────────────────────────────────────────────
+
+  @ApiOperation({ summary: 'List delivery log entries with filtering + pagination' })
+  @ApiQuery({ name: 'status', required: false, description: 'QUEUED | SENT | DELIVERED | FAILED | RETRYING | FAILED_PERMANENTLY' })
+  @ApiQuery({ name: 'channel', required: false })
+  @ApiQuery({ name: 'from', required: false, description: 'ISO date string' })
+  @ApiQuery({ name: 'to', required: false, description: 'ISO date string' })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @Get('deliveries')
+  listDeliveries(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('status') status?: string,
+    @Query('channel') channel?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.commsService.listDeliveries(
+      user.organizationId,
+      { ...(status ? { status } : {}), ...(channel ? { channel } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}) },
+      page ? Number(page) : 1,
+      limit ? Number(limit) : 50,
+    );
+  }
+
+  @ApiOperation({ summary: 'Delivery stats (counts by status + success rate)' })
+  @Get('deliveries/stats')
+  getDeliveryStats(@CurrentUser() user: CurrentUserPayload) {
+    return this.commsService.getDeliveryStats(user.organizationId);
+  }
+
+  @ApiOperation({ summary: 'Retry a single failed delivery immediately' })
+  @Post('deliveries/:id/retry')
+  @HttpCode(HttpStatus.OK)
+  retryDelivery(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.commsService.retryDelivery(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Queue all FAILED / FAILED_PERMANENTLY deliveries for immediate retry' })
+  @Post('deliveries/retry-failed')
+  @HttpCode(HttpStatus.OK)
+  bulkRetryFailed(@CurrentUser() user: CurrentUserPayload) {
+    return this.commsService.bulkRetryFailed(user.organizationId);
+  }
+
+  // ─── Provider Config ──────────────────────────────────────────
+
+  @ApiOperation({ summary: 'List provider configurations' })
+  @Get('provider-configs')
+  listProviderConfigs(@CurrentUser() user: CurrentUserPayload) {
+    return this.commsService.listProviderConfigs(user.organizationId);
+  }
+
+  @ApiOperation({ summary: 'Enable or disable a provider for a channel' })
+  @Post('provider-configs')
+  @HttpCode(HttpStatus.OK)
+  upsertProviderConfig(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: { channel: string; providerName: string; isEnabled: boolean; priority?: number },
+  ) {
+    return this.commsService.upsertProviderConfig(
+      user.organizationId,
+      dto.channel,
+      dto.providerName,
+      dto.isEnabled,
+      dto.priority,
+    );
+  }
+
   // ─── PTM Schedules ────────────────────────────────────────────
 
   @ApiOperation({ summary: 'Create a PTM schedule' })
@@ -265,5 +587,142 @@ export class CommsController {
     @Param('bookingId') bookingId: string,
   ) {
     return this.commsService.cancelBooking(user.organizationId, id, bookingId);
+  }
+
+  // ─── Notification Schedules ───────────────────────────────────
+
+  @ApiOperation({ summary: 'List scheduled notification messages' })
+  @ApiQuery({ name: 'recurrence', required: false, description: 'ONCE | DAILY | WEEKLY | MONTHLY' })
+  @ApiQuery({ name: 'isActive', required: false })
+  @Get('schedules')
+  listSchedules(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('recurrence') recurrence?: string,
+    @Query('isActive') isActive?: string,
+  ) {
+    return this.commsService.listSchedules(user.organizationId, {
+      ...(recurrence ? { recurrence } : {}),
+      ...(isActive !== undefined ? { isActive: isActive === 'true' } : {}),
+    });
+  }
+
+  @ApiOperation({ summary: 'Create a scheduled notification' })
+  @Post('schedules')
+  createSchedule(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: {
+      name: string;
+      description?: string;
+      recurrence: string;
+      scheduledAt?: string;
+      cronExpression?: string;
+      title: string;
+      message: string;
+      audienceType: string;
+      audienceTarget?: string;
+      templateId?: string;
+      channels: string[];
+      priority?: string;
+      category?: string;
+    },
+  ) {
+    return this.commsService.createSchedule(user.organizationId, dto);
+  }
+
+  @ApiOperation({ summary: 'Get a scheduled notification by ID' })
+  @Get('schedules/:id')
+  getSchedule(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.commsService.getSchedule(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Update a scheduled notification' })
+  @Patch('schedules/:id')
+  updateSchedule(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: {
+      name?: string;
+      description?: string;
+      recurrence?: string;
+      scheduledAt?: string;
+      cronExpression?: string;
+      title?: string;
+      message?: string;
+      audienceType?: string;
+      audienceTarget?: string;
+      templateId?: string;
+      channels?: string[];
+      priority?: string;
+      category?: string;
+      isActive?: boolean;
+    },
+  ) {
+    return this.commsService.updateSchedule(user.organizationId, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Toggle a scheduled notification active/inactive' })
+  @Post('schedules/:id/toggle')
+  @HttpCode(HttpStatus.OK)
+  toggleSchedule(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.commsService.toggleSchedule(user.organizationId, id);
+  }
+
+  @ApiOperation({ summary: 'Delete a scheduled notification' })
+  @Delete('schedules/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteSchedule(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.commsService.deleteSchedule(user.organizationId, id);
+  }
+
+  // ─── Inbound Messages ─────────────────────────────────────────
+
+  @ApiOperation({ summary: 'List inbound messages (two-way channel replies)' })
+  @ApiQuery({ name: 'channel', required: false })
+  @ApiQuery({ name: 'status', required: false, description: 'RECEIVED | PROCESSED' })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @Get('inbound')
+  listInboundMessages(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('channel') channel?: string,
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.commsService.listInboundMessages(
+      user.organizationId,
+      { ...(channel ? { channel } : {}), ...(status ? { status } : {}) },
+      page ? Number(page) : 1,
+      limit ? Number(limit) : 50,
+    );
+  }
+
+  @ApiOperation({ summary: 'Receive an inbound message (called by provider webhook)' })
+  @Post('inbound/receive')
+  @HttpCode(HttpStatus.OK)
+  receiveInbound(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: { channel: string; fromAddress: string; body: string; providerMsgId?: string },
+  ) {
+    return this.commsService.receiveInbound(user.organizationId, dto);
+  }
+
+  @ApiOperation({ summary: 'Mark an inbound message as processed' })
+  @Post('inbound/:id/process')
+  @HttpCode(HttpStatus.OK)
+  markInboundProcessed(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    return this.commsService.markInboundProcessed(user.organizationId, id);
   }
 }

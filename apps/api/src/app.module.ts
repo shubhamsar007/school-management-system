@@ -20,6 +20,7 @@ import { TimetableModule } from './modules/timetable/timetable.module';
 import { SubstitutionModule } from './modules/substitution/substitution.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { StorageModule } from './modules/storage/storage.module';
     SubstitutionModule,
     PayrollModule,
     StorageModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}

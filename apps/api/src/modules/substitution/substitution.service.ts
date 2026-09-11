@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../database/prisma.service';
 import { ConfirmAssignmentDto } from './dto/confirm-assignment.dto';
 import { CreateManualRequestDto } from './dto/create-manual-request.dto';
@@ -17,7 +18,10 @@ const MAX_DEPT_AFFINITY = 10;
 
 @Injectable()
 export class SubstitutionService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
 
   // ─── Policy ───────────────────────────────────────────────────
 
@@ -687,6 +691,18 @@ export class SubstitutionService {
     // Update request status
     await this.refreshRequestStatus(assignment.substitutionRequestId);
 
+    // Fire notification event (fire-and-forget)
+    this.eventEmitter.emit('notification.dispatch', {
+      eventType: 'SUBSTITUTE_ASSIGNED',
+      organizationId,
+      subjectId: dto.substituteTeacherId,
+      payload: {
+        substituteTeacherId: dto.substituteTeacherId,
+        assignmentId,
+        date: assignment.substitutionRequest?.date?.toISOString().slice(0, 10) ?? '',
+      },
+    });
+
     return updated;
   }
 
@@ -715,6 +731,21 @@ export class SubstitutionService {
     await this.writeAudit(organizationId, 'DECLINED', null, assignment.substitutionRequestId, assignmentId, { reason: reason ?? null });
 
     await this.refreshRequestStatus(assignment.substitutionRequestId);
+
+    // Fire notification event to the teacher who was previously assigned (fire-and-forget)
+    if (assignment.substituteTeacherId) {
+      this.eventEmitter.emit('notification.dispatch', {
+        eventType: 'SUBSTITUTE_DECLINED',
+        organizationId,
+        subjectId: assignment.substituteTeacherId,
+        payload: {
+          substituteTeacherId: assignment.substituteTeacherId,
+          assignmentId,
+          reason: reason ?? 'No reason provided',
+        },
+      });
+    }
+
     return updated;
   }
 

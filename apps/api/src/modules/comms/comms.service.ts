@@ -8,6 +8,10 @@ import { PrismaService } from '../database/prisma.service';
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { UpdateAnnouncementDto } from './dto/update-announcement.dto';
 import { SendNotificationDto } from './dto/send-notification.dto';
+import { CreateTemplateDto } from './dto/create-template.dto';
+import { UpdateTemplateDto } from './dto/update-template.dto';
+import { CreateRuleDto } from './dto/create-rule.dto';
+import { UpdateRuleDto } from './dto/update-rule.dto';
 import { CreatePtmScheduleDto } from './dto/create-ptm-schedule.dto';
 import { CreatePtmTeacherSlotDto } from './dto/create-ptm-teacher-slot.dto';
 import { CreatePtmBookingDto } from './dto/create-ptm-booking.dto';
@@ -15,6 +19,88 @@ import { CreatePtmBookingDto } from './dto/create-ptm-booking.dto';
 @Injectable()
 export class CommsService {
   constructor(private prisma: PrismaService) {}
+
+  // ─── Notification Templates ───────────────────────────────────
+
+  async listTemplates(
+    organizationId: string,
+    filters: { eventType?: string; channel?: string; language?: string; status?: string },
+  ) {
+    return this.prisma.notificationTemplate.findMany({
+      where: {
+        organizationId,
+        ...(filters.eventType ? { eventType: filters.eventType } : {}),
+        ...(filters.channel ? { channel: filters.channel } : {}),
+        ...(filters.language ? { language: filters.language } : {}),
+        ...(filters.status ? { status: filters.status } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createTemplate(organizationId: string, dto: CreateTemplateDto) {
+    return this.prisma.notificationTemplate.create({
+      data: {
+        organizationId,
+        name: dto.name,
+        description: dto.description ?? null,
+        eventType: dto.eventType,
+        channel: dto.channel,
+        language: dto.language ?? 'en',
+        subject: dto.subject ?? null,
+        body: dto.body,
+        status: 'ACTIVE',
+      },
+    });
+  }
+
+  async getTemplate(organizationId: string, id: string) {
+    const template = await this.prisma.notificationTemplate.findFirst({
+      where: { id, organizationId },
+    });
+    if (!template) throw new NotFoundException('Template not found');
+    return template;
+  }
+
+  async updateTemplate(organizationId: string, id: string, dto: UpdateTemplateDto) {
+    await this.getTemplate(organizationId, id);
+    return this.prisma.notificationTemplate.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name } : {}),
+        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.eventType !== undefined ? { eventType: dto.eventType } : {}),
+        ...(dto.channel !== undefined ? { channel: dto.channel } : {}),
+        ...(dto.language !== undefined ? { language: dto.language } : {}),
+        ...(dto.subject !== undefined ? { subject: dto.subject } : {}),
+        ...(dto.body !== undefined ? { body: dto.body } : {}),
+      },
+    });
+  }
+
+  async activateTemplate(organizationId: string, id: string) {
+    await this.getTemplate(organizationId, id);
+    return this.prisma.notificationTemplate.update({
+      where: { id },
+      data: { status: 'ACTIVE' },
+    });
+  }
+
+  async deactivateTemplate(organizationId: string, id: string) {
+    await this.getTemplate(organizationId, id);
+    return this.prisma.notificationTemplate.update({
+      where: { id },
+      data: { status: 'INACTIVE' },
+    });
+  }
+
+  async deleteTemplate(organizationId: string, id: string) {
+    const template = await this.getTemplate(organizationId, id);
+    if (template.status === 'ACTIVE') {
+      throw new BadRequestException('Deactivate the template before deleting it');
+    }
+    await this.prisma.notificationTemplate.delete({ where: { id } });
+  }
 
   // ─── Announcements ────────────────────────────────────────────
 
@@ -126,6 +212,86 @@ export class CommsService {
     await this.prisma.announcement.delete({ where: { id: announcementId } });
   }
 
+  // ─── Notification Rules ───────────────────────────────────────
+
+  async listRules(
+    organizationId: string,
+    filters: { eventType?: string; isActive?: boolean },
+  ) {
+    return this.prisma.notificationRule.findMany({
+      where: {
+        organizationId,
+        ...(filters.eventType ? { eventType: filters.eventType } : {}),
+        ...(filters.isActive !== undefined ? { isActive: filters.isActive } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createRule(organizationId: string, dto: CreateRuleDto) {
+    return this.prisma.notificationRule.create({
+      data: {
+        organizationId,
+        name: dto.name,
+        description: dto.description ?? null,
+        eventType: dto.eventType,
+        templateId: dto.templateId ?? null,
+        audienceType: dto.audienceType,
+        audienceTarget: dto.audienceTarget ?? null,
+        channels: dto.channels,
+        priority: dto.priority ?? 'NORMAL',
+        category: dto.category ?? 'GENERAL',
+        isActive: dto.isActive ?? true,
+        escalateAfterMinutes: dto.escalateAfterMinutes ?? null,
+        escalateToType: dto.escalateToType ?? null,
+        escalateChannels: dto.escalateChannels ?? [],
+      },
+    });
+  }
+
+  async getRule(organizationId: string, id: string) {
+    const rule = await this.prisma.notificationRule.findFirst({
+      where: { id, organizationId },
+    });
+    if (!rule) throw new NotFoundException('Notification rule not found');
+    return rule;
+  }
+
+  async updateRule(organizationId: string, id: string, dto: UpdateRuleDto) {
+    await this.getRule(organizationId, id);
+    return this.prisma.notificationRule.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name } : {}),
+        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.eventType !== undefined ? { eventType: dto.eventType } : {}),
+        ...(dto.templateId !== undefined ? { templateId: dto.templateId ?? null } : {}),
+        ...(dto.audienceType !== undefined ? { audienceType: dto.audienceType } : {}),
+        ...(dto.audienceTarget !== undefined ? { audienceTarget: dto.audienceTarget ?? null } : {}),
+        ...(dto.channels !== undefined ? { channels: dto.channels } : {}),
+        ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
+        ...(dto.category !== undefined ? { category: dto.category } : {}),
+        ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+        ...(dto.escalateAfterMinutes !== undefined ? { escalateAfterMinutes: dto.escalateAfterMinutes ?? null } : {}),
+        ...(dto.escalateToType !== undefined ? { escalateToType: dto.escalateToType ?? null } : {}),
+        ...(dto.escalateChannels !== undefined ? { escalateChannels: dto.escalateChannels } : {}),
+      },
+    });
+  }
+
+  async toggleRule(organizationId: string, id: string) {
+    const rule = await this.getRule(organizationId, id);
+    return this.prisma.notificationRule.update({
+      where: { id },
+      data: { isActive: !rule.isActive },
+    });
+  }
+
+  async deleteRule(organizationId: string, id: string) {
+    await this.getRule(organizationId, id);
+    await this.prisma.notificationRule.delete({ where: { id } });
+  }
+
   // ─── Notifications ────────────────────────────────────────────
 
   async sendNotification(organizationId: string, dto: SendNotificationDto) {
@@ -218,6 +384,368 @@ export class CommsService {
     return this.prisma.notification.update({
       where: { id: notificationId },
       data: { readAt: new Date(), status: 'READ' },
+    });
+  }
+
+  // ─── Analytics ────────────────────────────────────────────────
+
+  private sinceDate(days: number): Date {
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  async getAnalyticsOverview(organizationId: string, days = 30) {
+    const since = this.sinceDate(days);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [total, sentToday, delivered, failed, read, pending, deliveryAttempts, failedAttempts] =
+      await Promise.all([
+        this.prisma.notification.count({ where: { organizationId, createdAt: { gte: since } } }),
+        this.prisma.notification.count({ where: { organizationId, createdAt: { gte: todayStart } } }),
+        this.prisma.notification.count({ where: { organizationId, createdAt: { gte: since }, status: { in: ['SENT', 'READ'] } } }),
+        this.prisma.notification.count({ where: { organizationId, createdAt: { gte: since }, status: 'FAILED' } }),
+        this.prisma.notification.count({ where: { organizationId, createdAt: { gte: since }, status: 'READ' } }),
+        this.prisma.notification.count({ where: { organizationId, createdAt: { gte: since }, status: 'PENDING' } }),
+        this.prisma.notificationDelivery.count({ where: { notification: { organizationId }, createdAt: { gte: since } } }),
+        this.prisma.notificationDelivery.count({ where: { notification: { organizationId }, createdAt: { gte: since }, status: { in: ['FAILED', 'FAILED_PERMANENTLY'] } } }),
+      ]);
+
+    const deliveryBase = delivered + failed;
+    const deliveryRate = deliveryBase > 0 ? Math.round((delivered / deliveryBase) * 1000) / 10 : 0;
+    const readRate = delivered > 0 ? Math.round((read / delivered) * 1000) / 10 : 0;
+    const failureRate = deliveryAttempts > 0 ? Math.round((failedAttempts / deliveryAttempts) * 1000) / 10 : 0;
+
+    return { total, sentToday, delivered, failed, read, pending, deliveryRate, readRate, failureRate, days };
+  }
+
+  async getAnalyticsByChannel(organizationId: string, days = 30) {
+    const since = this.sinceDate(days);
+    const channels = ['IN_APP', 'EMAIL', 'SMS', 'WHATSAPP', 'PUSH'];
+
+    const results = await Promise.all(
+      channels.map(async (channel) => {
+        const [total, delivered, failed, read] = await Promise.all([
+          this.prisma.notification.count({ where: { organizationId, channel, createdAt: { gte: since } } }),
+          this.prisma.notification.count({ where: { organizationId, channel, createdAt: { gte: since }, status: { in: ['SENT', 'READ'] } } }),
+          this.prisma.notification.count({ where: { organizationId, channel, createdAt: { gte: since }, status: 'FAILED' } }),
+          this.prisma.notification.count({ where: { organizationId, channel, createdAt: { gte: since }, status: 'READ' } }),
+        ]);
+        const deliveryBase = delivered + failed;
+        const deliveryRate = deliveryBase > 0 ? Math.round((delivered / deliveryBase) * 1000) / 10 : 0;
+        const readRate = delivered > 0 ? Math.round((read / delivered) * 1000) / 10 : 0;
+        return { channel, total, delivered, failed, read, deliveryRate, readRate };
+      }),
+    );
+
+    return results.filter((r) => r.total > 0);
+  }
+
+  async getAnalyticsByEventType(organizationId: string, days = 30) {
+    const since = this.sinceDate(days);
+
+    const groups = await this.prisma.notification.groupBy({
+      by: ['eventType'],
+      where: { organizationId, createdAt: { gte: since } },
+      _count: { _all: true },
+      orderBy: { _count: { eventType: 'desc' } },
+      take: 15,
+    });
+
+    return Promise.all(
+      groups.map(async (g) => {
+        const [delivered, failed, read] = await Promise.all([
+          this.prisma.notification.count({ where: { organizationId, eventType: g.eventType, createdAt: { gte: since }, status: { in: ['SENT', 'READ'] } } }),
+          this.prisma.notification.count({ where: { organizationId, eventType: g.eventType, createdAt: { gte: since }, status: 'FAILED' } }),
+          this.prisma.notification.count({ where: { organizationId, eventType: g.eventType, createdAt: { gte: since }, status: 'READ' } }),
+        ]);
+        const total = g._count._all;
+        const deliveryRate = (delivered + failed) > 0 ? Math.round((delivered / (delivered + failed)) * 1000) / 10 : 0;
+        return { eventType: g.eventType, total, delivered, failed, read, deliveryRate };
+      }),
+    );
+  }
+
+  async getAnalyticsByCategory(organizationId: string, days = 30) {
+    const since = this.sinceDate(days);
+
+    const groups = await this.prisma.notification.groupBy({
+      by: ['category'],
+      where: { organizationId, createdAt: { gte: since } },
+      _count: { _all: true },
+      orderBy: { _count: { category: 'desc' } },
+    });
+
+    const total = groups.reduce((s, g) => s + g._count._all, 0);
+    return groups.map((g) => ({
+      category: g.category,
+      count: g._count._all,
+      pct: total > 0 ? Math.round((g._count._all / total) * 1000) / 10 : 0,
+    }));
+  }
+
+  async getAnalyticsTimeline(organizationId: string, days = 30) {
+    const since = this.sinceDate(days);
+
+    // Build date buckets
+    const buckets: Record<string, { date: string; sent: number; failed: number; read: number }> = {};
+    for (let i = 0; i < days; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      buckets[key] = { date: key, sent: 0, failed: 0, read: 0 };
+    }
+
+    const notifications = await this.prisma.notification.findMany({
+      where: { organizationId, createdAt: { gte: since } },
+      select: { createdAt: true, status: true },
+    });
+
+    for (const n of notifications) {
+      const key = n.createdAt.toISOString().slice(0, 10);
+      if (!buckets[key]) continue;
+      if (['SENT', 'READ'].includes(n.status)) buckets[key].sent++;
+      if (n.status === 'FAILED') buckets[key].failed++;
+      if (n.status === 'READ') buckets[key].read++;
+    }
+
+    return Object.values(buckets).sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  async getAnalyticsFailures(organizationId: string, days = 30) {
+    const since = this.sinceDate(days);
+
+    // Top error messages
+    const errorGroups = await this.prisma.notificationDelivery.groupBy({
+      by: ['errorMessage'],
+      where: {
+        notification: { organizationId },
+        createdAt: { gte: since },
+        errorMessage: { not: null },
+        status: { in: ['FAILED', 'FAILED_PERMANENTLY'] },
+      },
+      _count: { _all: true },
+      orderBy: { _count: { errorMessage: 'desc' } },
+      take: 10,
+    });
+
+    // Permanently failed deliveries
+    const permanentFails = await this.prisma.notificationDelivery.count({
+      where: { notification: { organizationId }, createdAt: { gte: since }, status: 'FAILED_PERMANENTLY' },
+    });
+
+    // Channels with most failures
+    const channelGroups = await this.prisma.notification.groupBy({
+      by: ['channel'],
+      where: { organizationId, createdAt: { gte: since }, status: 'FAILED' },
+      _count: { _all: true },
+      orderBy: { _count: { channel: 'desc' } },
+    });
+
+    return {
+      permanentFails,
+      topErrors: errorGroups.map((g) => ({ message: g.errorMessage, count: g._count._all })),
+      byChannel: channelGroups.map((g) => ({ channel: g.channel, count: g._count._all })),
+    };
+  }
+
+  // ─── Preferences ──────────────────────────────────────────────
+
+  async getPreferences(organizationId: string, userId: string) {
+    const existing = await this.prisma.notificationPreference.findUnique({
+      where: { organizationId_userId: { organizationId, userId } },
+    });
+    if (existing) return existing;
+
+    // Auto-create with defaults on first access
+    return this.prisma.notificationPreference.create({
+      data: { organizationId, userId },
+    });
+  }
+
+  async updatePreferences(
+    organizationId: string,
+    userId: string,
+    dto: {
+      inAppEnabled?: boolean;
+      emailEnabled?: boolean;
+      smsEnabled?: boolean;
+      whatsappEnabled?: boolean;
+      pushEnabled?: boolean;
+      language?: string;
+      quietHoursEnabled?: boolean;
+      quietHoursStart?: string | null;
+      quietHoursEnd?: string | null;
+      quietDays?: string[];
+      mutedCategories?: string[];
+    },
+  ) {
+    await this.getPreferences(organizationId, userId); // ensure row exists
+    return this.prisma.notificationPreference.update({
+      where: { organizationId_userId: { organizationId, userId } },
+      data: {
+        ...(dto.inAppEnabled !== undefined ? { inAppEnabled: dto.inAppEnabled } : {}),
+        ...(dto.emailEnabled !== undefined ? { emailEnabled: dto.emailEnabled } : {}),
+        ...(dto.smsEnabled !== undefined ? { smsEnabled: dto.smsEnabled } : {}),
+        ...(dto.whatsappEnabled !== undefined ? { whatsappEnabled: dto.whatsappEnabled } : {}),
+        ...(dto.pushEnabled !== undefined ? { pushEnabled: dto.pushEnabled } : {}),
+        ...(dto.language !== undefined ? { language: dto.language } : {}),
+        ...(dto.quietHoursEnabled !== undefined ? { quietHoursEnabled: dto.quietHoursEnabled } : {}),
+        ...(dto.quietHoursStart !== undefined ? { quietHoursStart: dto.quietHoursStart ?? null } : {}),
+        ...(dto.quietHoursEnd !== undefined ? { quietHoursEnd: dto.quietHoursEnd ?? null } : {}),
+        ...(dto.quietDays !== undefined ? { quietDays: dto.quietDays } : {}),
+        ...(dto.mutedCategories !== undefined ? { mutedCategories: dto.mutedCategories } : {}),
+      },
+    });
+  }
+
+  async markAllNotificationsRead(organizationId: string, userId: string) {
+    const result = await this.prisma.notification.updateMany({
+      where: { organizationId, recipientUserId: userId, readAt: null },
+      data: { readAt: new Date(), status: 'READ' },
+    });
+    return { updated: result.count };
+  }
+
+  // ─── Delivery Logs ────────────────────────────────────────────
+
+  async listDeliveries(
+    organizationId: string,
+    filters: { status?: string; channel?: string; from?: string; to?: string },
+    page = 1,
+    limit = 50,
+  ) {
+    const skip = (page - 1) * limit;
+
+    const where: Record<string, any> = {
+      notification: { organizationId },
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.channel ? { notification: { organizationId, channel: filters.channel } } : {}),
+      ...(filters.from || filters.to
+        ? {
+            createdAt: {
+              ...(filters.from ? { gte: new Date(filters.from) } : {}),
+              ...(filters.to ? { lte: new Date(filters.to) } : {}),
+            },
+          }
+        : {}),
+    };
+
+    const [total, items] = await Promise.all([
+      this.prisma.notificationDelivery.count({ where }),
+      this.prisma.notificationDelivery.findMany({
+        where,
+        include: {
+          notification: {
+            select: {
+              id: true,
+              title: true,
+              eventType: true,
+              channel: true,
+              category: true,
+              priority: true,
+              recipientUserId: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return { total, page, limit, items };
+  }
+
+  async getDeliveryStats(organizationId: string) {
+    const statuses = ['QUEUED', 'SENT', 'DELIVERED', 'FAILED', 'RETRYING', 'FAILED_PERMANENTLY'];
+
+    const counts = await Promise.all(
+      statuses.map((status) =>
+        this.prisma.notificationDelivery.count({
+          where: { status, notification: { organizationId } },
+        }),
+      ),
+    );
+
+    const result: Record<string, number> = {};
+    statuses.forEach((s, i) => { result[s.toLowerCase()] = counts[i] ?? 0; });
+
+    const total = counts.reduce((a, b) => a + b, 0);
+    const succeeded = (result['sent'] ?? 0) + (result['delivered'] ?? 0);
+    result['successRate'] = total > 0 ? Math.round((succeeded / total) * 1000) / 10 : 0;
+
+    return result;
+  }
+
+  async retryDelivery(organizationId: string, deliveryId: string) {
+    const delivery = await this.prisma.notificationDelivery.findFirst({
+      where: { id: deliveryId, notification: { organizationId } },
+    });
+    if (!delivery) throw new NotFoundException('Delivery record not found');
+    if (!['FAILED', 'FAILED_PERMANENTLY'].includes(delivery.status)) {
+      throw new BadRequestException('Only FAILED or FAILED_PERMANENTLY deliveries can be retried');
+    }
+
+    return this.prisma.notificationDelivery.update({
+      where: { id: deliveryId },
+      data: {
+        status: 'FAILED',
+        retryCount: 0,
+        nextRetryAt: new Date(),
+        errorMessage: null,
+      },
+    });
+  }
+
+  async bulkRetryFailed(organizationId: string) {
+    const result = await this.prisma.notificationDelivery.updateMany({
+      where: {
+        status: { in: ['FAILED', 'FAILED_PERMANENTLY'] },
+        notification: { organizationId },
+      },
+      data: {
+        status: 'FAILED',
+        retryCount: 0,
+        nextRetryAt: new Date(),
+      },
+    });
+    return { queued: result.count };
+  }
+
+  // ─── Provider Config ──────────────────────────────────────────
+
+  async listProviderConfigs(organizationId: string) {
+    return this.prisma.notificationProviderConfig.findMany({
+      where: { organizationId },
+      orderBy: [{ channel: 'asc' }, { priority: 'asc' }],
+    });
+  }
+
+  async upsertProviderConfig(
+    organizationId: string,
+    channel: string,
+    providerName: string,
+    isEnabled: boolean,
+    priority?: number,
+  ) {
+    return this.prisma.notificationProviderConfig.upsert({
+      where: {
+        organizationId_channel_providerName: { organizationId, channel, providerName },
+      },
+      create: {
+        organizationId,
+        channel,
+        providerName,
+        isEnabled,
+        priority: priority ?? 1,
+      },
+      update: {
+        isEnabled,
+        ...(priority !== undefined ? { priority } : {}),
+      },
     });
   }
 
@@ -440,6 +968,219 @@ export class CommsService {
     return this.prisma.ptmBooking.update({
       where: { id: bookingId },
       data: { status: 'CANCELLED' },
+    });
+  }
+
+  // ─── Notification Schedules ───────────────────────────────────
+
+  async listSchedules(
+    organizationId: string,
+    filters: { recurrence?: string; isActive?: boolean },
+  ) {
+    return this.prisma.notificationSchedule.findMany({
+      where: {
+        organizationId,
+        ...(filters.recurrence ? { recurrence: filters.recurrence } : {}),
+        ...(filters.isActive !== undefined ? { isActive: filters.isActive } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createSchedule(
+    organizationId: string,
+    dto: {
+      name: string;
+      description?: string;
+      recurrence: string;
+      scheduledAt?: string;
+      cronExpression?: string;
+      title: string;
+      message: string;
+      audienceType: string;
+      audienceTarget?: string;
+      templateId?: string;
+      channels: string[];
+      priority?: string;
+      category?: string;
+    },
+  ) {
+    const nextRunAt = this.computeNextRunAt(dto.recurrence, dto.scheduledAt, dto.cronExpression);
+    return this.prisma.notificationSchedule.create({
+      data: {
+        organizationId,
+        name: dto.name,
+        description: dto.description ?? null,
+        recurrence: dto.recurrence,
+        scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : null,
+        cronExpression: dto.cronExpression ?? null,
+        nextRunAt,
+        title: dto.title,
+        message: dto.message,
+        audienceType: dto.audienceType,
+        audienceTarget: dto.audienceTarget ?? null,
+        templateId: dto.templateId ?? null,
+        channels: dto.channels,
+        priority: dto.priority ?? 'NORMAL',
+        category: dto.category ?? 'GENERAL',
+        isActive: true,
+      },
+    });
+  }
+
+  async getSchedule(organizationId: string, id: string) {
+    const schedule = await this.prisma.notificationSchedule.findFirst({
+      where: { id, organizationId },
+    });
+    if (!schedule) throw new NotFoundException('Notification schedule not found');
+    return schedule;
+  }
+
+  async updateSchedule(
+    organizationId: string,
+    id: string,
+    dto: {
+      name?: string;
+      description?: string;
+      recurrence?: string;
+      scheduledAt?: string;
+      cronExpression?: string;
+      title?: string;
+      message?: string;
+      audienceType?: string;
+      audienceTarget?: string;
+      templateId?: string;
+      channels?: string[];
+      priority?: string;
+      category?: string;
+      isActive?: boolean;
+    },
+  ) {
+    const existing = await this.getSchedule(organizationId, id);
+    const recurrence = dto.recurrence ?? existing.recurrence;
+    const scheduledAt = dto.scheduledAt !== undefined ? dto.scheduledAt : existing.scheduledAt?.toISOString();
+    const cronExpression = dto.cronExpression !== undefined ? dto.cronExpression : (existing.cronExpression ?? undefined);
+    const nextRunAt = this.computeNextRunAt(recurrence, scheduledAt ?? undefined, cronExpression);
+
+    return this.prisma.notificationSchedule.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name } : {}),
+        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.recurrence !== undefined ? { recurrence: dto.recurrence } : {}),
+        ...(dto.scheduledAt !== undefined ? { scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : null } : {}),
+        ...(dto.cronExpression !== undefined ? { cronExpression: dto.cronExpression ?? null } : {}),
+        ...(dto.title !== undefined ? { title: dto.title } : {}),
+        ...(dto.message !== undefined ? { message: dto.message } : {}),
+        ...(dto.audienceType !== undefined ? { audienceType: dto.audienceType } : {}),
+        ...(dto.audienceTarget !== undefined ? { audienceTarget: dto.audienceTarget ?? null } : {}),
+        ...(dto.templateId !== undefined ? { templateId: dto.templateId ?? null } : {}),
+        ...(dto.channels !== undefined ? { channels: dto.channels } : {}),
+        ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
+        ...(dto.category !== undefined ? { category: dto.category } : {}),
+        ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+        nextRunAt,
+      },
+    });
+  }
+
+  async toggleSchedule(organizationId: string, id: string) {
+    const schedule = await this.getSchedule(organizationId, id);
+    return this.prisma.notificationSchedule.update({
+      where: { id },
+      data: { isActive: !schedule.isActive },
+    });
+  }
+
+  async deleteSchedule(organizationId: string, id: string) {
+    await this.getSchedule(organizationId, id);
+    await this.prisma.notificationSchedule.delete({ where: { id } });
+  }
+
+  private computeNextRunAt(
+    recurrence: string,
+    scheduledAt?: string,
+    cronExpression?: string,
+  ): Date | null {
+    const now = new Date();
+
+    switch (recurrence) {
+      case 'ONCE':
+        return scheduledAt ? new Date(scheduledAt) : null;
+      case 'DAILY': {
+        const next = scheduledAt ? new Date(scheduledAt) : new Date(now);
+        if (next <= now) next.setDate(next.getDate() + 1);
+        return next;
+      }
+      case 'WEEKLY': {
+        const next = scheduledAt ? new Date(scheduledAt) : new Date(now);
+        if (next <= now) next.setDate(next.getDate() + 7);
+        return next;
+      }
+      case 'MONTHLY': {
+        const next = scheduledAt ? new Date(scheduledAt) : new Date(now);
+        if (next <= now) next.setMonth(next.getMonth() + 1);
+        return next;
+      }
+      default:
+        // For CRON type — set a sentinel; ScheduledNotificationService handles proper next-run
+        return new Date(now.getTime() + 60_000);
+    }
+  }
+
+  // ─── Inbound Messages ─────────────────────────────────────────
+
+  async listInboundMessages(
+    organizationId: string,
+    filters: { channel?: string; status?: string },
+    page = 1,
+    limit = 50,
+  ) {
+    const skip = (page - 1) * limit;
+    const where = {
+      organizationId,
+      ...(filters.channel ? { channel: filters.channel } : {}),
+      ...(filters.status ? { status: filters.status } : {}),
+    };
+    const [total, items] = await Promise.all([
+      this.prisma.inboundMessage.count({ where }),
+      this.prisma.inboundMessage.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+    return { total, page, limit, items };
+  }
+
+  async receiveInbound(
+    organizationId: string,
+    dto: {
+      channel: string;
+      fromAddress: string;
+      body: string;
+      providerMsgId?: string;
+    },
+  ) {
+    return this.prisma.inboundMessage.create({
+      data: {
+        organizationId,
+        channel: dto.channel,
+        fromAddress: dto.fromAddress,
+        body: dto.body,
+        providerMsgId: dto.providerMsgId ?? null,
+        status: 'RECEIVED',
+      },
+    });
+  }
+
+  async markInboundProcessed(organizationId: string, id: string) {
+    const msg = await this.prisma.inboundMessage.findFirst({ where: { id, organizationId } });
+    if (!msg) throw new NotFoundException('Inbound message not found');
+    return this.prisma.inboundMessage.update({
+      where: { id },
+      data: { status: 'PROCESSED', processedAt: new Date() },
     });
   }
 
